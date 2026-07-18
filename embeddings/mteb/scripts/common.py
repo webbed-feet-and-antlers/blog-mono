@@ -23,6 +23,14 @@ CHUNKS_JSONL = INTERMEDIATE_DIR / "chunks.jsonl"
 QUERIES_JSONL = INTERMEDIATE_DIR / "queries.jsonl"
 FAILURES_JSONL = INTERMEDIATE_DIR / "_failures.jsonl"
 
+# Per-task intermediate files (stages 04-09).
+STS_PAIRS_JSONL = INTERMEDIATE_DIR / "sts_pairs.jsonl"
+SUMMARY_STS_PAIRS_JSONL = INTERMEDIATE_DIR / "summary_sts_pairs.jsonl"
+TOPICS_JSONL = INTERMEDIATE_DIR / "topics.jsonl"
+RERANKING_SCORES_JSONL = INTERMEDIATE_DIR / "reranking_scores.jsonl"
+CROSS_REPORT_QRELS_JSONL = INTERMEDIATE_DIR / "cross_report_qrels.jsonl"
+PAIR_CLASSIFICATION_JSONL = INTERMEDIATE_DIR / "pair_classification.jsonl"
+
 
 def ensure_dirs() -> None:
     """Create the intermediate/cache/datasets directories if missing."""

@@ -23,12 +23,15 @@ def load_govreport_subset(
     *,
     subset: int | None,
     split: str | None = None,
+    include_summary: bool = False,
 ) -> list[dict[str, str]]:
     """Load GovReport from HuggingFace and return ``[{report_id, text, split}, ...]``.
 
     Args:
         subset: Total row cap; taken proportionally across splits. ``None`` = full dataset.
         split: If set, restrict to this split (e.g. ``"train"``).
+        include_summary: If True, also include the report's ``summary`` field
+            (used by Stage 5 — Summary STS). Default False for backward compat.
 
     The ``report_id`` format is ``{split}_{row_id}`` — same as ``cloud/seed.py``.
     """
@@ -50,13 +53,14 @@ def load_govreport_subset(
             split_count = max(1, round(len(split_ds) * subset / total_available))
             split_ds = split_ds.select(range(min(split_count, len(split_ds))))
         for row in split_ds:
-            out.append(
-                {
-                    "report_id": f"{split_name}_{row['id']}",
-                    "split": split_name,
-                    "text": row["report"],
-                }
-            )
+            entry: dict[str, str] = {
+                "report_id": f"{split_name}_{row['id']}",
+                "split": split_name,
+                "text": row["report"],
+            }
+            if include_summary:
+                entry["summary"] = row.get("summary", "") or ""
+            out.append(entry)
     return out
 
 
@@ -260,6 +264,166 @@ def validate_mteb_dir(dataset_dir: Path) -> DatasetStats:
         queries_size=query_count,
         qrels_size=qrels_count,
     )
+
+
+# ----- Per-task validators (STS / Clustering / Reranking / Pair-Classification) ---
+
+@dataclass
+class SingleFileStats:
+    """Stats for single-file datasets (STS, Clustering, Reranking, Pair-Class)."""
+
+    rows: int
+
+    def __str__(self) -> str:
+        return f"SingleFileStats(rows={self.rows})"
+
+
+def _validate_test_jsonl(
+    dataset_dir: Path,
+    *,
+    required_fields: tuple[str, ...],
+) -> int:
+    """Shared helper: validate a single ``test.jsonl`` row schema.
+
+    Returns row count. Raises ValueError on structural problems.
+    """
+    test_p = dataset_dir / "test.jsonl"
+    if not test_p.is_file():
+        raise ValueError(f"Missing required file: {test_p}")
+    if test_p.stat().st_size == 0:
+        raise ValueError(f"Empty file: {test_p}")
+
+    n = 0
+    for row in read_jsonl(test_p):
+        for f in required_fields:
+            if f not in row:
+                raise ValueError(f"row missing required field {f!r}: {row}")
+        n += 1
+    if n == 0:
+        raise ValueError(f"{test_p} has no rows")
+    return n
+
+
+def validate_sts_dir(dataset_dir: Path) -> SingleFileStats:
+    """Validate STS dataset: ``test.jsonl`` rows are ``{sent1, sent2, score}``.
+
+    Score must be a number in [0, 5].
+    """
+    dataset_dir = Path(dataset_dir)
+    n = _validate_test_jsonl(dataset_dir, required_fields=("sent1", "sent2", "score"))
+    # Score range check.
+    for row in read_jsonl(dataset_dir / "test.jsonl"):
+        try:
+            score = float(row["score"])
+        except (TypeError, ValueError):
+            raise ValueError(f"STS score is not numeric: {row['score']!r}")
+        if not (0.0 <= score <= 5.0):
+            raise ValueError(f"STS score out of [0, 5]: {score}")
+        if not row["sent1"] or not row["sent2"]:
+            raise ValueError(f"STS sent1/sent2 is empty: {row}")
+    return SingleFileStats(rows=n)
+
+
+def validate_clustering_dir(dataset_dir: Path) -> SingleFileStats:
+    """Validate clustering dataset: ``test.jsonl`` rows are ``{text, label}``.
+
+    Requires ≥ 2 distinct labels.
+    """
+    dataset_dir = Path(dataset_dir)
+    n = _validate_test_jsonl(dataset_dir, required_fields=("text", "label"))
+    labels: set[str] = set()
+    for row in read_jsonl(dataset_dir / "test.jsonl"):
+        label = row["label"]
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError(f"clustering label must be non-empty str: {label!r}")
+        if not row["text"]:
+            raise ValueError(f"clustering text is empty: {row}")
+        labels.add(label)
+    if len(labels) < 2:
+        raise ValueError(
+            f"clustering needs ≥ 2 distinct labels, got {len(labels)} ({sorted(labels)})"
+        )
+    return SingleFileStats(rows=n)
+
+
+def validate_reranking_dir(dataset_dir: Path) -> SingleFileStats:
+    """Validate reranking dataset: ``{query, positive: [str...], negative: [str...]}``.
+
+    Both positive and negative must be non-empty lists; query non-empty.
+    """
+    dataset_dir = Path(dataset_dir)
+    n = _validate_test_jsonl(
+        dataset_dir, required_fields=("query", "positive", "negative")
+    )
+    for row in read_jsonl(dataset_dir / "test.jsonl"):
+        if not row["query"]:
+            raise ValueError(f"reranking query is empty: {row}")
+        pos = row["positive"]
+        neg = row["negative"]
+        if not isinstance(pos, list) or not pos:
+            raise ValueError(f"reranking positive must be non-empty list: {row}")
+        if not isinstance(neg, list) or not neg:
+            raise ValueError(f"reranking negative must be non-empty list: {row}")
+        for s in pos + neg:
+            if not isinstance(s, str) or not s:
+                raise ValueError(f"reranking candidate strings must be non-empty: {row}")
+    return SingleFileStats(rows=n)
+
+
+def validate_pair_classification_dir(dataset_dir: Path) -> SingleFileStats:
+    """Validate pair-classification dataset: ``{sent1, sent2, labels: [0|1]}``.
+
+    ``labels`` must be a 1-element list with value 0 or 1.
+    """
+    dataset_dir = Path(dataset_dir)
+    n = _validate_test_jsonl(dataset_dir, required_fields=("sent1", "sent2", "labels"))
+    for row in read_jsonl(dataset_dir / "test.jsonl"):
+        labels = row["labels"]
+        if not isinstance(labels, list) or len(labels) != 1:
+            raise ValueError(
+                f"pair-classification labels must be a 1-element list: {labels!r}"
+            )
+        v = labels[0]
+        if v not in (0, 1) or (isinstance(v, bool) and not isinstance(v, int)):
+            # int booleans are fine; reject strings/floats.
+            if v not in (0, 1):
+                raise ValueError(f"pair-classification label not 0/1: {v!r}")
+        if not row["sent1"] or not row["sent2"]:
+            raise ValueError(f"pair-classification sent1/sent2 is empty: {row}")
+    return SingleFileStats(rows=n)
+
+
+def validate_cross_report_dir(dataset_dir: Path) -> DatasetStats:
+    """Validate cross-report retrieval dataset.
+
+    Same layout as standard retrieval (``corpus.jsonl``, ``queries.jsonl``,
+    ``qrels/test.tsv``). Additional check: at least one query must have ≥ 2
+    qrels (i.e. cross-report positives exist).
+    """
+    stats = validate_mteb_dir(dataset_dir)
+
+    qrels_p = dataset_dir / "qrels" / "test.tsv"
+    per_query: dict[str, int] = {}
+    with qrels_p.open("r", encoding="utf-8") as f:
+        # Skip header.
+        f.readline()
+        for line in f:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            qid = parts[0]
+            per_query[qid] = per_query.get(qid, 0) + 1
+
+    multi_gold = sum(1 for c in per_query.values() if c >= 2)
+    if multi_gold == 0:
+        raise ValueError(
+            "cross-report dataset has no query with ≥ 2 qrels — "
+            "did the LLM find any cross-report positives?"
+        )
+    return stats
 
 
 # ----- Title disambiguation --------------------------------------------------

@@ -87,3 +87,129 @@ REPAIR_SYSTEM = (
     "Re-emit ONLY a valid JSON object matching the requested schema. "
     "No prose. No markdown fences. No commentary."
 )
+
+
+# ----- Stage 4: STS ---------------------------------------------------------
+
+STS_USER_TEMPLATE = """\
+You are scoring semantic textual similarity for a retrieval benchmark.
+
+Below is a JSON list of text-pairs. For EACH pair, rate the semantic similarity \
+of the two passages on a 0.0 to 5.0 scale, where:
+  5.0 = exactly the same meaning
+  4.0 = close to the same meaning; minor differences
+  3.0 = roughly similar; some important differences
+  2.0 = related topic but different specifics
+  1.0 = barely related
+  0.0 = completely unrelated
+
+Score each pair independently. Use the full range. Use one decimal place.
+
+PAIRS (JSON):
+{pairs_json}
+
+Return JSON of exactly this shape (one entry per input pair, preserving pair_id):
+{{"scores": [{{"pair_id": "<pair_id>", "score": <0.0-5.0>}}]}}"""
+
+
+# ----- Stage 5: Summary STS -------------------------------------------------
+
+SUMMARY_STS_USER_TEMPLATE = """\
+You are scoring how relevant a report passage is to its summary.
+
+Below is a JSON list of (summary, passage) pairs. For each pair, rate on a 0.0 \
+to 5.0 scale how directly the passage is relevant to the summary's topic:
+  5.0 = the passage directly addresses the summary's main point
+  4.0 = the passage substantively supports the summary
+  3.0 = the passage is topically related and partially supports the summary
+  2.0 = the passage is on a related topic but doesn't support the summary
+  1.0 = barely related to the summary
+  0.0 = completely unrelated to the summary
+
+Score each pair independently. Use one decimal place.
+
+PAIRS (JSON):
+{pairs_json}
+
+Return JSON of exactly this shape (preserve pair_id ordering):
+{{"scores": [{{"pair_id": "<pair_id>", "score": <0.0-5.0>}}]}}"""
+
+
+# ----- Stage 6: Clustering --------------------------------------------------
+
+CLUSTERING_USER_TEMPLATE = """\
+You are classifying U.S. government report passages into a fixed topic vocabulary.
+
+Assign each passage to EXACTLY ONE of the following topics (verbatim, \
+case-sensitive):
+{topic_vocab}
+
+Choose the BEST single fit. If a passage touches multiple topics, pick the most \
+salient one. Use the topic string verbatim (do not paraphrase, pluralize, or \
+abbreviate).
+
+PASSAGES (JSON):
+{chunks_json}
+
+Return JSON of exactly this shape (one entry per passage, preserving chunk_id):
+{{"assignments": [{{"chunk_id": "<chunk_id>", "topic": "<one of the topics above>"}}]}}"""
+
+
+# ----- Stage 7: Reranking ---------------------------------------------------
+
+RERANKING_USER_TEMPLATE = """\
+You are scoring how relevant each candidate passage is to a retrieval query.
+
+QUERY:
+\"\"\"{query}\"\"\"
+
+For each candidate below, score its relevance to the query on a 0 to 3 scale:
+  3 = directly answers the query
+  2 = substantively relevant (would be useful)
+  1 = topically related but doesn't answer the query
+  0 = irrelevant
+
+Score each candidate independently. Be strict: a candidate only earns 3 if it \
+substantively answers THIS specific query.
+
+CANDIDATES (JSON):
+{candidates_json}
+
+Return JSON of exactly this shape (one entry per candidate, preserving chunk_id):
+{{"query_id": "{query_id}", "scores": [{{"chunk_id": "<chunk_id>", "score": <0-3>}}]}}"""
+
+
+# ----- Stage 8: Cross-report retrieval --------------------------------------
+
+CROSS_REPORT_USER_TEMPLATE = """\
+You are judging whether each passage from OTHER reports substantively answers \
+a given query.
+
+QUERY:
+\"\"\"{query}\"\"\"
+
+For each candidate passage below, judge whether it substantively answers the \
+query (true) or not (false). Only mark true if the passage contains information \
+that genuinely addresses the query — not merely topically related.
+
+CANDIDATES (JSON):
+{candidates_json}
+
+Return JSON of exactly this shape (one entry per candidate, preserving chunk_id):
+{{"query_id": "{query_id}", "matches": [{{"chunk_id": "<chunk_id>", "relevant": <true|false>}}]}}"""
+
+
+# ----- Stage 9: Pair Classification -----------------------------------------
+
+PAIR_CLASSIFY_USER_TEMPLATE = """\
+You are judging whether two passages discuss the SAME SPECIFIC topic.
+
+For each text-pair below, output 1 if both passages discuss the same specific \
+topic (not merely the same broad category), otherwise 0. Be strict: same broad \
+domain (e.g. both about "healthcare") but different subtopics counts as 0.
+
+PAIRS (JSON):
+{pairs_json}
+
+Return JSON of exactly this shape (one entry per pair, preserving pair_id):
+{{"items": [{{"pair_id": "<pair_id>", "label": <0|1>}}]}}"""
