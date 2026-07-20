@@ -168,6 +168,58 @@ wc -l datasets/govreport_cross_report/qrels/test.tsv          # >300 (cross-repo
 wc -l datasets/govreport_pair_classification/test.jsonl       # ~300
 ```
 
+## Evaluation
+
+Once datasets exist, evaluate embedding models against them:
+
+```bash
+cd embeddings
+uv pip install -e ".[evaluate-all]"      # API + local providers
+```
+
+Per-model results land in `mteb/results/` (committed; visible in PR diffs).
+Each run writes/overwrites a per-model JSON and regenerates `_leaderboard.md`.
+
+### Single-model smoke
+
+```bash
+python3 mteb/evaluate/__main__.py \
+    --provider openai --model text-embedding-3-small --tasks sts
+```
+
+### Full matrix
+
+```bash
+task mteb:evaluate:all
+cat mteb/results/_leaderboard.md
+```
+
+### Providers
+
+| Provider | Models | API key env |
+|---|---|---|
+| `openai` | `text-embedding-3-small`, `text-embedding-3-large` | `OPENAI_API_KEY` |
+| `gemini` | `text-embedding-004`, `gemini-embedding-001` | `GOOGLE_API_KEY` (alias `GEMINI_API_KEY`) |
+| `sentence-transformers` | `all-MiniLM-L6-v2`, `bge-base-en-v1.5` | (none — local) |
+
+### CLI flags
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--provider` | — | `openai` \| `gemini` \| `sentence-transformers` |
+| `--model` | — | Provider model id |
+| `--tasks` | all 7 | Comma-separated task names |
+| `--all` | off | Run the full MODEL_MATRIX |
+| `--device` | `cpu` | `cpu` \| `cuda` \| `mps` (sentence-transformers only) |
+| `--api-key` | env | Override provider key |
+| `--datasets-dir` | `mteb/datasets` | Path to datasets/ |
+| `--results-dir` | `mteb/results` | Path to results/ |
+| `--verbose` | off | DEBUG logging |
+
+### Result format
+
+See `mteb/results/README.md` for the JSON schema and leaderboard column docs.
+
 ## Per-task design notes
 
 - **STS (04)** — for each chunk, samples one within-report pair and one
@@ -301,5 +353,6 @@ concurrency: `--concurrency 4`.
 ## Out of scope for this MVP
 
 - GCP deploy, Docker, HF Hub push.
-- Automated smoke test with the `mteb` Python library (the produced directory
-  matches MTEB's `LocalDataset` layout and should be loadable directly).
+- The `mteb` Python library is intentionally not used for evaluation — the
+  custom runner in `mteb/evaluate/` covers the same 7 task types with a
+  lighter dependency set. See the "Evaluation" section above.
