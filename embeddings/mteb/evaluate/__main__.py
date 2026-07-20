@@ -41,6 +41,7 @@ logger = logging.getLogger("evaluate")
 
 
 DEFAULT_RESULTS_DIR = _MTEB_DIR / "results"
+DEFAULT_CACHE_DIR = _MTEB_DIR / "cache" / "embeddings"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -93,6 +94,17 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Path to results/ folder (default: {DEFAULT_RESULTS_DIR})",
     )
     p.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass the on-disk embedding cache (re-encode everything).",
+    )
+    p.add_argument(
+        "--cache-dir",
+        type=Path,
+        default=DEFAULT_CACHE_DIR,
+        help=f"Embedding cache root (default: {DEFAULT_CACHE_DIR})",
+    )
+    p.add_argument(
         "--verbose", action="store_true",
         help="DEBUG logging",
     )
@@ -134,6 +146,8 @@ def main() -> None:
             datasets_dir=args.datasets_dir,
             results_dir=args.results_dir,
             device=args.device,
+            no_cache=args.no_cache,
+            cache_dir=args.cache_dir,
         )
         logger.info("Evaluated %d model(s)", count)
         return
@@ -151,6 +165,8 @@ def main() -> None:
         device=args.device,
         api_key=args.api_key,
         dim=args.dim,
+        no_cache=args.no_cache,
+        cache_dir=args.cache_dir,
     )
     logger.info("Done: %d task results", len(results))
 

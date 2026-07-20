@@ -214,7 +214,45 @@ cat mteb/results/_leaderboard.md
 | `--api-key` | env | Override provider key |
 | `--datasets-dir` | `mteb/datasets` | Path to datasets/ |
 | `--results-dir` | `mteb/results` | Path to results/ |
+| `--no-cache` | off | Bypass the embedding cache (re-encode everything) |
+| `--cache-dir` | `mteb/cache/embeddings` | Embedding cache root |
 | `--verbose` | off | DEBUG logging |
+
+### Embedding cache
+
+The evaluator transparently caches embeddings on disk so re-runs pay only
+for inputs not yet seen. This matters for API providers (cost + rate limits)
+and for `sentence-transformers` (CPU/GPU time), and it makes the runner
+crash-safe: a partial run preserves what was already encoded.
+
+- **Location**: `mteb/cache/embeddings/<model>__<kind>__mc<max_chars>_d<dim>.npz`
+  — one file per `(model, kind, max_chars, dim)` combo. Gitignored alongside
+  the LLM-response cache.
+- **Key**: the original (pre-truncation) text. `kind` (`query` / `document` /
+  `text`) is part of the filename because E5/BGE/Gemini return different
+  vectors for the same text under different task types.
+- **Invalidation**: changing `--dim` or `--max-chars` writes a new file
+  (different `_d<dim>` / `mc<max_chars>` suffix). Changing `--model` writes
+  a new file. No silent staleness.
+- **Lifecycle**: the file is loaded lazily on first `encode()` for a kind,
+  and flushed once when the run finishes. Mid-run crashes preserve any
+  embeddings already computed in prior runs, but the *current* run's new
+  embeddings are only persisted on a clean exit.
+- **`--no-cache`**: toggles cache reads AND writes together — never a
+  half-state. Use it to force a clean re-encode.
+
+```bash
+# First run: populates the cache.
+python3 mteb/evaluate/__main__.py --provider openai \
+    --model text-embedding-3-small --tasks sts
+
+# Second run: cache hits only, near-instant, zero API calls.
+python3 mteb/evaluate/__main__.py --provider openai \
+    --model text-embedding-3-small --tasks sts --verbose
+```
+
+The cache is single-process: if two processes race the same file, the last
+writer wins. Delete files under `mteb/cache/embeddings/` to clear.
 
 ### Result format
 
