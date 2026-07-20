@@ -42,6 +42,7 @@ logger = logging.getLogger("evaluate")
 
 DEFAULT_RESULTS_DIR = _MTEB_DIR / "results"
 DEFAULT_CACHE_DIR = _MTEB_DIR / "cache" / "embeddings"
+DEFAULT_PRECOMPUTED_DIR = _MTEB_DIR / "precomputed"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--provider",
-        choices=("openai", "gemini", "sentence-transformers"),
+        choices=("openai", "gemini", "sentence-transformers", "precomputed"),
         help="Embedding provider (required unless --all).",
     )
     p.add_argument("--model", help="Model name (provider-specific). Required unless --all.")
@@ -105,6 +106,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Embedding cache root (default: {DEFAULT_CACHE_DIR})",
     )
     p.add_argument(
+        "--precomputed-dir",
+        type=Path,
+        default=DEFAULT_PRECOMPUTED_DIR,
+        help=f"Precomputed embeddings root (default: {DEFAULT_PRECOMPUTED_DIR})",
+    )
+    p.add_argument(
         "--verbose", action="store_true",
         help="DEBUG logging",
     )
@@ -148,6 +155,7 @@ def main() -> None:
             device=args.device,
             no_cache=args.no_cache,
             cache_dir=args.cache_dir,
+            precomputed_dir=args.precomputed_dir,
         )
         logger.info("Evaluated %d model(s)", count)
         return
@@ -167,6 +175,7 @@ def main() -> None:
         dim=args.dim,
         no_cache=args.no_cache,
         cache_dir=args.cache_dir,
+        precomputed_dir=args.precomputed_dir,
     )
     logger.info("Done: %d task results", len(results))
 

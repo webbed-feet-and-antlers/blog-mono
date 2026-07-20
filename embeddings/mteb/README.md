@@ -31,15 +31,15 @@ re-running picks up where it left off.
 
 ## Tasks
 
-| Stage | Task | Output dir | MTEB row schema |
-|---|---|---|---|
-| 03 | Retrieval | `datasets/govreport_retrieval/` | corpus.jsonl + queries.jsonl + qrels/test.tsv |
-| 04 | STS | `datasets/govreport_sts/test.jsonl` | `{sent1, sent2, score}` (0–5) |
-| 05 | Summary STS | `datasets/govreport_summary_sts/test.jsonl` | same as STS |
-| 06 | Clustering | `datasets/govreport_clustering/test.jsonl` | `{text, label}` (15-topic vocab) |
-| 07 | Reranking | `datasets/govreport_reranking/test.jsonl` | `{query, positive: [...], negative: [...]}` |
-| 08 | Cross-report retrieval | `datasets/govreport_cross_report/` | same layout as retrieval; qrels have ≥ 2 golds for some queries |
-| 09 | Pair Classification | `datasets/govreport_pair_classification/test.jsonl` | `{sent1, sent2, labels: [0\|1]}` |
+| Stage | Task                   | Output dir                                          | MTEB row schema                                                 |
+| ----- | ---------------------- | --------------------------------------------------- | --------------------------------------------------------------- |
+| 03    | Retrieval              | `datasets/govreport_retrieval/`                     | corpus.jsonl + queries.jsonl + qrels/test.tsv                   |
+| 04    | STS                    | `datasets/govreport_sts/test.jsonl`                 | `{sent1, sent2, score}` (0–5)                                   |
+| 05    | Summary STS            | `datasets/govreport_summary_sts/test.jsonl`         | same as STS                                                     |
+| 06    | Clustering             | `datasets/govreport_clustering/test.jsonl`          | `{text, label}` (15-topic vocab)                                |
+| 07    | Reranking              | `datasets/govreport_reranking/test.jsonl`           | `{query, positive: [...], negative: [...]}`                     |
+| 08    | Cross-report retrieval | `datasets/govreport_cross_report/`                  | same layout as retrieval; qrels have ≥ 2 golds for some queries |
+| 09    | Pair Classification    | `datasets/govreport_pair_classification/test.jsonl` | `{sent1, sent2, labels: [0\|1]}`                                |
 
 ### Standard retrieval format
 
@@ -196,27 +196,29 @@ cat mteb/results/_leaderboard.md
 
 ### Providers
 
-| Provider | Models | API key env |
-|---|---|---|
-| `openai` | `text-embedding-3-small`, `text-embedding-3-large` | `OPENAI_API_KEY` |
-| `gemini` | `text-embedding-004`, `gemini-embedding-001` | `GOOGLE_API_KEY` (alias `GEMINI_API_KEY`) |
-| `sentence-transformers` | `all-MiniLM-L6-v2`, `bge-base-en-v1.5` | (none — local) |
+| Provider                | Models                                             | API key env                               |
+| ----------------------- | -------------------------------------------------- | ----------------------------------------- |
+| `openai`                | `text-embedding-3-small`, `text-embedding-3-large` | `OPENAI_API_KEY`                          |
+| `gemini`                | `text-embedding-004`, `gemini-embedding-001`       | `GOOGLE_API_KEY` (alias `GEMINI_API_KEY`) |
+| `sentence-transformers` | `all-MiniLM-L6-v2`, `bge-base-en-v1.5`             | (none — local)                            |
+| `precomputed`           | `pplx-embed-context-v1-0.6b`                       | (none — served from disk)                 |
 
 ### CLI flags
 
-| Flag | Default | Purpose |
-|---|---|---|
-| `--provider` | — | `openai` \| `gemini` \| `sentence-transformers` |
-| `--model` | — | Provider model id |
-| `--tasks` | all 7 | Comma-separated task names |
-| `--all` | off | Run the full MODEL_MATRIX |
-| `--device` | `cpu` | `cpu` \| `cuda` \| `mps` (sentence-transformers only) |
-| `--api-key` | env | Override provider key |
-| `--datasets-dir` | `mteb/datasets` | Path to datasets/ |
-| `--results-dir` | `mteb/results` | Path to results/ |
-| `--no-cache` | off | Bypass the embedding cache (re-encode everything) |
-| `--cache-dir` | `mteb/cache/embeddings` | Embedding cache root |
-| `--verbose` | off | DEBUG logging |
+| Flag                | Default                 | Purpose                                                          |
+| ------------------- | ----------------------- | ---------------------------------------------------------------- |
+| `--provider`        | —                       | `openai` \| `gemini` \| `sentence-transformers` \| `precomputed` |
+| `--model`           | —                       | Provider model id                                                |
+| `--tasks`           | all 7                   | Comma-separated task names                                       |
+| `--all`             | off                     | Run the full MODEL_MATRIX                                        |
+| `--device`          | `cpu`                   | `cpu` \| `cuda` \| `mps` (sentence-transformers only)            |
+| `--api-key`         | env                     | Override provider key                                            |
+| `--datasets-dir`    | `mteb/datasets`         | Path to datasets/                                                |
+| `--results-dir`     | `mteb/results`          | Path to results/                                                 |
+| `--no-cache`        | off                     | Bypass the embedding cache (re-encode everything)                |
+| `--cache-dir`       | `mteb/cache/embeddings` | Embedding cache root                                             |
+| `--precomputed-dir` | `mteb/precomputed`      | Precomputed embeddings root                                      |
+| `--verbose`         | off                     | DEBUG logging                                                    |
 
 ### Embedding cache
 
@@ -236,7 +238,7 @@ crash-safe: a partial run preserves what was already encoded.
   a new file. No silent staleness.
 - **Lifecycle**: the file is loaded lazily on first `encode()` for a kind,
   and flushed once when the run finishes. Mid-run crashes preserve any
-  embeddings already computed in prior runs, but the *current* run's new
+  embeddings already computed in prior runs, but the _current_ run's new
   embeddings are only persisted on a clean exit.
 - **`--no-cache`**: toggles cache reads AND writes together — never a
   half-state. Use it to force a clean re-encode.
@@ -253,6 +255,71 @@ python3 mteb/evaluate/__main__.py --provider openai \
 
 The cache is single-process: if two processes race the same file, the last
 writer wins. Delete files under `mteb/cache/embeddings/` to clear.
+
+### Precomputed provider
+
+The `precomputed` provider decouples GPU encoding from metric computation.
+A one-shot producer script runs the in-repo PPLX runtime
+(`perplexity-ai/pplx-embed-context-v1-0.6b`, 1024-dim) over **every** text
+in the 7 task datasets, dumps a single `.npz` per
+`(model, max_chars, dim)`, and the loader (`PrecomputedEncoder`) serves
+vectors from that file at evaluation time. Re-running evaluation is free
+— no GPU, no API calls — and the PPLX row appears next to OpenAI / Gemini
+/ sentence-transformers in `_leaderboard.md`.
+
+**Produce (one-shot, on a GPU box):**
+
+```bash
+task mteb:precompute:pplx                 # full run
+# or:
+python3 mteb/scripts/precompute_pplx.py --device cuda
+python3 mteb/scripts/precompute_pplx.py --device cpu --tasks sts   # smoke
+```
+
+Output:
+
+```
+mteb/precomputed/pplx-embed-context-v1-0.6b__text__mc8000_d1024.npz
+```
+
+Same `texts` + `vectors` `.npz` schema as the embedding cache (one file,
+all `kind`s map to it — see "Why `kind` is ignored" below).
+
+**Evaluate:**
+
+```bash
+python3 mteb/evaluate/__main__.py \
+    --provider precomputed --model pplx-embed-context-v1-0.6b --tasks sts
+```
+
+`--all` picks it up automatically (via `MODEL_MATRIX`) once the `.npz`
+exists. If the file is missing, `run_all` logs a warning and continues
+with the other providers.
+
+**File location + naming:** `mteb/precomputed/<safe_model>__text__mc<max_chars>_d<dim>.npz`
+— identical convention to the embedding cache, but under `precomputed/`
+(gitignored). Different `--max-chars` or `--truncate-dim` settings produce
+different files, so there's no silent staleness.
+
+**Re-running after dataset changes:** if `mteb/datasets/govreport_*` files
+change (e.g. regenerated with a different `--subset`), precomputed
+embeddings no longer cover all inputs → the loader raises `RuntimeError`
+listing the first few missing texts. Recovery: delete the `.npz` (or pass
+`--force`) and re-run the producer.
+
+**Why `kind` is ignored:** the PPLX runtime uses no E5/BGE-style
+`query:` / `passage:` prefixes (verified via `modules/runtime.py`,
+`modules/chunking.py`, `modules/constants.py`, `tokenization.py` — none
+apply prefixes), so `kind="query"`, `"document"`, `"text"` all return
+identical vectors. The producer writes one `__text__.npz`; the loader
+maps every kind to it. If a future pplx model adds prefix conventions,
+the loader needs revisiting (write 3 files instead of 1).
+
+**Adding future precomputed models:** the loader is generic — any model
+name → file lookup via the same `_sig()` naming convention. The producer
+script is pplx-specific because it imports `PPLXEmbedFP8Runtime` directly;
+a future non-pplx precomputed source would need its own producer script,
+but could reuse the same loader.
 
 ### Result format
 
@@ -309,32 +376,32 @@ The LLM cache is untouched (it's keyed by model + messages, so changing
 
 ## Common flags
 
-| Flag | Default | Env | Purpose |
-|---|---|---|---|
-| `--task NAME` | `retrieval` | — | Pipeline to run |
-| `--subset N` | 50 | `MTEB_SUBSET` | Reports to process (proportional across splits) |
-| `--model NAME` | `deepseek-chat` | `MTEB_MODEL` | DeepSeek model id |
-| `--concurrency N` | 10 | `MTEB_CONCURRENCY` | Max parallel API calls |
-| `--api-key KEY` | — | `DEEPSEEK_API_KEY` | Flag wins, then env, else error |
-| `--split NAME` | `train` | `MTEB_SPLIT` | GovReport split |
-| `--verbose` | off | — | DEBUG logging |
-| `--no-cache` | off | — | Bypass cache reads (still writes) |
-| `--restart` | off | — | Truncate this stage's output(s) before running |
-| `--no-skip-existing` | off | — | Disable orchestrator's resume-aware stage skipping |
+| Flag                 | Default         | Env                | Purpose                                            |
+| -------------------- | --------------- | ------------------ | -------------------------------------------------- |
+| `--task NAME`        | `retrieval`     | —                  | Pipeline to run                                    |
+| `--subset N`         | 50              | `MTEB_SUBSET`      | Reports to process (proportional across splits)    |
+| `--model NAME`       | `deepseek-chat` | `MTEB_MODEL`       | DeepSeek model id                                  |
+| `--concurrency N`    | 10              | `MTEB_CONCURRENCY` | Max parallel API calls                             |
+| `--api-key KEY`      | —               | `DEEPSEEK_API_KEY` | Flag wins, then env, else error                    |
+| `--split NAME`       | `train`         | `MTEB_SPLIT`       | GovReport split                                    |
+| `--verbose`          | off             | —                  | DEBUG logging                                      |
+| `--no-cache`         | off             | —                  | Bypass cache reads (still writes)                  |
+| `--restart`          | off             | —                  | Truncate this stage's output(s) before running     |
+| `--no-skip-existing` | off             | —                  | Disable orchestrator's resume-aware stage skipping |
 
 Per-stage extras:
 
-| Stage | Extra flags |
-|---|---|
-| 01 | `--max-report-chars 24000` |
-| 02 | `--sample-print 3` |
-| 03 | `--dataset-name`, `--strict-verbatim` |
-| 04 (STS) | `--pairs-per-chunk 2`, `--batch-size 5`, `--dataset-name` |
-| 05 (Summary STS) | `--negatives-per-chunk 1`, `--batch-size 5`, `--dataset-name` |
-| 06 (Clustering) | `--batch-size 5`, `--dataset-name` |
-| 07 (Reranking) | `--candidates-per-query 10`, `--dataset-name` |
-| 08 (Cross-report) | `--candidates-per-query 10`, `--dataset-name` |
-| 09 (Pair Classification) | `--pairs-per-chunk 2`, `--batch-size 5`, `--dataset-name` |
+| Stage                    | Extra flags                                                   |
+| ------------------------ | ------------------------------------------------------------- |
+| 01                       | `--max-report-chars 24000`                                    |
+| 02                       | `--sample-print 3`                                            |
+| 03                       | `--dataset-name`, `--strict-verbatim`                         |
+| 04 (STS)                 | `--pairs-per-chunk 2`, `--batch-size 5`, `--dataset-name`     |
+| 05 (Summary STS)         | `--negatives-per-chunk 1`, `--batch-size 5`, `--dataset-name` |
+| 06 (Clustering)          | `--batch-size 5`, `--dataset-name`                            |
+| 07 (Reranking)           | `--candidates-per-query 10`, `--dataset-name`                 |
+| 08 (Cross-report)        | `--candidates-per-query 10`, `--dataset-name`                 |
+| 09 (Pair Classification) | `--pairs-per-chunk 2`, `--batch-size 5`, `--dataset-name`     |
 
 ## Cache
 
@@ -355,16 +422,16 @@ reproducible from the dataset + prompts.
 
 A 50-report everything run (~150 chunks, ~300 queries):
 
-| Task | Calls | Tokens | Notes |
-|---|---|---|---|
-| Retrieval | ~200 | ~1.2M | chunking + query gen |
-| STS | ~60 | ~0.4M | batched 5/call |
-| Summary STS | ~60 | ~0.4M | batched 5/call |
-| Clustering | ~30 | ~0.2M | batched 5/call |
-| Reranking | ~300 | ~1.0M | 10 candidates each |
-| Cross-report | ~300 | ~1.0M | 10 candidates each |
-| Pair Classification | ~60 | ~0.4M | batched 5/call |
-| **Total** | **~1010** | **~4.6M** | sub-USD-3 at deepseek-chat pricing |
+| Task                | Calls     | Tokens    | Notes                              |
+| ------------------- | --------- | --------- | ---------------------------------- |
+| Retrieval           | ~200      | ~1.2M     | chunking + query gen               |
+| STS                 | ~60       | ~0.4M     | batched 5/call                     |
+| Summary STS         | ~60       | ~0.4M     | batched 5/call                     |
+| Clustering          | ~30       | ~0.2M     | batched 5/call                     |
+| Reranking           | ~300      | ~1.0M     | 10 candidates each                 |
+| Cross-report        | ~300      | ~1.0M     | 10 candidates each                 |
+| Pair Classification | ~60       | ~0.4M     | batched 5/call                     |
+| **Total**           | **~1010** | **~4.6M** | sub-USD-3 at deepseek-chat pricing |
 
 Cache makes re-runs free for unchanged inputs. If you hit 429 storms, drop
 concurrency: `--concurrency 4`.

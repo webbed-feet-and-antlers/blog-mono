@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
 import numpy as np
@@ -317,6 +318,7 @@ class SentenceTransformerEncoder:
 #   - gemini-embedding-001:  3072 (downscale via output_dimensionality)
 #   - all-MiniLM-L6-v2:       384
 #   - bge-base-en-v1.5:       768
+#   - pplx-embed-context-v1-0.6b: 1024 (precomputed via modules.runtime)
 MODEL_MATRIX: list[tuple[str, str, int]] = [
     ("openai", "text-embedding-3-small", 1536),
     ("openai", "text-embedding-3-large", 3072),
@@ -324,6 +326,7 @@ MODEL_MATRIX: list[tuple[str, str, int]] = [
     ("gemini", "gemini-embedding-001", 3072),
     ("sentence-transformers", "all-MiniLM-L6-v2", 384),
     ("sentence-transformers", "bge-base-en-v1.5", 768),
+    ("precomputed", "pplx-embed-context-v1-0.6b", 1024),
 ]
 
 
@@ -334,6 +337,7 @@ def build_encoder(
     dim: int | None = None,
     device: str = "cpu",
     api_key: str | None = None,
+    precomputed_dir: Path | None = None,
 ) -> Encoder:
     """Factory: build an Encoder by provider name.
 
@@ -356,7 +360,17 @@ def build_encoder(
         return GeminiEncoder(model, dim=dim, api_key=api_key)  # type: ignore[return-value]
     if provider == "sentence-transformers":
         return SentenceTransformerEncoder(model, dim=dim, device=device)  # type: ignore[return-value]
+    if provider == "precomputed":
+        if precomputed_dir is None:
+            sys.exit(
+                "--precomputed-dir is required for --provider precomputed "
+                "(default: mteb/precomputed)"
+            )
+        from .precomputed import PrecomputedEncoder
+        return PrecomputedEncoder(  # type: ignore[return-value]
+            model, dim=dim, precomputed_dir=precomputed_dir,
+        )
     sys.exit(
         f"Unknown provider {provider!r}. "
-        f"Expected: openai | gemini | sentence-transformers"
+        f"Expected: openai | gemini | sentence-transformers | precomputed"
     )

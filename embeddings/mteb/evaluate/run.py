@@ -29,6 +29,7 @@ def run_one(
     dim: int | None = None,
     no_cache: bool = False,
     cache_dir: Path | None = None,
+    precomputed_dir: Path | None = None,
 ) -> list[TaskResult]:
     """Evaluate one model on *tasks*; write JSON + refresh leaderboard.
 
@@ -57,7 +58,8 @@ def run_one(
         "Building encoder %s/%s (device=%s)", provider, model, device
     )
     encoder: Encoder = build_encoder(
-        provider, model, dim=dim, device=device, api_key=api_key
+        provider, model, dim=dim, device=device, api_key=api_key,
+        precomputed_dir=precomputed_dir,
     )
     if not no_cache:
         logger.info("Caching embeddings at %s", cache_dir)
@@ -99,6 +101,7 @@ def run_all(
     tasks: list[str] | None = None,
     no_cache: bool = False,
     cache_dir: Path | None = None,
+    precomputed_dir: Path | None = None,
 ) -> int:
     """Run the entire MODEL_MATRIX. Returns count of models evaluated."""
     selected = tasks or list(ALL_TASKS)
@@ -115,6 +118,7 @@ def run_all(
                 device=device,
                 no_cache=no_cache,
                 cache_dir=cache_dir,
+                precomputed_dir=precomputed_dir,
             )
             count += 1
         except SystemExit as e:
