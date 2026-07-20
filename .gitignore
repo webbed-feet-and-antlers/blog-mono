@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.DS_Store
+
+# MTEB dataset pipeline (reproducible from data + prompts; cache holds API responses)
+embeddings/mteb/cache/
+embeddings/mteb/intermediate/
+embeddings/mteb/datasets/
+embeddings/mteb/evaluate/__pycache__/
