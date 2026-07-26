@@ -35,3 +35,10 @@ evaluate-local = [
 evaluate-all = [
     "embeddings[evaluate-api,evaluate-local]",
 ]
+leaderboard = [
+    "streamlit>=1.36",
+    "pandas>=2.2",
+]
+
+[tool.setuptools.packages.find]
+include = ["mteb*", "modules*"]
