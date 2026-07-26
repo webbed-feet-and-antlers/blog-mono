@@ -1,0 +1,198 @@
+version: "3"
+
+tasks:
+  chunk:
+    desc: "Stage 1 — LLM-chunk GovReport reports via DeepSeek"
+    cmds:
+      - >-
+        python3 mteb/scripts/01_chunk_reports.py
+        --subset {{.SUBSET | default 50}}
+        --model {{.MODEL | default "deepseek-chat"}}
+        --concurrency {{.CONCURRENCY | default 10}}
+    deps: [":check-deepseek-key"]
+
+  queries:
+    desc: "Stage 2 — LLM-generate retrieval queries per chunk"
+    cmds:
+      - >-
+        python3 mteb/scripts/02_generate_queries.py
+        --model {{.MODEL | default "deepseek-chat"}}
+        --concurrency {{.CONCURRENCY | default 10}}
+    deps: [":check-deepseek-key"]
+
+  build:
+    desc: "Stage 3 — assemble MTEB-format retrieval dataset"
+    cmds:
+      - python3 mteb/scripts/03_build_retrieval.py
+
+  all:
+    desc: "Run all 3 MTEB stages end-to-end"
+    cmds:
+      - task: chunk
+      - task: queries
+      - task: build
+    deps: [":check-deepseek-key"]
+
+  dev:
+    desc: "MTEB pipeline on the tiny dev set (50 reports)"
+    cmds:
+      - task: all
+    vars: { SUBSET: "50" }
+
+  sts:
+    desc: "MTEB STS dataset (chunk-pair similarity)"
+    cmds:
+      - >-
+        python3 mteb/scripts/04_sts.py
+        --subset {{.SUBSET | default 50}}
+        --model {{.MODEL | default "deepseek-chat"}}
+        --concurrency {{.CONCURRENCY | default 10}}
+    deps: [":check-deepseek-key", chunk]
+
+  summary-sts:
+    desc: "MTEB Summarization dataset (chunk vs. report summary)"
+    cmds:
+      - >-
+        python3 mteb/scripts/05_summary_sts.py
+        --subset {{.SUBSET | default 50}}
+        --model {{.MODEL | default "deepseek-chat"}}
+        --concurrency {{.CONCURRENCY | default 10}}
+    deps: [":check-deepseek-key", chunk]
+
+  clustering:
+    desc: "MTEB Clustering dataset (LLM topic labels)"
+    cmds:
+      - >-
+        python3 mteb/scripts/06_clustering.py
+        --subset {{.SUBSET | default 50}}
+        --model {{.MODEL | default "deepseek-chat"}}
+        --concurrency {{.CONCURRENCY | default 10}}
+    deps: [":check-deepseek-key", chunk]
+
+  reranking:
+    desc: "MTEB Reranking dataset (per-query relevance scores)"
+    cmds:
+      - >-
+        python3 mteb/scripts/07_reranking.py
+        --model {{.MODEL | default "deepseek-chat"}}
+        --concurrency {{.CONCURRENCY | default 10}}
+    deps: [":check-deepseek-key", chunk, queries]
+
+  cross-report:
+    desc: "MTEB Cross-report retrieval (multi-gold qrels across reports)"
+    cmds:
+      - >-
+        python3 mteb/scripts/08_cross_report.py
+        --model {{.MODEL | default "deepseek-chat"}}
+        --concurrency {{.CONCURRENCY | default 10}}
+    deps: [":check-deepseek-key", chunk, queries]
+
+  pair-classification:
+    desc: "MTEB Pair Classification dataset (binary chunk-pair labels)"
+    cmds:
+      - >-
+        python3 mteb/scripts/09_pair_classification.py
+        --subset {{.SUBSET | default 50}}
+        --model {{.MODEL | default "deepseek-chat"}}
+        --concurrency {{.CONCURRENCY | default 10}}
+    deps: [":check-deepseek-key", chunk]
+
+  everything:
+    desc: "All MTEB task types end-to-end (retrieval + 6 new tasks)"
+    cmds:
+      - task: all
+      - task: sts
+      - task: summary-sts
+      - task: clustering
+      - task: reranking
+      - task: cross-report
+      - task: pair-classification
+
+  # -------- Embedding model evaluation (mteb/evaluate) ---------------------
+  #
+  # Each task runs `python -m evaluate` over the 7 generated datasets and
+  # writes/overwrites a per-model JSON in mteb/results/ plus the regenerated
+  # _leaderboard.md. Results are committed to git so they show up in PR diffs.
+  #
+  # Provider API keys are validated via the `check-*-key` precondition tasks.
+  # Local (sentence-transformers) runs need no key.
+
+  evaluate:openai-small:
+    desc: "Evaluate OpenAI text-embedding-3-small on all MTEB tasks"
+    cmds:
+      - >-
+        python3 mteb/evaluate/__main__.py
+        --provider openai --model text-embedding-3-small
+    deps: [":check-openai-key", everything]
+
+  evaluate:openai-large:
+    desc: "Evaluate OpenAI text-embedding-3-large on all MTEB tasks"
+    cmds:
+      - >-
+        python3 mteb/evaluate/__main__.py
+        --provider openai --model text-embedding-3-large
+    deps: [":check-openai-key", everything]
+
+  evaluate:gemini:
+    desc: "Evaluate Google Gemini text-embedding-004 on all MTEB tasks"
+    cmds:
+      - >-
+        python3 mteb/evaluate/__main__.py
+        --provider gemini --model text-embedding-004
+    deps: [":check-google-key", everything]
+
+  evaluate:gemini-001:
+    desc: "Evaluate Google Gemini gemini-embedding-001 on all MTEB tasks"
+    cmds:
+      - >-
+        python3 mteb/evaluate/__main__.py
+        --provider gemini --model gemini-embedding-001
+    deps: [":check-google-key", everything]
+
+  evaluate:minilm:
+    desc: "Evaluate all-MiniLM-L6-v2 (local) on all MTEB tasks"
+    cmds:
+      - >-
+        python3 mteb/evaluate/__main__.py
+        --provider sentence-transformers --model all-MiniLM-L6-v2
+    deps: [everything]
+
+  evaluate:bge:
+    desc: "Evaluate bge-base-en-v1.5 (local) on all MTEB tasks"
+    cmds:
+      - >-
+        python3 mteb/evaluate/__main__.py
+        --provider sentence-transformers --model bge-base-en-v1.5
+    deps: [everything]
+
+  evaluate:all:
+    desc: "Evaluate every model in the matrix (OpenAI + Gemini + ST + precomputed)"
+    cmds:
+      - task: evaluate:openai-small
+      - task: evaluate:openai-large
+      - task: evaluate:gemini
+      - task: evaluate:gemini-001
+      - task: evaluate:minilm
+      - task: evaluate:bge
+      - task: evaluate:pplx
+
+  evaluate:pplx:
+    desc: "Evaluate precomputed pplx-embed-context-v1-0.6b (no GPU needed at eval time)"
+    cmds:
+      - >-
+        python3 mteb/evaluate/__main__.py
+        --provider precomputed --model pplx-embed-context-v1-0.6b
+    deps: [everything]
+
+  precompute:pplx:
+    desc: "Precompute PPLX embeddings for all MTEB task inputs (GPU box)"
+    cmds:
+      - >-
+        python3 mteb/scripts/precompute_pplx.py
+        --device {{.DEVICE | default "cuda"}}
+    deps: [everything]
+
+  leaderboard:run:
+    desc: "Run the Streamlit MTEB leaderboard locally"
+    cmds:
+      - streamlit run mteb/leaderboard/app.py

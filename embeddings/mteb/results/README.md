@@ -90,3 +90,9 @@ The leaderboard is fully regenerated from scratch each time.
   history, compare via git log on the per-model JSON.
 - Aggregated composite scores. We report raw per-metric numbers only; ranking
   by average is left to the reader.
+
+## Interactive view
+
+For an interactive alternative to `_leaderboard.md`, run the Streamlit
+leaderboard under `mteb/leaderboard/` (`task leaderboard:run` from the
+`embeddings/` directory). It reads these same JSON files read-only.
