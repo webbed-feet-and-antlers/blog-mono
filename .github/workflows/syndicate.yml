@@ -45,6 +45,20 @@ jobs:
         working-directory: ./site
         run: npm ci
 
+      - name: Setup Playwright (cache by lockfile)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('site/package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        working-directory: ./site
+        run: npx playwright install --with-deps chromium
+
+      - name: Build site (emits the screenshot harness routes)
+        working-directory: ./site
+        run: npm run build
+
       - name: Syndicate
         working-directory: ./site
         run: |
@@ -80,11 +94,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      # Record returned IDs back into frontmatter. Skipped on dry-run.
-      # This workflow is workflow_dispatch-only, so the commit won't retrigger it.
-      - name: Commit syndication IDs
+      # Record returned IDs back into frontmatter AND commit the auto-generated
+      # component screenshots (they live in public/sshot and are served by Pages
+      # — they must be permanent since dev.to/Medium hotlink rather than re-host).
+      # Skipped on dry-run. workflow_dispatch-only, so the commit won't retrigger.
+      - name: Commit syndication IDs + screenshots
         if: ${{ inputs.dry_run == false }}
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore(syndicate): record cross-post IDs"
-          file_pattern: "essays/*.mdx essays/*.md"
+          commit_message: "chore(syndicate): record cross-post IDs + screenshots"
+          file_pattern: "essays/*.mdx essays/*.md site/public/sshot/*.png"

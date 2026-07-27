@@ -15,6 +15,7 @@ import { writeSyndicationIds } from './lib/frontmatter.mjs';
 import { mdxToMarkdown } from './lib/markdown.mjs';
 import { normalizeSocial, teaserBlurb } from './lib/social.mjs';
 import { renderOgImage } from './lib/og-image.mjs';
+import { screenshotComponent, componentsInBody } from './lib/component-shot.mjs';
 import * as devto from './lib/platforms/devto.mjs';
 import * as bluesky from './lib/platforms/bluesky.mjs';
 import * as mastodon from './lib/platforms/mastodon.mjs';
@@ -63,6 +64,32 @@ async function selectEssays(opts) {
     .sort((a, b) => new Date(a.data.pubDate) - new Date(b.data.pubDate));
 }
 
+// ── screenshot each interactive component in an essay ─────────────────────
+// Returns { ComponentName: absoluteImageUrl } for inlining into cross-post
+// Markdown. Best-effort: failures skip the image (the tag is still stripped,
+// the interactive note still appears). Skipped silently if Playwright isn't
+// installed or the harness wasn't built.
+async function screenshotComponentsForEssay(essay, siteUrl, summary) {
+  const names = componentsInBody(essay.body);
+  if (names.length === 0) return {};
+
+  const images = {};
+  for (const name of names) {
+    try {
+      const result = await screenshotComponent({ componentName: name, slug: essay.slug });
+      if (result) {
+        images[name] = `${siteUrl}${result.url}`;
+        summary.push(`  ${c.dim('shot')}  ${name.padEnd(14)} → ${result.url}`);
+      } else {
+        summary.push(`  ${c.yellow('warn')} no screenshot harness for ${name} (run \`npm run build\` first)`);
+      }
+    } catch (err) {
+      summary.push(`  ${c.yellow('warn')} screenshot failed for ${name}: ${err.message}`);
+    }
+  }
+  return images;
+}
+
 // ── per-essay platform run ────────────────────────────────────────────────
 async function syndicateEssay(essay, opts) {
   const canonicalUrl = essayUrl(essay.slug);
@@ -73,7 +100,12 @@ async function syndicateEssay(essay, opts) {
 
   // Normalize per-platform social copy into { posts: string[], image: boolean }.
   const social = normalizeSocial(data, canonicalUrl);
-  const bodyMarkdown = await mdxToMarkdown(essay.body, canonicalUrl);
+
+  // Pre-pass: screenshot each interactive component used in the essay so the
+  // images can be inlined into the cross-posted Markdown (dev.to/Medium can't
+  // run React). Falls back gracefully if Playwright/harness isn't available.
+  const componentImages = await screenshotComponentsForEssay(essay, SITE_URL, summary);
+  const bodyMarkdown = await mdxToMarkdown(essay.body, canonicalUrl, componentImages);
 
   // Pre-pass: render the OG image once if any platform wants it.
   let imagePath = null;
