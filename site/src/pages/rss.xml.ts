@@ -12,7 +12,7 @@ export async function GET(context: APIContext) {
 
   return rss({
     title: 'The Inkpens',
-    description: 'Data science and machine learning notes from Nathan & Thea Inkpen.',
+    description: 'Data science and machine learning notes from Nathan & Becky Inkpen.',
     // site must be the origin WITHOUT base; we prefix each item link instead.
     site: context.site ?? 'https://webbed-feet-and-antlers.github.io',
     items: essays.map((entry) => ({
