@@ -9,6 +9,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
+    "syndicate": "node scripts/syndicate.mjs",
     "astro": "astro"
   },
   "dependencies": {
@@ -19,12 +20,18 @@
     "@tailwindcss/vite": "^4.0.0",
     "astro": "^5.0.0",
     "astro-expressive-code": "^0.41.0",
+    "gray-matter": "^4.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.13.0",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
-    "tailwindcss": "^4.0.0"
+    "remark-mdx": "^3.1.0",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "tailwindcss": "^4.0.0",
+    "unified": "^11.0.5",
+    "unist-util-remove": "^4.0.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",

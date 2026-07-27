@@ -222,9 +222,12 @@ node_modules/
 .astro/
 site/dist/
 site/.astro/
+# Per-run output from scripts/syndicate.mjs (Substack teasers, etc.)
+site/.syndication-output/
 *.tsbuildinfo
 .DS_Store
 # NOTE: the mkdocs `/site` rule above is overridden — we DO track our Astro app.
 !/site/
-# NOTE: the Python `lib/` rule above is overridden so site/src/lib/*.ts is tracked.
+# NOTE: the Python `lib/` rule above is overridden so our lib dirs are tracked.
 !/site/src/lib/
+!/site/scripts/lib/
