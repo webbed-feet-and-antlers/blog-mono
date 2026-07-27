@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node / Astro (site/)
+node_modules/
+.astro/
+site/dist/
+site/.astro/
+*.tsbuildinfo
+.DS_Store
+# NOTE: the mkdocs `/site` rule above is overridden — we DO track our Astro app.
+!/site/

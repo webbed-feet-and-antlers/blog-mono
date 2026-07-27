@@ -1,0 +1,30 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Dark mode via the `class` strategy (toggled on <html> by ThemeToggle). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-brand-50: #eef6ff;
+  --color-brand-100: #d9eaff;
+  --color-brand-200: #bcdaff;
+  --color-brand-300: #8ec2ff;
+  --color-brand-400: #599fff;
+  --color-brand-500: #337bff;
+  --color-brand-600: #1e5cf5;
+  --color-brand-700: #1847e1;
+  --color-brand-800: #1a3cb6;
+  --color-brand-900: #1c378f;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Anchor offset so headings aren't hidden under the sticky header when jumped to. */
+:target {
+  scroll-margin-top: 5rem;
+}

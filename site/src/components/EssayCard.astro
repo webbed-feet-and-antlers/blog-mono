@@ -1,0 +1,48 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { path } from '../lib/path';
+
+interface Props {
+  entry: CollectionEntry<'essays'>;
+}
+const { entry } = Astro.props;
+const { title, description, pubDate, tags } = entry.data;
+const href = path('essays/' + entry.id.replace(/\.(md|mdx)$/, ''));
+const dateStr = pubDate.toLocaleDateString('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+});
+---
+
+<article class="group">
+  <a href={href} class="block">
+    <div class="flex flex-col gap-1 py-5">
+      <div class="flex items-baseline gap-3">
+        <time
+          datetime={pubDate.toISOString()}
+          class="font-mono text-xs text-zinc-400 dark:text-zinc-500"
+        >
+          {dateStr}
+        </time>
+      </div>
+      <h2
+        class="text-lg font-semibold text-zinc-900 transition-colors group-hover:text-brand-600 dark:text-zinc-100 dark:group-hover:text-brand-400"
+      >
+        {title}
+      </h2>
+      <p class="text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{description}</p>
+      {
+        tags.length > 0 && (
+          <div class="mt-1 flex flex-wrap gap-1.5">
+            {tags.map((t: string) => (
+              <span class="rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-[11px] text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                #{t}
+              </span>
+            ))}
+          </div>
+        )
+      }
+    </div>
+  </a>
+</article>

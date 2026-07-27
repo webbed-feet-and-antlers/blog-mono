@@ -1,0 +1,93 @@
+---
+title: "Building a High-Throughput Embedding Server on a Single GPU"
+description: "How to serve embeddings from a 0.6B model on one NVIDIA L4 for both real-time and bulk workloads — late chunking, FP8, flash attention, and a priority queue to keep live requests fast."
+pubDate: 2026-07-27
+tags: ["gpu", "embeddings", "systems", "fp8"]
+---
+
+import BinPacker from '../site/src/components/react/BinPacker';
+import Chart from '../site/src/components/react/Chart';
+
+The goal: serve embeddings from a 0.6B parameter model (`pplx-embed-context-v1`) on a single NVIDIA L4 (24 GB) for both real-time and bulk workloads — without one workload starving the other. This essay walks through the techniques that make that possible.
+
+## The model and the target
+
+A bidirectional Qwen3 (0.6B params, ~0.6 GB in FP8) running on an NVIDIA L4 (Ada Lovelace, sm_89). The runtime is built around `pplx-embed-context-v1-0.6b`, producing 1024-dim embeddings with Matryoshka (MRL) support.
+
+```bash
+pip install "transformers>=4.52.0" accelerate torch numpy tqdm
+pip install transformer-engine
+pip install flash-attn --no-build-isolation
+```
+
+## Late chunking
+
+Documents are tokenized as a whole, with `SEP` tokens inserted between chunks. The model sees the full document context before pooling — so each chunk's embedding is informed by everything around it. This produces meaningfully better embeddings than the naive approach of chunking first and embedding each chunk independently.
+
+Late chunking is implemented via SEP-boundary detection in the hidden states, followed by mean pooling per chunk. There's optional `tanh` INT8 or binary quantization on top.
+
+## FP8 via Transformer Engine
+
+All linear layers are swapped to Transformer Engine's FP8 matmuls on Ada Lovelace (sm_89). The 0.6B model fits in roughly 0.6 GB in FP8, leaving most of the 24 GB for KV caches and batch tensors.
+
+## Flash Attention 2 with variable-length unpadding
+
+HuggingFace's `flash_attention_2` handles varlen unpadding automatically. The key insight is that attention cost becomes the sum of squared sequence lengths, not batch size times max length squared:
+
+$$
+\text{cost} = \sum_i L_i^2 \;\neq\; B \cdot L_{\max}^2
+$$
+
+There's no quadratic batch constraint — the linear token budget governs batch size. You can batch many short documents alongside a few long ones without a quadratic blowup.
+
+## First-Fit Decreasing bin packing
+
+Documents are sorted by length and packed into batches up to a token budget determined by a GPU memory profiler at init. This minimizes padding waste, which matters a lot for lecture transcripts where document lengths vary by 10x.
+
+Try it: add and remove documents below and watch the padding waste change.
+
+<BinPacker client:visible budget={8192} />
+
+## Semantic chunking
+
+Instead of fixed-size chunks, sentence embeddings are computed first, then a vectorized boundary detection algorithm splits at points of low cosine similarity. The result is chunks that align with natural topic boundaries — tuned for lecture transcripts where a "chunk" is roughly 90 seconds of speech.
+
+## Memory and transfer pipeline
+
+- **Deferred GPU-to-CPU transfers:** embedding tensors stay on GPU after pooling and are copied to CPU asynchronously via a pipeline. This eliminates per-batch stalls waiting for `.cpu()` calls.
+- **Allocator hygiene:** `torch.cuda.empty_cache()` runs per batch to prevent fragmentation; `gc.collect()` only on OOM recovery.
+- **OOM recovery:** if a batch runs out of memory, it's split in half and retried. For single documents that still don't fit, a sliding window processes the sequence in overlapping segments and stitches the hidden states back together.
+
+## Priority queue for mixed workloads
+
+Live requests (`/embed`, max 100 docs) are enqueued at priority 0 and always processed before bulk chunks (`/embed/bulk`, max 5000 docs, priority 1). A single background worker drains the queue on a dedicated thread, so one bulk job can't starve interactive requests.
+
+Bulk jobs are split into chunks client-side, each submitted as a separate queue item. The server returns a job ID immediately (202), and clients poll for completion. This avoids holding HTTP connections open for minutes-long embedding runs.
+
+## Defaults
+
+Tuned for lecture transcripts (p50 = 8K, p90 = 17K tokens):
+
+```python
+runtime = PPLXEmbedFP8Runtime(
+    chunking="semantic",
+    target_chunk_tokens=400,
+    min_chunk_tokens=128,
+    max_chunk_tokens=768,
+    similarity_percentile=25.0,
+)
+results = runtime.embed_documents(transcripts)
+```
+
+## Roadmap
+
+1. Componentize the runtime.
+2. Capture the workflow in notebooks.
+3. Build the FastAPI server.
+4. Batch processing pipeline.
+5. Priority queue.
+6. Deploy — Terraform to GCP for batch, RunPod for cheap live serving.
+7. Run it against real data.
+8. Generate MTEB datasets with DeepSeek via OpenRouter.
+9. Performance benchmarks.
+10. MTEB quality benchmarks.

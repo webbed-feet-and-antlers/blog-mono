@@ -1,0 +1,32 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import EssayCard from '../components/EssayCard.astro';
+
+const all = await getCollection('essays', ({ data }) => {
+  // Show drafts only in dev so you can preview unpublished work.
+  return import.meta.env.DEV || !data.draft;
+});
+const essays = all.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+---
+
+<Base title="blog-mono" description="Essays on systems, ML, and infrastructure.">
+  <section class="mx-auto max-w-3xl px-5 py-12">
+    <div class="mb-10">
+      <h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Essays</h1>
+      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        Notes and write-ups on building systems for ML, GPU infrastructure, and the bits in between.
+      </p>
+    </div>
+    <div class="divide-y divide-zinc-200 dark:divide-zinc-800">
+      {essays.map((entry) => <EssayCard entry={entry} />)}
+    </div>
+    {
+      essays.length === 0 && (
+        <p class="py-12 text-center text-sm text-zinc-500 dark:text-zinc-500">
+          No essays published yet.
+        </p>
+      )
+    }
+  </section>
+</Base>
