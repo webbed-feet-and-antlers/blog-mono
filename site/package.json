@@ -1,5 +1,5 @@
 {
-  "name": "blog-mono-site",
+  "name": "the-inkpens-site",
   "type": "module",
   "version": "0.1.0",
   "private": true,
@@ -8,6 +8,7 @@
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "check": "astro check",
     "astro": "astro"
   },
   "dependencies": {

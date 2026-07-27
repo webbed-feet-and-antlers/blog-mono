@@ -11,15 +11,15 @@ export async function GET(context: APIContext) {
   const baseWithTrailingSlash = base.endsWith('/') ? base : base + '/';
 
   return rss({
-    title: 'blog-mono',
-    description: 'Essays on systems, ML, and infrastructure.',
+    title: 'The Inkpens',
+    description: 'Data science and machine learning notes from Nathan & Thea Inkpen.',
     // site must be the origin WITHOUT base; we prefix each item link instead.
     site: context.site ?? 'https://webbed-feet-and-antlers.github.io',
     items: essays.map((entry) => ({
       title: entry.data.title,
       description: entry.data.description,
       pubDate: entry.data.pubDate,
-      link: `${baseWithTrailingSlash}essays/${entry.id.replace(/\.(md|mdx)$/, '')}/`,
+      link: `${baseWithTrailingSlash}blog/${entry.id.replace(/\.(md|mdx)$/, '')}/`,
       categories: entry.data.tags,
     })),
     customData: '<language>en-us</language>',

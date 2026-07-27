@@ -8,16 +8,17 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --color-brand-50: #eef6ff;
-  --color-brand-100: #d9eaff;
-  --color-brand-200: #bcdaff;
-  --color-brand-300: #8ec2ff;
-  --color-brand-400: #599fff;
-  --color-brand-500: #337bff;
-  --color-brand-600: #1e5cf5;
-  --color-brand-700: #1847e1;
-  --color-brand-800: #1a3cb6;
-  --color-brand-900: #1c378f;
+  /* "Ink" indigo — our brand accent, evocative of fountain-pen ink. */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
 }
 
 html {

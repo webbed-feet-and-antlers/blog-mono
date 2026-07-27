@@ -2,31 +2,72 @@
 import { getCollection } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import EssayCard from '../components/EssayCard.astro';
+import { path } from '../lib/path';
 
-const all = await getCollection('essays', ({ data }) => {
-  // Show drafts only in dev so you can preview unpublished work.
-  return import.meta.env.DEV || !data.draft;
-});
-const essays = all.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+const all = await getCollection('essays', ({ data }) => import.meta.env.DEV || !data.draft);
+const latest = all.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()).slice(0, 3);
+const essayCount = all.length;
 ---
 
-<Base title="blog-mono" description="Essays on systems, ML, and infrastructure.">
-  <section class="mx-auto max-w-3xl px-5 py-12">
-    <div class="mb-10">
-      <h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Essays</h1>
-      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        Notes and write-ups on building systems for ML, GPU infrastructure, and the bits in between.
+<Base
+  title="The Inkpens"
+  description="Data science and machine learning notes from Nathan & Thea Inkpen."
+>
+  <!-- Hero -->
+  <section class="mx-auto max-w-3xl px-5 pt-16 pb-12 sm:pt-24">
+    <div class="flex flex-col items-start gap-6">
+      <span
+        class="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 font-mono text-[11px] font-medium text-brand-700 dark:bg-brand-950/40 dark:text-brand-300"
+      >
+        <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
+        data science · machine learning · systems
+      </span>
+      <h1
+        class="text-4xl font-bold tracking-tight text-zinc-900 sm:text-5xl dark:text-zinc-100"
+      >
+        We're the Inkpens.
+      </h1>
+      <p class="max-w-2xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+        Two data scientists and machine learning engineers writing about the
+        systems we build — GPU inference, embeddings infrastructure, evaluation,
+        and the engineering details that don't fit in a README.
       </p>
+      <div class="flex flex-wrap gap-3">
+        <a
+          href={path('blog')}
+          class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
+        >
+          Read the blog
+        </a>
+        <a
+          href={path('about')}
+          class="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        >
+          About us
+        </a>
+      </div>
     </div>
-    <div class="divide-y divide-zinc-200 dark:divide-zinc-800">
-      {essays.map((entry) => <EssayCard entry={entry} />)}
-    </div>
-    {
-      essays.length === 0 && (
-        <p class="py-12 text-center text-sm text-zinc-500 dark:text-zinc-500">
-          No essays published yet.
-        </p>
-      )
-    }
   </section>
+
+  <!-- Latest essays -->
+  {
+    latest.length > 0 && (
+      <section class="mx-auto max-w-3xl px-5 py-12">
+        <div class="mb-6 flex items-baseline justify-between">
+          <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+            Latest
+          </h2>
+          <a
+            href={path('blog')}
+            class="text-sm text-brand-600 hover:underline dark:text-brand-400"
+          >
+            {essayCount} {essayCount === 1 ? 'essay' : 'essays'} →
+          </a>
+        </div>
+        <div class="divide-y divide-zinc-200 dark:divide-zinc-800">
+          {latest.map((entry) => <EssayCard entry={entry} />)}
+        </div>
+      </section>
+    )
+  }
 </Base>

@@ -1,4 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <rect width="32" height="32" rx="7" fill="#1e5cf5" />
-  <text x="16" y="22" font-family="ui-monospace, monospace" font-size="18" font-weight="700" fill="white" text-anchor="middle">b</text>
+  <rect width="32" height="32" rx="7" fill="#4338ca" />
+  <!-- fountain-pen nib: a downward teardrop with a slit and breathing hole -->
+  <path
+    d="M16 4.5 C 20.5 9.5, 22.5 13.8, 22.5 18 C 22.5 22.6, 19.4 26, 16 27.2 C 12.6 26, 9.5 22.6, 9.5 18 C 9.5 13.8, 11.5 9.5, 16 4.5 Z"
+    fill="#eef2ff"
+  />
+  <path d="M16 13.5 L16 25.5" stroke="#4338ca" stroke-width="1.3" stroke-linecap="round" />
+  <circle cx="16" cy="14.2" r="1.7" fill="#4338ca" />
 </svg>

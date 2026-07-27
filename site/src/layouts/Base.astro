@@ -11,7 +11,11 @@ interface Props {
   image?: string;
 }
 
-const { title, description = 'Essays on systems, ML, and infrastructure.', image } = Astro.props;
+const {
+  title,
+  description = 'Data science and machine learning notes from Nathan & Thea Inkpen.',
+  image,
+} = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site).toString();
 const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
 ---
@@ -29,7 +33,7 @@ const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
     <link rel="canonical" href={canonical} />
 
     <!-- RSS -->
-    <link rel="alternate" type="application/rss+xml" title="blog-mono" href={path('rss.xml')} />
+    <link rel="alternate" type="application/rss+xml" title="The Inkpens" href={path('rss.xml')} />
 
     <!-- KaTeX styles for $$math$$ rendered by rehype-katex -->
     <link

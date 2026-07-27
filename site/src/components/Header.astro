@@ -4,10 +4,12 @@ import { path } from '../lib/path';
 
 const current = Astro.url.pathname;
 const isActive = (p: string) =>
-  p === '/' ? current === path() || current === path('/') : current === path(p) || current.startsWith(path(p));
+  p === ''
+    ? current === path() || current === path('/')
+    : current === path(p) || current.startsWith(path(p));
 
 const links = [
-  { href: '', label: 'Essays' },
+  { href: 'blog', label: 'Blog' },
   { href: 'about', label: 'About' },
 ];
 ---
@@ -18,9 +20,10 @@ const links = [
   <nav class="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
     <a
       href={path()}
-      class="font-mono text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100"
+      class="flex items-center gap-2 font-semibold tracking-tight text-zinc-900 dark:text-zinc-100"
     >
-      blog-mono<span class="text-brand-500">.</span>
+      <img src={path('favicon.svg')} alt="" width="20" height="20" class="rounded" />
+      <span class="text-sm">The Inkpens<span class="text-brand-600 dark:text-brand-400">.</span></span>
     </a>
     <div class="flex items-center gap-1">
       {
