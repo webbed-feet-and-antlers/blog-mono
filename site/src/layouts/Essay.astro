@@ -31,6 +31,7 @@ const syndLinks: SyndLink[] = [
       : 'https://bsky.app',
   },
   synd.mastodon && { label: 'Mastodon', href: import.meta.env.PUBLIC_MASTODON_INSTANCE ?? '#' },
+  synd.linkedin && { label: 'LinkedIn', href: 'https://www.linkedin.com' },
   synd.buffer && { label: 'X', href: 'https://x.com' },
   synd.medium && { label: 'Medium', href: `https://medium.com/p/${synd.medium}` },
 ].filter((l): l is SyndLink => l !== undefined && l !== null && l !== 0 && l !== '');

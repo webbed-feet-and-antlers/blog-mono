@@ -4,6 +4,20 @@ description: "How to serve embeddings from a 0.6B model on one NVIDIA L4 for bot
 pubDate: 2026-07-27
 tags: ["gpu", "embeddings", "systems", "fp8"]
 socialPost: "Built a single-GPU embedding server: late chunking, FP8 via Transformer Engine, flash attention 2, and a priority queue so live requests never wait behind bulk jobs."
+social:
+  twitter:
+    - "1/ Built an embedding server on a single GPU that handles live requests AND bulk jobs without one starving the other."
+    - "2/ Late chunking: tokenize the whole document first, then split. The model sees full context before pooling — better embeddings than chunk-then-embed."
+    - "3/ FP8 via Transformer Engine. The 0.6B model fits in ~0.6GB, leaving most of the 24GB L4 for batches and KV cache."
+    - "4/ Flash attention 2 with varlen unpadding: attention cost is Σ(L²), not B×Lmax². Mix short and long docs in a batch with no quadratic blowup."
+    - "5/ A priority queue means live /embed requests always jump ahead of bulk /embed/bulk jobs. Real-time stays fast."
+    - "Full writeup with an interactive bin-packer demo:"
+  bluesky:
+    - "Built a single-GPU embedding server with late chunking, FP8, and flash attention — live requests never wait behind bulk jobs."
+    - "There's an interactive bin-packer demo in the post where you can see the FFD packing minimize padding waste. ↩"
+  mastodon: "Built a single-GPU embedding server: late chunking + FP8 + flash attention + a priority queue so live requests never wait behind bulk jobs. Interactive bin-packer demo in the post."
+  linkedin: |
+    Served embeddings from a 0.6B model on a single NVIDIA L4 for both real-time and bulk workloads. The key techniques: late chunking (the model sees full document context before pooling), FP8 via Transformer Engine (the model fits in ~0.6GB), flash attention 2 with variable-length unpadding, and a priority queue architecture so live requests always jump ahead of bulk jobs. The post includes an interactive bin-packing visualizer showing how First-Fit Decreasing minimizes padding waste.
 ---
 
 import BinPacker from '../site/src/components/react/BinPacker';

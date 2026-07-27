@@ -1,21 +1,25 @@
 #!/usr/bin/env node
-// POSSE syndicator: posts each essay to dev.to, Bluesky, Mastodon, X (Buffer),
-// Medium, and emits a Substack teaser. Run with --dry-run=true to preview.
+// POSSE syndicator: cross-posts each essay to dev.to, Bluesky, Mastodon,
+// X (via Buffer), LinkedIn, Medium, and emits a Substack teaser.
+//
+// Native POSSE: per-platform copy + threads (reply-chained) + native image
+// attachment. The canonical URL lives in the last post of a thread (or a
+// LinkedIn comment) so posts feel native rather than "blurb + link".
 //
 // Usage:
 //   node scripts/syndicate.mjs --dry-run=true           # preview all unpublished
 //   node scripts/syndicate.mjs --dry-run=false          # post all unpublished
 //   node scripts/syndicate.mjs --dry-run=true --essay=embeddings
-//
-// Idempotency: a platform is skipped if its ID is already in frontmatter,
-// unless --essay=<slug> forces a (re)syndicate of that essay.
 import { loadEssays, loadEssay } from './lib/essays.mjs';
 import { writeSyndicationIds } from './lib/frontmatter.mjs';
 import { mdxToMarkdown } from './lib/markdown.mjs';
+import { normalizeSocial, teaserBlurb } from './lib/social.mjs';
+import { renderOgImage } from './lib/og-image.mjs';
 import * as devto from './lib/platforms/devto.mjs';
 import * as bluesky from './lib/platforms/bluesky.mjs';
 import * as mastodon from './lib/platforms/mastodon.mjs';
 import * as buffer from './lib/platforms/buffer.mjs';
+import * as linkedin from './lib/platforms/linkedin.mjs';
 import * as medium from './lib/platforms/medium.mjs';
 import * as substack from './lib/platforms/substack.mjs';
 
@@ -33,33 +37,22 @@ function parseArgs(argv) {
 }
 
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
+const essayUrl = (slug) => `${SITE_URL}/blog/${slug}/`;
 
-function essayUrl(slug) {
-  return `${SITE_URL}/blog/${slug}/`;
-}
-
-function log(...a) {
-  console.log(...a);
-}
-function dim(s) {
-  return `\x1b[2m${s}\x1b[0m`;
-}
-function green(s) {
-  return `\x1b[32m${s}\x1b[0m`;
-}
-function yellow(s) {
-  return `\x1b[33m${s}\x1b[0m`;
-}
-function red(s) {
-  return `\x1b[31m${s}\x1b[0m`;
-}
+const c = {
+  dim: (s) => `\x1b[2m${s}\x1b[0m`,
+  green: (s) => `\x1b[32m${s}\x1b[0m`,
+  yellow: (s) => `\x1b[33m${s}\x1b[0m`,
+  red: (s) => `\x1b[31m${s}\x1b[0m`,
+};
+const log = (...a) => console.log(...a);
 
 // ── which essays to syndicate ─────────────────────────────────────────────
 async function selectEssays(opts) {
   if (opts.essay) {
     const e = await loadEssay(opts.essay);
     if (!e) {
-      console.error(red(`Essay not found: ${opts.essay}`));
+      console.error(c.red(`Essay not found: ${opts.essay}`));
       process.exit(1);
     }
     return [e];
@@ -73,15 +66,29 @@ async function selectEssays(opts) {
 // ── per-essay platform run ────────────────────────────────────────────────
 async function syndicateEssay(essay, opts) {
   const canonicalUrl = essayUrl(essay.slug);
-  const { title, description, socialPost, tags = [], syndication = {} } = essay.data;
-  const tagsArr = tags;
+  const { data } = essay;
+  const syndication = data.syndication ?? {};
   const newIds = {};
   const summary = [];
 
-  const postText = `${socialPost ?? description}\n\n${canonicalUrl}`;
-
-  // Long-form Markdown body for dev.to / Medium.
+  // Normalize per-platform social copy into { posts: string[], image: boolean }.
+  const social = normalizeSocial(data, canonicalUrl);
   const bodyMarkdown = await mdxToMarkdown(essay.body, canonicalUrl);
+
+  // Pre-pass: render the OG image once if any platform wants it.
+  let imagePath = null;
+  const anyWantsImage = Object.values(social).some((s) => s.image);
+  if (anyWantsImage) {
+    imagePath = await renderOgImage({
+      title: data.title,
+      subtitle: 'The Inkpens',
+      brand: 'theinkpens',
+      slug: essay.slug,
+    }).catch((err) => {
+      summary.push(`  ${c.yellow('warn')} og-image render failed: ${err.message}`);
+      return null;
+    });
+  }
 
   // Each platform: skip if unavailable; skip if already syndicated (unless forced).
   const platforms = [
@@ -89,73 +96,81 @@ async function syndicateEssay(essay, opts) {
       key: 'devto',
       label: devto.name,
       available: () => devto.available(),
-      run: () => devto.publish({ title, bodyMarkdown, canonicalUrl, tags: tagsArr, description, existingId: syndication.devto, dryRun: opts.dryRun }),
+      run: () => devto.publish({ title: data.title, bodyMarkdown, canonicalUrl, tags: data.tags ?? [], description: data.description, existingId: syndication.devto, dryRun: opts.dryRun }),
       skipIf: () => opts.essay === undefined && syndication.devto,
     },
     {
       key: 'bluesky',
       label: bluesky.name,
       available: () => bluesky.available(),
-      run: () => bluesky.publish({ text: postText, canonicalUrl, title, description, dryRun: opts.dryRun }),
+      run: () => bluesky.publish({ posts: social.bluesky.posts, imagePath, dryRun: opts.dryRun }),
       skipIf: () => opts.essay === undefined && syndication.bluesky,
     },
     {
       key: 'mastodon',
       label: mastodon.name,
       available: () => mastodon.available(),
-      run: () => mastodon.publish({ text: postText, existingId: syndication.mastodon, dryRun: opts.dryRun }),
+      run: () => mastodon.publish({ posts: social.mastodon.posts, imagePath, dryRun: opts.dryRun }),
       skipIf: () => opts.essay === undefined && syndication.mastodon,
     },
     {
       key: 'buffer',
       label: buffer.name,
       available: () => buffer.available(),
-      run: () => buffer.publish({ text: postText, dryRun: opts.dryRun }),
+      run: () => buffer.publish({ posts: social.twitter.posts, slug: essay.slug, dryRun: opts.dryRun }),
       skipIf: () => opts.essay === undefined && syndication.buffer,
+    },
+    {
+      key: 'linkedin',
+      label: linkedin.name,
+      available: () => linkedin.available(),
+      run: () => linkedin.publish({ posts: social.linkedin.posts, canonicalUrl, imagePath, dryRun: opts.dryRun }),
+      skipIf: () => opts.essay === undefined && syndication.linkedin,
     },
     {
       key: 'medium',
       label: medium.name,
       available: () => medium.available(),
-      run: () => medium.publish({ title, bodyMarkdown, canonicalUrl, tags: tagsArr, dryRun: opts.dryRun }),
+      run: () => medium.publish({ title: data.title, bodyMarkdown, canonicalUrl, tags: data.tags ?? [], dryRun: opts.dryRun }),
       skipIf: () => opts.essay === undefined && syndication.medium,
     },
     {
       key: 'substack',
       label: substack.name,
       available: () => substack.available(),
-      run: () => substack.publish({ title, socialPost: socialPost ?? '', canonicalUrl, slug: essay.slug }),
+      run: () => substack.publish({ title: data.title, socialPost: teaserBlurb(data), canonicalUrl, slug: essay.slug }),
       skipIf: () => opts.essay === undefined && syndication.substack,
     },
   ];
 
   for (const p of platforms) {
+    if (social[p.key] && social[p.key].posts.length === 0) {
+      summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim('(no social copy)')}`);
+      continue;
+    }
     if (!p.available()) {
-      summary.push(`  ${yellow('skip')}  ${p.label.padEnd(14)} ${dim('(no credentials)')}`);
+      summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim('(no credentials)')}`);
       continue;
     }
     if (p.skipIf()) {
-      summary.push(`  ${yellow('skip')}  ${p.label.padEnd(14)} ${dim('(already posted)')}`);
+      summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim('(already posted)')}`);
       continue;
     }
     try {
       const result = await p.run();
-      if (result.id && result.id !== 'manual' && result.id !== 'dry-run') {
+      if (result.id && !['manual', 'dry-run', 'unknown'].includes(result.id)) {
         newIds[p.key] = result.id;
       }
-      const verb = opts.dryRun ? 'would-post' : 'posted';
-      summary.push(`  ${green('✓')} ${p.label.padEnd(14)} ${dim(verb)} → ${result.url}`);
+      summary.push(`  ${c.green('✓')} ${p.label.padEnd(14)} ${c.dim(opts.dryRun ? 'would-post' : 'posted')} → ${result.url}`);
     } catch (err) {
-      summary.push(`  ${red('✗')} ${p.label.padEnd(14)} ${red(err.message)}`);
+      summary.push(`  ${c.red('✗')} ${p.label.padEnd(14)} ${c.red(err.message)}`);
     }
   }
 
-  // Write IDs back to frontmatter (never in dry-run).
   let wroteBack = false;
   if (!opts.dryRun && Object.keys(newIds).length > 0) {
     wroteBack = await writeSyndicationIds(essay.path, newIds);
   }
-
   return { summary, newIds, wroteBack };
 }
 
@@ -164,11 +179,11 @@ async function main() {
   const opts = parseArgs(process.argv);
 
   if (!SITE_URL) {
-    console.error(red('SITE_URL env var is required (the canonical origin of your site).'));
+    console.error(c.red('SITE_URL env var is required (the canonical origin of your site).'));
     process.exit(1);
   }
 
-  log(`\n${opts.dryRun ? yellow('DRY RUN') : green('LIVE RUN')} — site: ${SITE_URL}`);
+  log(`\n${opts.dryRun ? c.yellow('DRY RUN') : c.green('LIVE RUN')} — site: ${SITE_URL}`);
   log(opts.essay ? `essay: ${opts.essay} (forced)\n` : `essays: all unpublished\n`);
 
   const essays = await selectEssays(opts);
@@ -182,19 +197,19 @@ async function main() {
     const { summary, newIds, wroteBack } = await syndicateEssay(essay, opts);
     for (const line of summary) log(line);
     totalPosted += Object.keys(newIds).length;
-    totalErrors += summary.filter((s) => s.includes(red('✗'))).length;
+    totalErrors += summary.filter((s) => s.includes(c.red('✗'))).length;
     if (wroteBack) wroteAny = true;
     log('');
   }
 
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  log(`posted ${green(totalPosted)} platform(s)`);
-  if (totalErrors) log(`${red(String(totalErrors))} error(s)`);
-  if (wroteAny) log(green('wrote syndication IDs back to frontmatter'));
-  if (opts.dryRun) log(yellow('\nDry run — nothing was posted or committed. Re-run with --dry-run=false to publish.'));
+  log(`posted ${c.green(String(totalPosted))} platform(s)`);
+  if (totalErrors) log(`${c.red(String(totalErrors))} error(s)`);
+  if (wroteAny) log(c.green('wrote syndication IDs back to frontmatter'));
+  if (opts.dryRun) log(c.yellow('\nDry run — nothing was posted or committed. Re-run with --dry-run=false to publish.'));
 }
 
 main().catch((err) => {
-  console.error(red(`\nFatal: ${err.message}`));
+  console.error(c.red(`\nFatal: ${err.message}`));
   process.exit(1);
 });

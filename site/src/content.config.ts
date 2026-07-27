@@ -18,10 +18,29 @@ const essays = defineCollection({
     draft: z.boolean().default(false),
     heroImage: z.string().optional(),
     /**
-     * Short blurb used for social cross-posts (X, Bluesky, Mastodon, Substack teaser).
-     * Keep under ~280 chars so it fits a single X post. POSSE: post own site, syndicate everywhere.
+     * Short blurb used for the Substack teaser and as a fallback for any platform
+     * that has no entry in `social` below. Keep under ~280 chars.
+     * @deprecated prefer the structured `social` object for per-platform copy + threads.
      */
     socialPost: z.string().optional(),
+    /**
+     * Per-platform social copy. Each value may be a string (single post) or an
+     * array of strings (a thread — reply-chained on X/Bluesky/Mastodon). The
+     * canonical URL is appended to the last post automatically. Set `image: false`
+     * to skip the auto-generated OG image attachment for this essay.
+     *
+     * POSSE: post on your own site (canonical), syndicate everywhere with
+     * platform-native formatting rather than a generic "link + blurb".
+     */
+    social: z
+      .object({
+        twitter: z.union([z.string(), z.array(z.string())]).optional(),
+        linkedin: z.union([z.string(), z.array(z.string())]).optional(),
+        bluesky: z.union([z.string(), z.array(z.string())]).optional(),
+        mastodon: z.union([z.string(), z.array(z.string())]).optional(),
+        image: z.boolean().optional(),
+      })
+      .optional(),
     /**
      * Machine-managed: per-platform post IDs written back by scripts/syndicate.mjs.
      * Presence of an ID means "already syndicated to this platform" — used for idempotency
@@ -33,6 +52,7 @@ const essays = defineCollection({
         bluesky: z.string().optional(), // at:// record uri
         mastodon: z.string().optional(), // status id
         buffer: z.string().optional(), // Buffer update id (the X post)
+        linkedin: z.string().optional(), // share URN (urn:li:share:...)
         medium: z.string().optional(), // Medium post id
         substack: z.string().optional(), // left null; manual platform (no API)
       })

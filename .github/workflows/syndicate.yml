@@ -53,6 +53,9 @@ jobs:
             --essay=${{ inputs.essay }}
         env:
           SITE_URL: ${{ vars.SITE_URL || 'https://webbed-feet-and-antlers.github.io/blog-mono' }}
+          # Public origin where OG images are served (for Buffer/X image attachment).
+          # Leave unset to skip X image (text thread still posts).
+          PUBLIC_OG_BASE_URL: ${{ vars.PUBLIC_OG_BASE_URL }}
           DEV_TO_API_KEY: ${{ secrets.DEV_TO_API_KEY }}
           BLUESKY_IDENTIFIER: ${{ secrets.BLUESKY_IDENTIFIER }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
@@ -60,16 +63,19 @@ jobs:
           MASTODON_TOKEN: ${{ secrets.MASTODON_TOKEN }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           BUFFER_X_CHANNEL_ID: ${{ secrets.BUFFER_X_CHANNEL_ID }}
+          LINKEDIN_TOKEN: ${{ secrets.LINKEDIN_TOKEN }}
+          LINKEDIN_TOKEN_ISSUED: ${{ secrets.LINKEDIN_TOKEN_ISSUED }}
+          LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
           MEDIUM_TOKEN: ${{ secrets.MEDIUM_TOKEN }}
           MEDIUM_USER_ID: ${{ secrets.MEDIUM_USER_ID }}
 
-      # Always upload the Substack teaser(s), even if the run fails, so you can
-      # paste them manually (Substack has no API).
-      - name: Upload Substack teasers
+      # Always upload the Substack teasers + OG images, even if the run fails,
+      # so you can paste Substack manually and reuse the OG images.
+      - name: Upload syndication output
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: substack-teasers
+          name: syndication-output
           path: site/.syndication-output/
           if-no-files-found: ignore
           retention-days: 14
