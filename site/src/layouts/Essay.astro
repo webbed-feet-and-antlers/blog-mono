@@ -1,6 +1,8 @@
 ---
 import Base from './Base.astro';
 import type { CollectionEntry } from 'astro:content';
+import { tagStyle } from '../lib/tags';
+import { path } from '../lib/path';
 
 interface Props {
   entry: CollectionEntry<'essays'>;
@@ -39,16 +41,12 @@ const syndLinks: SyndLink[] = [
 
 <Base title={title} description={description}>
   <article class="mx-auto max-w-3xl px-5 py-12">
-    <header class="mb-10 border-b border-zinc-200 pb-8 dark:border-zinc-800">
-      <h1
-        class="text-3xl font-bold tracking-tight text-zinc-900 sm:text-4xl dark:text-zinc-100"
-      >
+    <header class="mb-10 border-b border-zinc-800 pb-8 dark:border-zinc-200">
+      <h1 class="font-serif text-3xl font-semibold tracking-tight text-zinc-100 sm:text-4xl dark:text-zinc-900">
         {title}
       </h1>
-      <p class="mt-3 text-base text-zinc-600 dark:text-zinc-400">{description}</p>
-      <div
-        class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-500"
-      >
+      <p class="mt-3 text-base text-zinc-400 dark:text-zinc-600">{description}</p>
+      <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-500">
         <time datetime={pubDate.toISOString()}>{dateStr}</time>
         {readingTime && <><span aria-hidden="true">·</span><span>{readingTime} min read</span></>}
         {
@@ -64,9 +62,7 @@ const syndLinks: SyndLink[] = [
         tags.length > 0 && (
           <div class="mt-3 flex flex-wrap gap-1.5">
             {tags.map((t: string) => (
-              <span class="rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-[11px] text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-                #{t}
-              </span>
+              <a href={path(`tags/${t}`)} class={tagStyle(t)}>#{t}</a>
             ))}
           </div>
         )
@@ -74,15 +70,15 @@ const syndLinks: SyndLink[] = [
     </header>
 
     <div
-      class="prose prose-zinc max-w-none prose-headings:scroll-mt-20 prose-headings:font-semibold prose-a:text-brand-600 prose-a:no-underline hover:prose-a:underline prose-pre:bg-zinc-950 prose-pre:p-4 prose-img:rounded-lg dark:prose-invert dark:prose-a:text-brand-400"
+      class="prose prose-invert prose-zinc max-w-none prose-headings:font-serif prose-headings:scroll-mt-20 prose-headings:font-semibold prose-a:text-brand-400 prose-a:no-underline hover:prose-a:underline prose-pre:bg-zinc-900 prose-pre:p-4 prose-img:rounded-lg dark:prose-none dark:prose-zinc dark:prose-a:text-brand-600"
     >
       <slot />
     </div>
 
     {
       syndLinks.length > 0 && (
-        <footer class="mt-12 border-t border-zinc-200 pt-6 dark:border-zinc-800">
-          <p class="font-mono text-[11px] uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
+        <footer class="mt-12 border-t border-zinc-800 pt-6 dark:border-zinc-200">
+          <p class="font-mono text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
             Also published on
           </p>
           <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -91,7 +87,7 @@ const syndLinks: SyndLink[] = [
                 href={l.href}
                 target="_blank"
                 rel="noopener nofollow"
-                class="font-medium text-brand-600 hover:underline dark:text-brand-400"
+                class="font-medium text-brand-400 hover:underline dark:text-brand-600"
               >
                 {l.label} ↗
               </a>

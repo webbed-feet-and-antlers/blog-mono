@@ -10,20 +10,21 @@ const isActive = (p: string) =>
 
 const links = [
   { href: 'blog', label: 'Blog' },
+  { href: 'tags', label: 'Topics' },
   { href: 'about', label: 'About' },
 ];
 ---
 
 <header
-  class="sticky top-0 z-50 border-b border-zinc-200/70 bg-white/80 backdrop-blur dark:border-zinc-800/70 dark:bg-zinc-950/80"
+  class="sticky top-0 z-50 border-b border-zinc-800/70 bg-zinc-950/80 backdrop-blur dark:border-zinc-200/70 dark:bg-white/80"
 >
-  <nav class="mx-auto flex max-w-3xl items-center justify-between px-5 py-3">
+  <nav class="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
     <a
       href={path()}
-      class="flex items-center gap-2 font-semibold tracking-tight text-zinc-900 dark:text-zinc-100"
+      class="flex items-center gap-2 tracking-tight text-zinc-100 dark:text-zinc-900"
     >
       <img src={path('favicon.svg')} alt="" width="20" height="20" class="rounded" />
-      <span class="text-sm">The Inkpens<span class="text-brand-600 dark:text-brand-400">.</span></span>
+      <span class="font-serif text-base font-semibold">The Inkpens<span class="text-brand-500">.</span></span>
     </a>
     <div class="flex items-center gap-1">
       {
@@ -33,8 +34,8 @@ const links = [
             class:list={[
               'rounded-md px-3 py-1.5 text-sm transition-colors',
               isActive(l.href)
-                ? 'text-brand-600 dark:text-brand-400'
-                : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100',
+                ? 'text-brand-400 dark:text-brand-600'
+                : 'text-zinc-400 hover:text-zinc-100 dark:text-zinc-600 dark:hover:text-zinc-900',
             ]}
           >
             {l.label}

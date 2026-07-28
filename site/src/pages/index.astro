@@ -2,46 +2,38 @@
 import { getCollection } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import EssayCard from '../components/EssayCard.astro';
+import { allTags, tagStyle } from '../lib/tags';
 import { path } from '../lib/path';
 
 const all = await getCollection('essays', ({ data }) => import.meta.env.DEV || !data.draft);
-const latest = all.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()).slice(0, 3);
+const latest = all.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()).slice(0, 4);
+const tags = allTags(all).slice(0, 8);
 const essayCount = all.length;
 ---
 
-<Base
-  title="The Inkpens"
-  description="Data science and machine learning notes from Nathan & Becky Inkpen."
->
-  <!-- Hero -->
-  <section class="mx-auto max-w-3xl px-5 pt-16 pb-12 sm:pt-24">
-    <div class="flex flex-col items-start gap-6">
-      <span
-        class="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 font-mono text-[11px] font-medium text-brand-700 dark:bg-brand-950/40 dark:text-brand-300"
-      >
-        <span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>
-        data science · machine learning · systems
-      </span>
-      <h1
-        class="text-4xl font-bold tracking-tight text-zinc-900 sm:text-5xl dark:text-zinc-100"
-      >
-        We're the Inkpens.
+<Base title="The Inkpens" description="Data science and machine learning notes from Nathan & Becky Inkpen.">
+  <!-- Editorial hero (text-only, dark-first) -->
+  <section class="mx-auto max-w-5xl px-5 pt-20 pb-16 sm:pt-28">
+    <div class="max-w-3xl">
+      <div class="mb-5 h-1 w-12 rounded-full bg-brand-500"></div>
+      <h1 class="font-serif text-5xl font-semibold leading-[1.05] tracking-tight text-zinc-100 sm:text-6xl dark:text-zinc-900">
+        The Inkpens.
       </h1>
-      <p class="max-w-2xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-        Two data scientists and machine learning engineers writing about the
-        systems we build — GPU inference, embeddings infrastructure, evaluation,
-        and the engineering details that don't fit in a README.
+      <p class="mt-6 max-w-2xl font-serif text-lg leading-relaxed text-zinc-400 dark:text-zinc-600 sm:text-xl">
+        Data science and machine learning notes from Nathan &amp; Becky — GPU
+        inference, embedding infrastructure, evaluation, and the engineering
+        details that don't fit in a README.
       </p>
-      <div class="flex flex-wrap gap-3">
+      <div class="mt-8 flex flex-wrap gap-3">
         <a
           href={path('blog')}
-          class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700"
+          class="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-500"
         >
           Read the blog
         </a>
         <a
           href={path('about')}
-          class="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          class="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 dark:border-zinc-300 dark:text-zinc-700 dark:hover:border-zinc-500 dark:hover:text-zinc-900"
         >
           About us
         </a>
@@ -49,23 +41,43 @@ const essayCount = all.length;
     </div>
   </section>
 
-  <!-- Latest essays -->
+  <!-- Latest essays (grid of cards) -->
   {
     latest.length > 0 && (
-      <section class="mx-auto max-w-3xl px-5 py-12">
+      <section class="mx-auto max-w-5xl px-5 py-12">
         <div class="mb-6 flex items-baseline justify-between">
-          <h2 class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+          <h2 class="font-serif text-2xl font-semibold tracking-tight text-zinc-100 dark:text-zinc-900">
             Latest
           </h2>
-          <a
-            href={path('blog')}
-            class="text-sm text-brand-600 hover:underline dark:text-brand-400"
-          >
+          <a href={path('blog')} class="text-sm text-brand-400 hover:underline dark:text-brand-600">
             {essayCount} {essayCount === 1 ? 'essay' : 'essays'} →
           </a>
         </div>
-        <div class="divide-y divide-zinc-200 dark:divide-zinc-800">
+        <div class="grid gap-4 sm:grid-cols-2">
           {latest.map((entry) => <EssayCard entry={entry} />)}
+        </div>
+      </section>
+    )
+  }
+
+  <!-- Topics teaser -->
+  {
+    tags.length > 0 && (
+      <section class="mx-auto max-w-5xl px-5 py-12">
+        <div class="mb-4 flex items-baseline justify-between">
+          <h2 class="font-serif text-2xl font-semibold tracking-tight text-zinc-100 dark:text-zinc-900">
+            Topics
+          </h2>
+          <a href={path('tags')} class="text-sm text-brand-400 hover:underline dark:text-brand-600">
+            All topics →
+          </a>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          {tags.map(({ tag }) => (
+            <a href={path(`tags/${tag}`)} class={tagStyle(tag)}>
+              #{tag}
+            </a>
+          ))}
         </div>
       </section>
     )

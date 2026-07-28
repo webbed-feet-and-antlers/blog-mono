@@ -1,11 +1,22 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-/* Dark mode via the `class` strategy (toggled on <html> by ThemeToggle). */
-@custom-variant dark (&:where(.dark, .dark *));
+/*
+ * DARK-FIRST theme. We invert Tailwind's `dark:` variant so that:
+ *   - bare classes = DARK mode (the default look, no class on <html>)
+ *   - `dark:` prefixed classes = LIGHT mode (applied when `.light` is on <html>)
+ *
+ * The ThemeToggle adds `.light` to <html> when the user opts into light.
+ * Every component keeps writing `dark:` prefixes — they now style light mode.
+ *
+ * The variant below makes `dark:` match whenever `.light` is present on the
+ * root (i.e. light mode is active). Bare classes are the dark default.
+ */
+@custom-variant dark (&:where(.light, .light *));
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, Cambria, "Times New Roman", serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* "Ink" indigo — our brand accent, evocative of fountain-pen ink. */
@@ -19,6 +30,7 @@
   --color-brand-700: #4338ca;
   --color-brand-800: #3730a3;
   --color-brand-900: #312e81;
+  --color-brand-950: #1e1b4b;
 }
 
 html {

@@ -2,22 +2,45 @@
 import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import EssayCard from '../../components/EssayCard.astro';
+import { allTags, tagStyle } from '../../lib/tags';
+import { path } from '../../lib/path';
 
 const all = await getCollection('essays', ({ data }) => import.meta.env.DEV || !data.draft);
 const essays = all.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+const tags = allTags(all);
 ---
 
 <Base title="Blog — The Inkpens" description="Essays on data science, machine learning, and systems.">
-  <section class="mx-auto max-w-3xl px-5 py-12">
-    <div class="mb-10">
-      <h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Blog</h1>
-      <p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+  <section class="mx-auto max-w-5xl px-5 py-12">
+    <header class="mb-8">
+      <h1 class="font-serif text-3xl font-semibold tracking-tight text-zinc-100 dark:text-zinc-900 sm:text-4xl">
+        Blog
+      </h1>
+      <p class="mt-2 text-sm text-zinc-400 dark:text-zinc-600">
         Notes and write-ups from our work in data science and ML engineering.
       </p>
-    </div>
-    <div class="divide-y divide-zinc-200 dark:divide-zinc-800">
+    </header>
+
+    <!-- Tag filter row -->
+    {
+      tags.length > 0 && (
+        <div class="mb-8 flex flex-wrap items-center gap-2">
+          <span class="mr-1 font-mono text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+            Filter:
+          </span>
+          {tags.map(({ tag, count }) => (
+            <a href={path(`tags/${tag}`)} class={tagStyle(tag)}>
+              #{tag} <span class="ml-1 opacity-60">{count}</span>
+            </a>
+          ))}
+        </div>
+      )
+    }
+
+    <div class="grid gap-4 sm:grid-cols-2">
       {essays.map((entry) => <EssayCard entry={entry} />)}
     </div>
+
     {
       essays.length === 0 && (
         <p class="py-12 text-center text-sm text-zinc-500 dark:text-zinc-500">
