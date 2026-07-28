@@ -4,36 +4,43 @@ import { path } from '../lib/path';
 
 const people = [
   {
-    name: 'Nathan Inkpen',
-    role: 'Data Scientist',
-    blurb:
-      'Works on data, modeling, and evaluation — turning messy real-world inputs into things a model can actually learn from.',
-    links: [{ label: 'GitHub', href: 'https://github.com/nathanp99' }],
-  },
-  {
     name: 'Becky Inkpen',
     role: 'Machine Learning Engineer',
     blurb:
-      'Works on ML infrastructure and serving systems — GPU inference, deployment, and the engineering that takes models from notebook to production.',
-    links: [],
+    'Works on ML infrastructure and serving systems. Loves writing and deploying production-ready code, and reluctantly makes Nathan\'s messy notebooks ready for production.',
+    links: [
+      { label: 'GitHub', href: 'https://github.com/WritingImplement' },
+      { label: 'LinkedIn', href: 'https://www.linkedin.com/in/becky-i-643539274/' }
+    ],
+  },
+  {
+    name: 'Nathan Inkpen',
+    role: 'Data Scientist',
+    blurb:
+      'Works on data, modeling, and evaluation. Turns messy real-world inputs into something a model can actually learn from.',
+    links: [
+      { label: 'GitHub', href: 'https://github.com/nathanp99' },
+      { label: 'LinkedIn', href: 'https://www.linkedin.com/in/nathan-pride-78aab5156/' }
+    ],
   },
 ];
 ---
 
-<Base title="About — The Inkpens" description="About Nathan & Becky Inkpen.">
+<Base title="About — The Inkpens" description="About Becky & Nathan Inkpen.">
   <section class="mx-auto max-w-3xl px-5 py-12">
     <h1 class="font-serif text-3xl font-semibold tracking-tight text-zinc-100 dark:text-zinc-900">
       About
     </h1>
     <div class="prose prose-invert prose-zinc mt-6 max-w-none dark:prose-zinc dark:prose-none">
       <p>
-        We're Nathan and Becky Inkpen — a data scientist and a machine learning
+        We're Becky and Nathan Inkpen, husband and wife data scientist and a machine learning
         engineer. This is where we write up the systems, experiments, and
         engineering details behind our work.
       </p>
       <p>
-        Posts are written in MDX — Markdown plus interactive components — so
-        benchmarks, diagrams, and code can be explored rather than just read.
+        You can see the source code for this site and all the essays and blogs on our GitHub.
+        Posts are in the essays directory, written in MDX, allowing for interactive components.
+        Each experiment has it's own directory, with code, data, and results.
         The source lives on
         <a
           href="https://github.com/webbed-feet-and-antlers/blog-mono"

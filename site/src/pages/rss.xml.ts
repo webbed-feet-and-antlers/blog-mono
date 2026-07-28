@@ -4,7 +4,9 @@ import type { APIContext } from 'astro';
 
 export async function GET(context: APIContext) {
   const all = await getCollection('essays', ({ data }) => !data.draft);
-  const essays = all.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+  const essays = all.sort(
+    (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+  );
 
   // @astrojs/rss does NOT prepend the configured `base`, so we do it manually.
   const base = import.meta.env.BASE_URL; // '/blog-mono'
@@ -12,7 +14,8 @@ export async function GET(context: APIContext) {
 
   return rss({
     title: 'The Inkpens',
-    description: 'Data science and machine learning notes from Nathan & Becky Inkpen.',
+    description:
+      'Data science and machine learning notes from Becky & Nathan Inkpen.',
     // site must be the origin WITHOUT base; we prefix each item link instead.
     site: context.site ?? 'https://webbed-feet-and-antlers.github.io',
     items: essays.map((entry) => ({
