@@ -9,6 +9,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
+    "test": "node --test",
     "syndicate": "node scripts/syndicate.mjs",
     "astro": "astro"
   },
@@ -31,6 +32,7 @@
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
     "satori": "^0.29.0",
+    "sharp": "^0.34.0",
     "tailwindcss": "^4.0.0",
     "unified": "^11.0.5",
     "unist-util-remove": "^4.0.0"
