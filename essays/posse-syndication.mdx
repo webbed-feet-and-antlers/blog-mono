@@ -1,9 +1,9 @@
 ---
 title: "How We Built a POSSE Syndication Pipeline on GitHub Actions"
-description: "Post on your own site, syndicate everywhere — a walkthrough of the pipeline that cross-posts our Astro/MDX essays to dev.to, Bluesky, Mastodon, X, LinkedIn, and Medium, with per-platform copy, threads, and auto-screenshotted interactive demos."
+description: "Post on your own site, syndicate everywhere — a walkthrough of the pipeline that auto-cross-posts our Astro/MDX essays to 5 platforms (dev.to, Bluesky, Mastodon, X, LinkedIn) and generates an easy-manual package for Medium + Substack, with per-platform threads and auto-screenshotted interactive demos."
 pubDate: 2026-07-27
 tags: ["posse", "automation", "github-actions", "indieweb"]
-socialPost: "Built a POSSE pipeline that cross-posts our MDX blog to 6 platforms from a single manual workflow — with per-platform threads and auto-screenshotted interactive demos."
+socialPost: "Built a POSSE pipeline that auto-cross-posts our MDX blog to 5 platforms and makes the 2 no-API platforms (Medium, Substack) a 30-second manual paste — with per-platform threads and auto-screenshotted interactive demos."
 social:
   twitter:
     - "1/ We wanted our blog posts to live natively on every platform — not just a 'new post' link tweet. So we built a POSSE pipeline that does it from one manual GitHub Action."
@@ -11,19 +11,20 @@ social:
     - "3/ The first lesson: platform APIs are not equal. dev.to, Bluesky, and Mastodon are free and open. Medium's API is closed to new users. X is pay-per-use. Substack has no API at all."
     - "4/ The X workaround: Buffer's free plan posts to X for you (Buffer holds the paid X credentials). One GraphQL call instead of paying X directly."
     - "5/ LinkedIn demotes posts with external links in the body. So we post the link as a separate COMMENT. Reach stays high, the link still exists."
-    - "6/ The hardest problem: our essays are MDX with interactive React components. Those don't render on dev.to or Medium. So we auto-screenshot them and inline the PNG."
+    - "6/ Medium + Substack have no clean API. Instead of fragile browser automation, we generate a single paste-ready package per essay. Automate what's automatable; make the rest trivial."
+    - "7/ The hardest problem: our essays are MDX with interactive React components. Those don't render on dev.to or Medium. So we auto-screenshot them and inline the PNG."
     - "Full writeup with the architecture and the gotchas:"
   bluesky:
-    - "Built a POSSE pipeline that cross-posts our MDX blog to 6 platforms — with per-platform threads and auto-screenshotted interactive demos."
+    - "Built a POSSE pipeline that auto-cross-posts our MDX blog to 5 platforms and makes the 2 no-API platforms a 30-second manual paste — with per-platform threads and auto-screenshotted interactive demos."
     - "The interesting bit: our essays have interactive React components that can't run on dev.to/Medium, so we screenshot them with Playwright and inline the PNG. ↩"
-  mastodon: "Built a POSSE pipeline: cross-posts our MDX blog to dev.to, Bluesky, Mastodon, X, LinkedIn, Medium from one manual GitHub Action. Per-platform threads, native images, and auto-screenshotted interactive demos. The thread on the API reality of each platform is wild."
+  mastodon: "Built a POSSE pipeline: auto-cross-posts our MDX blog to dev.to, Bluesky, Mastodon, X, LinkedIn from one manual GitHub Action, plus a paste-ready package for Medium + Substack. Per-platform threads, native images, auto-screenshotted interactive demos. The honest part: don't browser-automate platforms that don't want to be automated."
   linkedin: |
-    We wanted our technical blog to live natively on every platform — not just as "new post" link tweets that get algorithmically buried. So we built a POSSE (Post On your Own Site, Syndicate Everywhere) pipeline on GitHub Actions. This post walks through the architecture, the per-platform API reality (which platforms are free, which are paywalled, which have no API at all), and the hardest problem: our essays are MDX with interactive React components that can't run anywhere except our own site. The solution auto-screenshots each component and inlines the image into the cross-posted Markdown.
+    We wanted our technical blog to live natively on every platform — not just as "new post" link tweets that get algorithmically buried. So we built a POSSE (Post On your Own Site, Syndicate Everywhere) pipeline on GitHub Actions. Five platforms with clean free APIs (dev.to, Bluesky, Mastodon, X via Buffer, LinkedIn) are fully automated with per-platform threads and native images; the two platforms with no clean API (Medium, Substack) get a single paste-ready package per essay instead of fragile browser automation. The post covers the per-platform API reality, the LinkedIn link-in-comment pattern, and the hardest problem: our essays are MDX with interactive React components that can't run anywhere except our own site. The solution auto-screenshots each component and inlines the image into the cross-posted Markdown.
 ---
 
 The principle is simple: **your own site is canonical, and everything else points back to it.** The execution is where it gets interesting.
 
-This is a walkthrough of the pipeline we built to cross-post our essays to six platforms — dev.to, Bluesky, Mastodon, X, LinkedIn, and Medium — from a single manual GitHub Action. It covers the API reality of each platform, how we make posts feel native rather than "blurb + link," and how we handle the fact that our essays contain interactive components that literally cannot run anywhere else.
+This is a walkthrough of the pipeline we built to cross-post our essays to seven platforms — **five automated** (dev.to, Bluesky, Mastodon, X, LinkedIn) via their clean free APIs, and **two manual** (Medium, Substack) via a single paste-ready package — all from one manual GitHub Action. It covers the API reality of each platform, how we make posts feel native rather than "blurb + link," how we handle the fact that our essays contain interactive components that literally cannot run anywhere else, and the most important architectural decision: **don't automate the platforms that don't want to be automated.**
 
 ## What POSSE means here
 
@@ -51,9 +52,9 @@ Three things surprised us:
 
 **X's "free tier" is gone.** It used to be that you could post to your own account for free with OAuth. As of 2026, new apps default to pay-per-use — roughly $0.15 per post, $0.20 if it contains a link. OAuth tokens work, but the *app* has to be on a paid plan, and the API returns a 403 access-level error otherwise. There is no free path to posting on X via the direct API anymore.
 
-**Medium closed its API to new integrations.** The endpoint still exists, but the UI to generate an integration token was removed. If you have a token issued before January 2025, it still works. Otherwise, you're out of luck.
+**Medium closed its API to new integrations.** The endpoint still exists, but the UI to generate an integration token was removed. If you have a token issued before January 2025, it still works. Otherwise, you're out of luck — there's no inbound RSS, no post-by-email, and the only browser-accessible path ("Import a story") has no API.
 
-**Substack has no API at all.** Not deprecated, not paywalled — just nonexistent. No aggregator (Buffer, dlvr.it, Postiz) covers it either. The only options are unofficial browser automation or manual pasting.
+**Substack has no API at all.** Not deprecated, not paywalled — just nonexistent. No aggregator (Buffer, dlvr.it, Postiz) covers it either, and the only options are unofficial browser automation or manual pasting. Substack also can't set canonical URLs, so a full-text mirror actively cannibalizes your own site's SEO.
 
 ## The X workaround: Buffer as a bridge
 
@@ -168,6 +169,40 @@ The post reaches the feed; the link exists for anyone who wants the full essay.
 
 One unavoidable LinkedIn gotcha: personal OAuth access tokens expire every **60 days**, and personal (non-MDP) apps get **no refresh token**. So every two months, someone has to manually re-authorize and update the GitHub secret. The pipeline guards against silent expiry by tracking the token issue date and failing loudly five days before it lapses — better to block the run than to post half the platforms and fail on LinkedIn.
 
+## The platforms you don't automate: Medium and Substack
+
+Here's the architectural decision we're proudest of, and it's a negative one. Medium and Substack have no clean API. The temptation is to bridge that gap with browser automation — drive Medium's "Import a story" flow with Playwright, or hit Substack's internal endpoints with a session cookie. We considered both, and decided against both.
+
+The reason is fragility, in the worst possible place. Browser automation against a third-party UI in a flow that **posts publicly on your behalf** is the single most fragile thing you can put in a pipeline. Medium changes the page, or detects automation, and your next run silently fails — or worse, posts half-formed content. Session-cookie libraries break whenever Substack ships a backend change. There's no webhook to tell you it broke. The failure is silent and the consequence is public.
+
+So we do the honest thing instead: **don't automate them.** Both platforms get a single generated "syndication package" per essay — one Markdown file containing the full sanitized body (screenshots inlined), the canonical URL, and platform-specific publishing instructions:
+
+```markdown
+# {title}
+Canonical URL: https://theinkpens.com/blog/{slug}/
+Tags: gpu, embeddings
+
+---
+{full body with screenshots inlined}
+
+---
+## How to publish this manually
+
+**Medium**
+Best option: use Medium → Import a story and paste the canonical URL.
+Medium scrapes your post and automatically sets the canonical link back
+to your site — SEO-safe.
+
+**Substack**
+Substack has no posting API and no canonical-URL support. To avoid
+duplicate-content cannibalizing your own site, prefer posting only a
+teaser plus a "read more" link rather than the full body.
+```
+
+The package is uploaded as a workflow artifact. Publishing to either platform becomes about 30 seconds of manual paste — and the instructions inside the file guide the SEO-correct behavior per platform (canonical for Medium, teaser-for-SEO for Substack).
+
+This is *more* reliable than browser automation, not less. The robust path doesn't exist for these platforms; pretending otherwise creates silent breakage. The manual artifact makes the manual step trivial while being honest about what's manual.
+
 ## The hard problem: interactive components
 
 Here's where it gets interesting. Our essays are MDX — Markdown plus React components. The embeddings post, for example, has an interactive bin-packer demo where you can add and remove documents and watch the padding waste change in real time.
@@ -243,7 +278,9 @@ The write-back has a second purpose: the essay page renders an "Also published o
 
 A few things we'd tell anyone starting a POSSE pipeline:
 
-**Don't assume platforms have APIs.** Three of our six targets either have no API (Substack), a closed API (Medium), or a paywalled one (X). The research phase is short and worth doing — it determines the whole architecture.
+**Don't assume platforms have APIs.** Three of our targets either have no API (Substack), a closed API (Medium), or a paywalled one (X). The research phase is short and worth doing — it determines the whole architecture.
+
+**Don't automate the platforms that don't want to be automated.** This was our biggest temptation and our best decision. Browser automation of Medium's "Import a story," or session-cookie hacks against Substack, would have been the most fragile pieces of the pipeline — silent failures in a flow that posts publicly. Making those platforms a 30-second manual paste via a generated package is *more* reliable, not less.
 
 **Native formatting is the whole game.** The difference between a "new post: [link]" tweet and a real thread is enormous for engagement. Per-platform copy in frontmatter is a small authoring cost for a large reach difference.
 
