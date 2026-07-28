@@ -163,14 +163,14 @@ async function syndicateEssay(essay, opts) {
       key: 'medium',
       label: medium.name,
       available: () => medium.available(),
-      run: () => medium.publish({ title: data.title, bodyMarkdown, canonicalUrl, tags: data.tags ?? [], dryRun: opts.dryRun }),
+      run: () => medium.publish({ title: data.title, bodyMarkdown, canonicalUrl, tags: data.tags ?? [], slug: essay.slug }),
       skipIf: () => opts.essay === undefined && syndication.medium,
     },
     {
       key: 'substack',
       label: substack.name,
       available: () => substack.available(),
-      run: () => substack.publish({ title: data.title, socialPost: teaserBlurb(data), canonicalUrl, slug: essay.slug }),
+      run: () => substack.publish({ title: data.title, bodyMarkdown, socialPost: teaserBlurb(data), canonicalUrl, slug: essay.slug }),
       skipIf: () => opts.essay === undefined && syndication.substack,
     },
   ];
@@ -193,7 +193,11 @@ async function syndicateEssay(essay, opts) {
       if (result.id && !['manual', 'dry-run', 'unknown'].includes(result.id)) {
         newIds[p.key] = result.id;
       }
-      summary.push(`  ${c.green('✓')} ${p.label.padEnd(14)} ${c.dim(opts.dryRun ? 'would-post' : 'posted')} → ${result.url}`);
+      // Manual platforms (id === 'manual') build a package artifact rather than posting.
+      const verb = result.id === 'manual'
+        ? (opts.dryRun ? 'would-package' : 'packaged')
+        : (opts.dryRun ? 'would-post' : 'posted');
+      summary.push(`  ${c.green('✓')} ${p.label.padEnd(14)} ${c.dim(verb)} → ${result.url}`);
     } catch (err) {
       summary.push(`  ${c.red('✗')} ${p.label.padEnd(14)} ${c.red(err.message)}`);
     }

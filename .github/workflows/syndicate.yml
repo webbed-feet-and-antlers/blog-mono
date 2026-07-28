@@ -80,16 +80,17 @@ jobs:
           LINKEDIN_TOKEN: ${{ secrets.LINKEDIN_TOKEN }}
           LINKEDIN_TOKEN_ISSUED: ${{ secrets.LINKEDIN_TOKEN_ISSUED }}
           LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
-          MEDIUM_TOKEN: ${{ secrets.MEDIUM_TOKEN }}
-          MEDIUM_USER_ID: ${{ secrets.MEDIUM_USER_ID }}
+          # Medium and Substack are manual platforms (no clean API) — no secrets.
+          # The syndication-package artifact they produce is uploaded below for paste.
 
-      # Always upload the Substack teasers + OG images, even if the run fails,
-      # so you can paste Substack manually and reuse the OG images.
-      - name: Upload syndication output
+      # Always upload the manual syndication packages (Medium + Substack) and
+      # any per-run output, even if the run fails, so the manual platforms can
+      # be pasted by hand from a single download.
+      - name: Upload syndication packages
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: syndication-output
+          name: syndication-packages
           path: site/.syndication-output/
           if-no-files-found: ignore
           retention-days: 14
