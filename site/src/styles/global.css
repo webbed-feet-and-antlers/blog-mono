@@ -1,0 +1,56 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/*
+ * DARK-FIRST theme. We invert Tailwind's `dark:` variant so that:
+ *   - bare classes = DARK mode (the default look, no class on <html>)
+ *   - `dark:` prefixed classes = LIGHT mode (applied when `.light` is on <html>)
+ *
+ * The ThemeToggle adds `.light` to <html> when the user opts into light.
+ * Every component keeps writing `dark:` prefixes — they now style light mode.
+ *
+ * The variant below makes `dark:` match whenever `.light` is present on the
+ * root (i.e. light mode is active). Bare classes are the dark default.
+ */
+@custom-variant dark (&:where(.light, .light *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Fraunces", ui-serif, Georgia, Cambria, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* "Ink" indigo — our brand accent, evocative of fountain-pen ink. */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-brand-950: #1e1b4b;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Anchor offset so headings aren't hidden under the sticky header when jumped to. */
+:target {
+  scroll-margin-top: 5rem;
+}
+
+/*
+ * Faint fountain-pen-nib watermark, fixed in the top-right so it adds texture
+ * without competing with content. The SVG has its own low-opacity stroke, so it
+ * reads as a subtle line drawing on both dark and light backgrounds.
+ */
+body {
+  background-image: var(--wm);
+  background-repeat: no-repeat;
+  background-position: top -40px right -20px;
+  background-size: 420px;
+  background-attachment: fixed;
+}

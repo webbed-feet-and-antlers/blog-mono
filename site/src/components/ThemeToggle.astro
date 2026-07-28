@@ -1,0 +1,42 @@
+---
+// Dark-first theme toggle. The site defaults to DARK; this adds `.light` to
+// <html> when the user opts into light mode. (See global.css for the inverted
+// variant: `dark:` now styles light mode, bare classes are dark.)
+---
+
+<button
+  id="theme-toggle"
+  type="button"
+  aria-label="Toggle light mode"
+  class="ml-1 rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 dark:text-zinc-600 dark:hover:bg-zinc-100 dark:hover:text-zinc-900"
+>
+  <!-- Moon: visible in dark mode (click to go light) -->
+  <svg class="h-4 w-4 dark:hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </svg>
+  <!-- Sun: visible in light mode (click to go dark) -->
+  <svg class="hidden h-4 w-4 dark:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+  </svg>
+</button>
+
+<script is:inline>
+  // Dark-first: default is dark (no class). Only add `.light` when explicitly chosen
+  // or when the OS prefers light and there's no saved preference.
+  (function () {
+    const stored = localStorage.getItem('theme');
+    const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+    if (stored === 'light' || (!stored && prefersLight)) {
+      document.documentElement.classList.add('light');
+    }
+  })();
+</script>
+
+<script>
+  const btn = document.getElementById('theme-toggle');
+  btn?.addEventListener('click', () => {
+    const isLight = document.documentElement.classList.toggle('light');
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+  });
+</script>

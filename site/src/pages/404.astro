@@ -1,0 +1,19 @@
+---
+import Base from '../layouts/Base.astro';
+import { path } from '../lib/path';
+---
+
+<Base title="Not found — The Inkpens" description="Page not found.">
+  <section class="mx-auto flex max-w-3xl flex-col items-center px-5 py-24 text-center">
+    <p class="font-serif text-6xl font-bold text-brand-500">404</p>
+    <h1 class="mt-4 font-serif text-xl font-semibold text-zinc-100 dark:text-zinc-900">
+      This page is out of ink.
+    </h1>
+    <a
+      href={path()}
+      class="mt-6 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-500"
+    >
+      Back home
+    </a>
+  </section>
+</Base>
