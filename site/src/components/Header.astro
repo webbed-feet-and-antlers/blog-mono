@@ -1,0 +1,48 @@
+---
+import ThemeToggle from './ThemeToggle.astro';
+import { path } from '../lib/path';
+
+const current = Astro.url.pathname;
+const isActive = (p: string) =>
+  p === ''
+    ? current === path() || current === path('/')
+    : current === path(p) || current.startsWith(path(p));
+
+const links = [
+  { href: 'blog', label: 'Blog' },
+  { href: 'tags', label: 'Topics' },
+  { href: 'about', label: 'About' },
+];
+---
+
+<header
+  class="sticky top-0 z-50 border-b border-zinc-800/70 bg-zinc-950/80 backdrop-blur dark:border-zinc-200/70 dark:bg-white/80"
+>
+  <nav class="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
+    <a
+      href={path()}
+      class="flex items-center gap-2 tracking-tight text-zinc-100 dark:text-zinc-900"
+    >
+      <img src={path('favicon.svg')} alt="" width="20" height="20" class="rounded" />
+      <span class="font-serif text-base font-semibold">The Inkpens<span class="text-brand-500">.</span></span>
+    </a>
+    <div class="flex items-center gap-1">
+      {
+        links.map((l) => (
+          <a
+            href={path(l.href)}
+            class:list={[
+              'rounded-md px-3 py-1.5 text-sm transition-colors',
+              isActive(l.href)
+                ? 'text-brand-400 dark:text-brand-600'
+                : 'text-zinc-400 hover:text-zinc-100 dark:text-zinc-600 dark:hover:text-zinc-900',
+            ]}
+          >
+            {l.label}
+          </a>
+        ))
+      }
+      <ThemeToggle />
+    </div>
+  </nav>
+</header>

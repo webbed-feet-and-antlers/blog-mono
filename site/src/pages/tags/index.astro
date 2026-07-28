@@ -1,0 +1,43 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import { allTags, tagStyle } from '../../lib/tags';
+import { path } from '../../lib/path';
+
+const essays = await getCollection('essays', ({ data }) => import.meta.env.DEV || !data.draft);
+const tags = allTags(essays);
+---
+
+<Base title="Topics — The Inkpens" description="Browse essays by topic.">
+  <section class="mx-auto max-w-5xl px-5 py-12">
+    <header class="mb-10">
+      <h1 class="font-serif text-3xl font-semibold tracking-tight text-zinc-100 dark:text-zinc-900 sm:text-4xl">
+        Topics
+      </h1>
+      <p class="mt-2 text-sm text-zinc-400 dark:text-zinc-600">
+        Essays organized by what they're about.
+      </p>
+    </header>
+
+    <div class="flex flex-wrap gap-3">
+      {
+        tags.map(({ tag, count }) => (
+          <a
+            href={path(`tags/${tag}`)}
+            class="group flex items-center gap-2 rounded-lg border border-zinc-800 px-4 py-3 transition-colors hover:border-brand-500/50 dark:border-zinc-200 dark:hover:border-brand-500/50"
+          >
+            <span class:list={[tagStyle(tag), '!rounded-md !px-2.5 !py-1 !text-xs']}>#{tag}</span>
+            <span class="font-mono text-xs text-zinc-500 dark:text-zinc-500">{count}</span>
+          </a>
+        ))
+      }
+      {
+        tags.length === 0 && (
+          <p class="py-12 text-center text-sm text-zinc-500 dark:text-zinc-500">
+            No topics yet.
+          </p>
+        )
+      }
+    </div>
+  </section>
+</Base>

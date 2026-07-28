@@ -1,0 +1,39 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import EssayCard from '../../components/EssayCard.astro';
+import { path } from '../../lib/path';
+
+export async function getStaticPaths() {
+  const essays = await getCollection('essays', ({ data }) => import.meta.env.DEV || !data.draft);
+  const tags = new Set<string>();
+  for (const e of essays) for (const t of e.data.tags ?? []) tags.add(t);
+  return [...tags].map((tag) => ({
+    params: { tag },
+    props: {
+      tag,
+      essays: essays
+        .filter((e) => (e.data.tags ?? []).includes(tag))
+        .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()),
+    },
+  }));
+}
+
+const { tag, essays } = Astro.props;
+---
+
+<Base title={`${tag} — The Inkpens`} description={`Essays tagged ${tag}.`}>
+  <section class="mx-auto max-w-5xl px-5 py-12">
+    <a href={path('tags')} class="text-sm text-zinc-500 hover:text-zinc-300 dark:hover:text-zinc-700">← All topics</a>
+    <div class="mt-6 flex items-center gap-3">
+      <h1 class="font-serif text-3xl font-semibold tracking-tight text-zinc-100 dark:text-zinc-900 sm:text-4xl">
+        #{tag}
+      </h1>
+      <span class="font-mono text-xs text-zinc-500 dark:text-zinc-500">{essays.length} {essays.length === 1 ? 'essay' : 'essays'}</span>
+    </div>
+
+    <div class="mt-10 grid gap-4 sm:grid-cols-2">
+      {essays.map((entry) => <EssayCard entry={entry} />)}
+    </div>
+  </section>
+</Base>
