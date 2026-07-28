@@ -62,6 +62,7 @@ const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
   </head>
   <body
     class="min-h-screen bg-zinc-950 font-sans text-zinc-300 antialiased dark:bg-white dark:text-zinc-700"
+    style={`--wm: url('${path('inkpen-watermark.svg')}')`}
   >
     <Header />
     <main>

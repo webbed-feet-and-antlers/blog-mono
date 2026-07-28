@@ -41,3 +41,16 @@ html {
 :target {
   scroll-margin-top: 5rem;
 }
+
+/*
+ * Faint fountain-pen-nib watermark, fixed in the top-right so it adds texture
+ * without competing with content. The SVG has its own low-opacity stroke, so it
+ * reads as a subtle line drawing on both dark and light backgrounds.
+ */
+body {
+  background-image: var(--wm);
+  background-repeat: no-repeat;
+  background-position: top -40px right -20px;
+  background-size: 420px;
+  background-attachment: fixed;
+}
