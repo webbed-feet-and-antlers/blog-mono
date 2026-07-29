@@ -15,7 +15,7 @@
 // flag in the npm script (no `source .env` needed). CI injects secrets directly.
 import { loadEssays, loadEssay } from './lib/essays.mjs';
 import { writeSyndicationIds } from './lib/frontmatter.mjs';
-import { mdxToMarkdown } from './lib/markdown.mjs';
+import { mdxToMarkdown, markdownToHtml } from './lib/markdown.mjs';
 import { normalizeSocial, teaserBlurb } from './lib/social.mjs';
 import { renderOgImage } from './lib/og-image.mjs';
 import { screenshotComponent, componentsInBody } from './lib/component-shot.mjs';
@@ -109,6 +109,9 @@ async function syndicateEssay(essay, opts) {
   // run React). Falls back gracefully if Playwright/harness isn't available.
   const componentImages = await screenshotComponentsForEssay(essay, SITE_URL, summary);
   const bodyMarkdown = await mdxToMarkdown(essay.body, canonicalUrl, componentImages);
+  // Paste-ready HTML companion for Medium/Substack rich-text editors. Derived
+  // from the sanitized markdown, so JSX stripping / screenshot inlining is reused.
+  const bodyHtml = await markdownToHtml(bodyMarkdown);
 
   // Pre-pass: render the OG image once if any platform wants it.
   let imagePath = null;
@@ -166,14 +169,14 @@ async function syndicateEssay(essay, opts) {
       key: 'medium',
       label: medium.name,
       available: () => medium.available(),
-      run: () => medium.publish({ title: data.title, bodyMarkdown, canonicalUrl, tags: data.tags ?? [], slug: essay.slug }),
+      run: () => medium.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: essay.slug }),
       skipIf: () => opts.essay === undefined && syndication.medium,
     },
     {
       key: 'substack',
       label: substack.name,
       available: () => substack.available(),
-      run: () => substack.publish({ title: data.title, bodyMarkdown, socialPost: teaserBlurb(data), canonicalUrl, slug: essay.slug }),
+      run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: essay.slug }),
       skipIf: () => opts.essay === undefined && syndication.substack,
     },
   ];

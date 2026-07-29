@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mdxToMarkdown } from './markdown.mjs';
+import { mdxToMarkdown, markdownToHtml } from './markdown.mjs';
 
 const URL = 'https://theinkpens.com/blog/x/';
 
@@ -57,4 +57,55 @@ test('mdxToMarkdown: appends interactive note iff imports or capitalized JSX pre
 test('mdxToMarkdown: the interactive note contains the canonical URL', async () => {
   const out = await mdxToMarkdown('<BinPacker />', URL);
   assert.ok(out.includes(URL), 'canonical URL appears in the note');
+});
+
+// --- markdownToHtml: paste-ready HTML for the Medium/Substack manual path ---
+
+test('markdownToHtml: renders headings as <h1>/<h2>', async () => {
+  const html = await markdownToHtml('# Title\n\n## Section');
+  assert.ok(html.includes('<h1>'), 'h1 rendered');
+  assert.ok(html.includes('<h2>'), 'h2 rendered');
+});
+
+test('markdownToHtml: renders fenced code as <pre><code>', async () => {
+  const html = await markdownToHtml('```js\nconst x = 1;\n```');
+  assert.ok(html.includes('<pre>'), 'pre rendered');
+  assert.ok(html.includes('<code'), 'code tag rendered (may carry a language- class)');
+  assert.ok(html.includes('const x = 1;'), 'code content preserved');
+});
+
+test('markdownToHtml: renders GFM pipe tables as <table>', async () => {
+  const md = '| A | B |\n| --- | --- |\n| 1 | 2 |';
+  const html = await markdownToHtml(md);
+  assert.ok(html.includes('<table>'), 'GFM table rendered (requires remark-gfm)');
+  assert.ok(html.includes('<th>'), 'header row rendered');
+  assert.ok(html.includes('<td>'), 'cell rendered');
+});
+
+test('markdownToHtml: leaves math as plain text (no KaTeX spans)', async () => {
+  // KaTeX HTML would need platform CSS Medium/Substack don't load, so math
+  // should survive as plain $...$ text rather than rendered markup.
+  const html = await markdownToHtml('Inline $E=mc^2$ here.');
+  assert.ok(html.includes('E=mc^2'), 'math content preserved as text');
+  assert.ok(!html.includes('katex'), 'no KaTeX spans injected');
+});
+
+test('markdownToHtml: blockquote survives (interactive note round-trips)', async () => {
+  const md = '> 🔁 *Parts of this essay are interactive on the original post — see them live: https://x/*';
+  const html = await markdownToHtml(md);
+  assert.ok(html.includes('<blockquote>'), 'blockquote rendered');
+  assert.ok(html.includes('interactive on the original post'), 'note text preserved');
+});
+
+test('markdownToHtml: accepts mdxToMarkdown output (integration)', async () => {
+  // The real pipeline: MDX → sanitized markdown → HTML. Verify a stripped
+  // JSX component's screenshot image survives into the HTML as an <img>.
+  const md = await mdxToMarkdown(
+    'intro\n\n<BinPacker client:visible />\n\noutro',
+    URL,
+    { BinPacker: 'https://x/sshot.png' }
+  );
+  const html = await markdownToHtml(md);
+  assert.ok(html.includes('<img'), 'inlined screenshot becomes an <img>');
+  assert.ok(html.includes('https://x/sshot.png'), 'image URL preserved');
 });

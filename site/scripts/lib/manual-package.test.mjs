@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { seedPackage, addPlatformNote, packagePath } from './manual-package.mjs';
+import { seedPackage, addPlatformNote, packagePath, packageHtmlPath, writeHtmlPackage } from './manual-package.mjs';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -93,4 +93,35 @@ test('seedPackage: omits the Tags line when tags empty', async () => {
   await seedPackage({ slug, title: 'T', canonicalUrl: 'u', bodyMarkdown: 'b', tags: [] });
   const content = readFileSync(packagePath(slug), 'utf8');
   assert.ok(!/^Tags:/m.test(content), 'no Tags line when tags empty');
+});
+
+// --- writeHtmlPackage: the paste-ready HTML companion ---
+
+test('packageHtmlPath: returns a path ending in syndicate-<slug>.html', () => {
+  const p = packageHtmlPath('my-essay');
+  assert.ok(p.endsWith('syndicate-my-essay.html'));
+  assert.ok(p.includes('.syndication-output'));
+});
+
+test('writeHtmlPackage: writes a self-contained HTML doc with the body', async () => {
+  const slug = 'pkg-html';
+  await writeHtmlPackage({ slug, title: 'My Essay', bodyHtml: '<p>Hello <strong>world</strong></p>' });
+  const file = packageHtmlPath(slug);
+  assert.ok(existsSync(file), 'HTML package file created');
+  const html = readFileSync(file, 'utf8');
+  assert.ok(html.includes('<!doctype html>'), 'has doctype');
+  assert.ok(html.includes('<title>My Essay</title>'), 'title in <head>');
+  assert.ok(html.includes('<article>'), 'body wrapped in <article>');
+  assert.ok(html.includes('<p>Hello <strong>world</strong></p>'), 'body HTML preserved');
+});
+
+test('writeHtmlPackage: idempotent — overwrites cleanly each call', async () => {
+  const slug = 'pkg-html-idem';
+  await writeHtmlPackage({ slug, title: 'First', bodyHtml: '<p>v1</p>' });
+  await writeHtmlPackage({ slug, title: 'Second', bodyHtml: '<p>v2</p>' });
+  const html = readFileSync(packageHtmlPath(slug), 'utf8');
+  assert.ok(html.includes('<title>Second</title>'), 'latest title wins');
+  assert.ok(html.includes('v2'), 'latest body wins');
+  assert.ok(!html.includes('First'), 'stale content removed');
+  assert.ok(!html.includes('v1'), 'stale body removed');
 });

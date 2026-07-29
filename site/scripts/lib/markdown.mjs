@@ -15,6 +15,9 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkStringify from 'remark-stringify';
 import remarkMath from 'remark-math';
+import remarkRehype from 'remark-rehype';
+import rehypeStringify from 'rehype-stringify';
+import remarkGfm from 'remark-gfm';
 import { visit } from 'unist-util-visit';
 
 const INTERACTIVE_NOTE = (canonicalUrl) =>
@@ -77,4 +80,28 @@ export async function mdxToMarkdown(mdxBody, canonicalUrl, componentImages = {})
   }
 
   return result.trim() + '\n';
+}
+
+/**
+ * Render sanitized Markdown to an HTML fragment for the manual paste path
+ * (Medium/Substack rich-text editors). Reuses remark-parse so it accepts the
+ * output of mdxToMarkdown directly — JSX stripping / screenshot inlining /
+ * import removal all happen upstream, so this is a pure markdown→HTML step.
+ *
+ * GFM tables are enabled (essays use pipe tables). Math is deliberately left
+ * as plain `$…$` text rather than run through rehype-katex — Medium/Substack
+ * don't load KaTeX's CSS, so KaTeX HTML would render as broken markup.
+ *
+ * @param {string} markdown - sanitized Markdown (typically from mdxToMarkdown)
+ * @returns {Promise<string>} HTML fragment (no <html>/<body> wrapper)
+ */
+export async function markdownToHtml(markdown) {
+  const output = await unified()
+    .use(remarkParse)
+    .use(remarkMath)
+    .use(remarkGfm) // GFM tables, strikethrough, autolinks
+    .use(remarkRehype)
+    .use(rehypeStringify)
+    .process(markdown);
+  return String(output);
 }

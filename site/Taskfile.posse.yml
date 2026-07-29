@@ -7,55 +7,75 @@ version: "3"
 # `node --env-file-if-exists=.env`), so no `source .env` is needed locally.
 # In CI, secrets are injected directly and there's no .env.
 #
-# Variables:
-#   ESSAY  — slug to syndicate one essay (default "" = all unpublished)
-#
-# Examples:
-#   task posse:dry-run
-#   task posse:dry-run -- embeddings
-#   task posse:publish -- embeddings
-#   task posse:publish-all        # no ESSAY = every unpublished essay
-
-vars:
-  # Empty string → syndicate.mjs treats essay as undefined → all unpublished.
-  ESSAY: ""
+# Passing an essay slug: use `--` after the task name, e.g.
+#   task posse:dry-run -- posse-syndication
+# The slug arrives as {{.CLI_ARGS}}; an empty value means "all unpublished".
 
 tasks:
   dry-run:
-    desc: "Preview syndication without posting or committing (ESSAY=slug to scope)"
+    desc: "Preview syndication without posting or committing (slug optional)"
     cmds:
-      - >-
-        npm run syndicate -- --dry-run=true --essay={{.ESSAY}}
+      - npm run syndicate -- --dry-run=true --essay={{.CLI_ARGS}}
 
   dry-run:build:
     desc: "Build the site, then dry-run syndication (needed for component screenshots)"
     cmds:
-      - task: build
-      - npm run syndicate -- --dry-run=true --essay={{.ESSAY}}
+      # `npm run build` rather than `task: build` — the posse namespace sets
+      # dir: site, so a bare `task: build` would look for posse:build (absent).
+      - npm run build
+      - npm run syndicate -- --dry-run=true --essay={{.CLI_ARGS}}
 
   publish:
-    desc: "Syndicate for real — one essay (ESSAY=slug required). Posts + commits IDs."
+    desc: "Syndicate for real — one essay (slug required). Posts + commits IDs."
     preconditions:
-      - sh: '[ -n "{{.ESSAY}}" ]'
-        msg: "ESSAY is required (e.g. `task posse:publish -- embeddings`). Use posse:publish-all for everything."
+      - sh: '[ -n "{{.CLI_ARGS}}" ]'
+        msg: "A slug is required (e.g. `task posse:publish -- embeddings`). Use posse:publish-all for everything."
     cmds:
-      - task: build
-      - npm run syndicate -- --dry-run=false --essay={{.ESSAY}}
+      - npm run build
+      - npm run syndicate -- --dry-run=false --essay={{.CLI_ARGS}}
 
   publish-all:
     desc: "Syndicate every unpublished essay for real. Posts + commits IDs. Use with care."
     cmds:
-      - task: build
+      - npm run build
       - npm run syndicate -- --dry-run=false
 
+  manual:
+    desc: "Build the Medium+Substack manual package for one essay and open it ready to paste"
+    preconditions:
+      - sh: '[ -n "{{.CLI_ARGS}}" ]'
+        msg: "A slug is required (e.g. `task posse:manual -- posse-syndication`)."
+    cmds:
+      # Build for component screenshots, syndicate (posts + packages), then open
+      # everything in the browser. Safe to re-run: the manual adapters don't
+      # write back IDs, and the package dedup keeps files byte-identical.
+      - npm run build
+      - npm run syndicate -- --dry-run=false --essay={{.CLI_ARGS}}
+      - task: open-manual
+
+  open-manual:
+    desc: "Open the latest manual package HTML + Medium/Substack editor tabs (internal)"
+    internal: true
+    vars:
+      # SUBSTACK_PUB overrides the publication slug; defaults to "theinkpens".
+      SUBSTACK_PUB: theinkpens
+    cmds:
+      # This task runs with dir: site (set by the root includes:), so the path is
+      # relative to site/. `open` is macOS; on Linux swap to `xdg-open`.
+      - open ".syndication-output/syndicate-{{.CLI_ARGS}}.html"
+      # Medium stories dashboard — "Import a story" is one click from here.
+      - open "https://medium.com/me/stories"
+      # Substack new-post editor for this publication.
+      - open "https://{{.SUBSTACK_PUB}}.substack.com/publish/post"
+
   ci:dry-run:
-    desc: "Trigger the GitHub Actions Syndicate workflow in dry-run mode (ESSAY optional)"
+    desc: "Trigger the GitHub Actions Syndicate workflow in dry-run mode (slug optional)"
     cmds:
       - >-
-        gh workflow run syndicate.yml -f dry_run=true -f essay={{.ESSAY}}
+        gh workflow run syndicate.yml -f dry_run=true -f essay={{.CLI_ARGS}}
 
   ci:publish:
-    desc: "Trigger the GitHub Actions Syndicate workflow to publish (ESSAY optional)"
+    desc: "Trigger the GitHub Actions Syndicate workflow to publish (slug optional)"
     cmds:
       - >-
-        gh workflow run syndicate.yml -f dry_run=false -f essay={{.ESSAY}}
+        gh workflow run syndicate.yml -f dry_run=false -f essay={{.CLI_ARGS}}

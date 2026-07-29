@@ -29,6 +29,16 @@ export function packagePath(slug) {
 }
 
 /**
+ * Path to the paste-ready HTML companion of the markdown package. Open this in
+ * a browser, select-all, copy, and paste into Medium/Substack's rich-text
+ * editor — formatting and images survive without the markdown-in-editor dance.
+ * @param {string} slug
+ */
+export function packageHtmlPath(slug) {
+  return join(OUT_DIR, `syndicate-${slug}.html`);
+}
+
+/**
  * Seed the package with the body + canonical header if it doesn't exist yet.
  * Called by both manual adapters; safe to call repeatedly (idempotent).
  *
@@ -106,4 +116,49 @@ export async function addPlatformNote({ slug, platform, instructions }) {
 
   const block = `\n**${platform}**\n\n${instructions}\n`;
   await writeFile(file, existing.trimEnd() + '\n' + block, 'utf8');
+}
+
+// Minimal inline styles so the HTML renders readably standalone AND pastes
+// cleanly into rich-text editors (Medium/Substack). Kept deliberately small —
+// elaborate CSS doesn't survive the paste into those editors.
+const HTML_SHELL = (title, bodyHtml) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+<style>
+  body { max-width: 720px; margin: 2rem auto; padding: 0 1rem;
+         font-family: Georgia, 'Times New Roman', serif; line-height: 1.6; color: #1a1a1a; }
+  h1, h2, h3 { font-family: -apple-system, system-ui, sans-serif; line-height: 1.25; }
+  code, pre { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.9em; }
+  pre { background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid #ccc; padding: 0.4rem 0.8rem; }
+  img { max-width: 100%; }
+  blockquote { border-left: 3px solid #ccc; margin: 0; padding-left: 1rem; color: #555; }
+</style>
+</head>
+<body>
+<article>
+${bodyHtml.trim()}
+</article>
+</body>
+</html>
+`;
+
+/**
+ * Write the paste-ready HTML companion to the markdown package. Overwrites
+ * unconditionally each run — the HTML is fully derived from the essay body,
+ * so there's nothing to dedup and overwrite is the simplest idempotent path.
+ *
+ * @param {object} opts
+ * @param {string} opts.slug
+ * @param {string} opts.title
+ * @param {string} opts.bodyHtml   - HTML fragment (from markdownToHtml)
+ * @returns {Promise<void>}
+ */
+export async function writeHtmlPackage({ slug, title, bodyHtml }) {
+  await mkdir(OUT_DIR, { recursive: true });
+  await writeFile(packageHtmlPath(slug), HTML_SHELL(title, bodyHtml), 'utf8');
 }

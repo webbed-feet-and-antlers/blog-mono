@@ -10,7 +10,7 @@
 // syndication package artifact with the SEO-correct instructions (use Medium's
 // "Import a story" so the canonical link points back to our own site). The
 // package file is uploaded by the workflow for a ~30-second manual paste.
-import { seedPackage, addPlatformNote, packagePath } from '../manual-package.mjs';
+import { seedPackage, addPlatformNote, packagePath, writeHtmlPackage, packageHtmlPath } from '../manual-package.mjs';
 
 export const name = 'medium';
 
@@ -22,27 +22,35 @@ export function available() {
  * @param {object} opts
  * @param {string} opts.title
  * @param {string} opts.bodyMarkdown
+ * @param {string} opts.bodyHtml       - paste-ready HTML (for rich-text paste)
  * @param {string} opts.canonicalUrl
  * @param {string[]} opts.tags
  * @param {string} opts.slug
  * @returns {Promise<{id: string, url: string}>} url is the package file path
  */
-export async function publish({ title, bodyMarkdown, canonicalUrl, tags, slug }) {
+export async function publish({ title, bodyMarkdown, bodyHtml, canonicalUrl, tags, slug }) {
   await seedPackage({ slug, title, canonicalUrl, bodyMarkdown, tags });
+  if (bodyHtml) await writeHtmlPackage({ slug, title, bodyHtml });
   await addPlatformNote({
     slug,
     platform: 'Medium',
     instructions: [
-      'Best option: use Medium → **Import a story** and paste the canonical URL.',
-      'Medium scrapes your post and **automatically sets the canonical link back',
-      'to your site** — SEO-safe.',
+      '**Best option — Import a story (SEO-safe, sets canonical automatically):**',
       '',
-      'Canonical URL (copy-paste):',
+      '1. Open your stories: <https://medium.com/me/stories>',
+      '2. Click **Import a story**',
+      '3. Paste the canonical URL (Medium scrapes your post and sets the canonical',
+      '   link back to your site automatically):',
       '',
       `<${canonicalUrl}>`,
       '',
-      'Alternative: paste the body above into a new Medium story, then manually',
-      'set the canonical link (⋯ → Story settings → Canonical link) to the URL above.',
+      '**Alternative — paste as HTML (skip the scraper, e.g. if it fails):**',
+      '',
+      `Open the HTML companion file (select-all → copy → paste into a new story):`,
+      '',
+      `<${packageHtmlPath(slug)}>`,
+      'Then manually set the canonical link (⋯ → Story settings → Canonical link)',
+      'to the URL above.',
     ].join('\n'),
   });
   return { id: 'manual', url: packagePath(slug) };
