@@ -1,0 +1,48 @@
+version: "3"
+
+# Top-level entrypoint. Site/dev tasks live here; POSSE syndication tasks are
+# namespaced under `posse:` and pulled in from site/Taskfile.posse.yml.
+#
+# Run `task --list` to see everything, `task posse --list` for syndication.
+
+includes:
+  posse:
+    taskfile: site/Taskfile.posse.yml
+    dir: site
+
+tasks:
+  install:
+    desc: "Install site dependencies (npm ci)"
+    dir: site
+    cmds:
+      - npm ci
+
+  dev:
+    desc: "Start the Astro dev server"
+    dir: site
+    cmds:
+      - npm run dev
+
+  build:
+    desc: "Build the site to ./site/dist"
+    dir: site
+    cmds:
+      - npm run build
+
+  preview:
+    desc: "Preview the built site locally"
+    dir: site
+    cmds:
+      - npm run preview
+
+  check:
+    desc: "Type-check the site (astro check)"
+    dir: site
+    cmds:
+      - npm run check
+
+  test:
+    desc: "Run the node:test suite (POSSE + site logic)"
+    dir: site
+    cmds:
+      - npm test
