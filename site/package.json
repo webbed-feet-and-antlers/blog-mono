@@ -10,7 +10,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "node --test",
-    "syndicate": "node scripts/syndicate.mjs",
+    "syndicate": "node --env-file-if-exists=.env scripts/syndicate.mjs",
     "astro": "astro"
   },
   "dependencies": {

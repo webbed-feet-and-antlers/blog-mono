@@ -7,9 +7,12 @@
 // LinkedIn comment) so posts feel native rather than "blurb + link".
 //
 // Usage:
-//   node scripts/syndicate.mjs --dry-run=true           # preview all unpublished
-//   node scripts/syndicate.mjs --dry-run=false          # post all unpublished
-//   node scripts/syndicate.mjs --dry-run=true --essay=embeddings
+//   npm run syndicate -- --dry-run=true                 # preview all unpublished
+//   npm run syndicate -- --dry-run=false                # post all unpublished
+//   npm run syndicate -- --dry-run=true --essay=embeddings
+//
+// Credentials are auto-loaded from site/.env via the `--env-file-if-exits=.env`
+// flag in the npm script (no `source .env` needed). CI injects secrets directly.
 import { loadEssays, loadEssay } from './lib/essays.mjs';
 import { writeSyndicationIds } from './lib/frontmatter.mjs';
 import { mdxToMarkdown } from './lib/markdown.mjs';
