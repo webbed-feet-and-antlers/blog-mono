@@ -10,7 +10,7 @@
 // syndication package artifact with the SEO-correct instructions (use Medium's
 // "Import a story" so the canonical link points back to our own site). The
 // package file is uploaded by the workflow for a ~30-second manual paste.
-import { seedPackage, addPlatformNote } from '../manual-package.mjs';
+import { seedPackage, addPlatformNote, packagePath } from '../manual-package.mjs';
 
 export const name = 'medium';
 
@@ -25,7 +25,7 @@ export function available() {
  * @param {string} opts.canonicalUrl
  * @param {string[]} opts.tags
  * @param {string} opts.slug
- * @returns {Promise<{id: string, url: string}>}
+ * @returns {Promise<{id: string, url: string}>} url is the package file path
  */
 export async function publish({ title, bodyMarkdown, canonicalUrl, tags, slug }) {
   await seedPackage({ slug, title, canonicalUrl, bodyMarkdown, tags });
@@ -33,15 +33,19 @@ export async function publish({ title, bodyMarkdown, canonicalUrl, tags, slug })
     slug,
     platform: 'Medium',
     instructions: [
-      'Best option: use Medium → **Import a story** and paste the canonical URL',
-      `(\`${canonicalUrl}\`). Medium scrapes your post and **automatically sets the`,
-      'canonical link back to your site** — SEO-safe.',
+      'Best option: use Medium → **Import a story** and paste the canonical URL.',
+      'Medium scrapes your post and **automatically sets the canonical link back',
+      'to your site** — SEO-safe.',
+      '',
+      'Canonical URL (copy-paste):',
+      '',
+      `<${canonicalUrl}>`,
       '',
       'Alternative: paste the body above into a new Medium story, then manually',
-      `set the canonical link (⋯ → Story settings → Canonical link) to \`${canonicalUrl}\`.`,
+      'set the canonical link (⋯ → Story settings → Canonical link) to the URL above.',
     ].join('\n'),
   });
-  return { id: 'manual', url: '(manual paste — see package artifact)' };
+  return { id: 'manual', url: packagePath(slug) };
 }
 
 export function publicUrl() {

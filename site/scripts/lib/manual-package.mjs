@@ -68,7 +68,10 @@ export async function seedPackage({ slug, title, canonicalUrl, bodyMarkdown, tag
 }
 
 /**
- * Append a platform-specific instruction to the package.
+ * Append a platform-specific instruction to the package. Dedup: if a block for
+ * the same platform already exists (from a prior run), it is replaced in place
+ * rather than appended again — so re-running syndication doesn't grow the file
+ * with duplicate Medium/Substack blocks each time.
  *
  * @param {object} opts
  * @param {string} opts.slug
@@ -83,7 +86,24 @@ export async function addPlatformNote({ slug, platform, instructions }) {
     await mkdir(OUT_DIR, { recursive: true });
     await writeFile(file, '', 'utf8');
   }
-  const existing = await readFile(file, 'utf8');
+  let existing = await readFile(file, 'utf8');
+
+  // Strip any prior block for THIS platform before (re)appending, so repeated
+  // syndication runs don't accumulate duplicate platform notes. A platform
+  // block runs from its `**Platform**` marker up to the next `**Other**`
+  // marker (or end of file). The preceding newline is consumed too, so the
+  // strip is clean and re-running doesn't drift a blank line each time.
+  const marker = `**${platform}**`;
+  if (existing.includes(marker)) {
+    const start = existing.indexOf(marker);
+    // Find the next `**Platform**` marker after this one (line-anchored).
+    const after = existing.slice(start + marker.length).match(/\n\*\*[A-Z][A-Za-z0-9 ]+\*\*/);
+    const end = after ? start + marker.length + after.index : existing.length;
+    // Eat the leading newline(s) immediately before the marker too.
+    const leadStart = existing.slice(0, start).replace(/\n+$/, '');
+    existing = leadStart + existing.slice(end);
+  }
+
   const block = `\n**${platform}**\n\n${instructions}\n`;
   await writeFile(file, existing.trimEnd() + '\n' + block, 'utf8');
 }

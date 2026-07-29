@@ -4,7 +4,7 @@
 //
 // Manual platform: contributes to the shared syndication package artifact with
 // the SEO-safe guidance (post a teaser + link rather than the full body).
-import { seedPackage, addPlatformNote } from '../manual-package.mjs';
+import { seedPackage, addPlatformNote, packagePath } from '../manual-package.mjs';
 
 export const name = 'substack';
 
@@ -19,7 +19,7 @@ export function available() {
  * @param {string} opts.socialPost     - short blurb for a teaser intro
  * @param {string} opts.canonicalUrl
  * @param {string} opts.slug
- * @returns {Promise<{id: string, url: string}>}
+ * @returns {Promise<{id: string, url: string}>} url is the package file path
  */
 export async function publish({ title, bodyMarkdown, socialPost, canonicalUrl, slug }) {
   await seedPackage({ slug, title, canonicalUrl, bodyMarkdown });
@@ -32,13 +32,15 @@ export async function publish({ title, bodyMarkdown, socialPost, canonicalUrl, s
       'plus a "read more" link rather than the full body.',
       '',
       `Suggested teaser intro: ${socialPost || '(use the socialPost blurb)'}`,
-      `Then link: "Read the full essay → ${canonicalUrl}"`,
+      'Then link: "Read the full essay → " followed by:',
+      '',
+      `<${canonicalUrl}>`,
       '',
       'If you do paste the full body, accept the SEO trade-off (Substack will be',
       'treated as canonical by Google).',
     ].join('\n'),
   });
-  return { id: 'manual', url: '(manual paste — see package artifact)' };
+  return { id: 'manual', url: packagePath(slug) };
 }
 
 export function publicUrl() {

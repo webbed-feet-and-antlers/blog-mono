@@ -67,6 +67,27 @@ test('seedPackage + addPlatformNote: Medium and Substack compose into one file',
   assert.ok(content.indexOf('**Medium**') < content.indexOf('**Substack**'));
 });
 
+test('addPlatformNote: dedups — re-running does not duplicate a platform block', async () => {
+  // Regression: addPlatformNote used to append unconditionally, so each
+  // syndication run appended another Medium/Substack block to the same file.
+  const slug = 'pkg-dedup';
+  await seedPackage({ slug, title: 'T', canonicalUrl: 'u', bodyMarkdown: 'b', tags: [] });
+  // Simulate three syndication runs, each calling addPlatformNote again.
+  await addPlatformNote({ slug, platform: 'Medium', instructions: 'medium v1' });
+  await addPlatformNote({ slug, platform: 'Substack', instructions: 'substack v1' });
+  await addPlatformNote({ slug, platform: 'Medium', instructions: 'medium v2' });
+  await addPlatformNote({ slug, platform: 'Substack', instructions: 'substack v2' });
+  await addPlatformNote({ slug, platform: 'Medium', instructions: 'medium v3' });
+  const content = readFileSync(packagePath(slug), 'utf8');
+  // Each platform marker appears exactly once.
+  assert.equal((content.match(/\*\*Medium\*\*/g) || []).length, 1, 'Medium block appears once');
+  assert.equal((content.match(/\*\*Substack\*\*/g) || []).length, 1, 'Substack block appears once');
+  // Latest write wins (the most recent instructions are kept).
+  assert.ok(content.includes('medium v3'), 'latest Medium instructions retained');
+  assert.ok(content.includes('substack v2'), 'latest Substack instructions retained');
+  assert.ok(!content.includes('medium v1'), 'stale Medium instructions removed');
+});
+
 test('seedPackage: omits the Tags line when tags empty', async () => {
   const slug = 'pkg-notags';
   await seedPackage({ slug, title: 'T', canonicalUrl: 'u', bodyMarkdown: 'b', tags: [] });
