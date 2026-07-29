@@ -61,8 +61,8 @@ const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
     />
   </head>
   <body
-    class="min-h-screen bg-zinc-950 font-sans text-zinc-300 antialiased dark:bg-white dark:text-zinc-700"
-    style={`--wm: url('${path('inkpen-watermark.svg')}')`}
+    class="min-h-screen bg-zinc-950 font-sans text-zinc-300 antialiased dark:bg-white dark:text-zinc-700 [--wm:var(--wm-dark)] dark:[--wm:var(--wm-light)]"
+    style={`--wm-dark: url('${path('inkpen-watermark-dark.svg')}'); --wm-light: url('${path('inkpen-watermark-light.svg')}')`}
   >
     <Header />
     <main>

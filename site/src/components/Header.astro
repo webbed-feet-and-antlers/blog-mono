@@ -21,9 +21,25 @@ const links = [
   <nav class="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
     <a
       href={path()}
-      class="flex items-center gap-2 tracking-tight text-zinc-100 dark:text-zinc-900"
+      class="flex items-center gap-2 tracking-tight text-zinc-100 transition-opacity hover:opacity-80 dark:text-zinc-900"
+      aria-label="The Inkpens — home"
     >
-      <img src={path('favicon.svg')} alt="" width="20" height="20" class="rounded" />
+      {/* Inline SVG so currentColor adapts to light/dark; an <img> can't inherit color. */}
+      <svg
+        class="h-7 w-7"
+        viewBox="686.5 361 200 200"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="10"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M800.72606,370.34118c0,0 -8.90384,14.67432 -11.57347,21.74409c-3.43951,3.71737 -6.73404,5.2409 -8.14237,8.26c-1.56177,3.34803 2.13882,6.3512 0.68061,11.64159c-5.20655,7.87421 -16.0197,15.86444 -25.45274,23.25953c-15.33725,13.76043 -23.22756,12.55727 -29.27398,22.51079c-6.38398,10.5092 -0.37099,22.15884 -6.55092,39.89213c-4.13263,16.7941 -17.88627,54.00951 -17.88627,54.00951c0,0 31.32073,-22.41958 46.62092,-29.69785c27.94932,-14.65009 38.71874,-9.50728 45.55586,-16.17718c2.57764,-9.60396 6.51789,-21.79005 10.93229,-32.68426c4.64251,-11.45716 13.42927,-29.71637 18.27356,-34.36969c4.19749,-1.74243 6.92678,4.69839 8.80721,3.269c2.06351,-1.56855 -1.11195,-9.30029 1.67754,-14.14104c5.2622,3.02185 36.07878,-27.04922 36.07878,-27.04922" />
+        <path d="M785.99619,394.54025l25.2512,15.782l21.39338,17.88627" />
+        <path d="M783.60767,411.9146c0,0 10.18722,7.99283 16.41697,12.08538c6.94383,4.56166 21.39338,15.43129 21.39338,15.43129" />
+        <path d="M751.01221,479.02992c-0.24331,19.03304 -37.63294,58.50399 -42.31352,64.21459c-2.01278,3.27786 23.19956,-30.21511 42.24583,-55.12489c9.6223,0.41562 20.16484,-3.69444 14.009,-15.7215c-2.75345,-3.0288 -14.08,0.50946 -13.94131,6.6318z" />
+      </svg>
       <span class="font-serif text-base font-semibold">The Inkpens<span class="text-brand-500">.</span></span>
     </a>
     <div class="flex items-center gap-1">
