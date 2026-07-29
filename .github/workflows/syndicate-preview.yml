@@ -1,0 +1,108 @@
+name: Syndicate (preview)
+
+# Option 1 — automatic DRY-RUN when an essay lands on main. Fires on any push
+# to main that touches essays/**, runs the full syndication pipeline against the
+# real platform secrets (so the preview shows actual 'would-post' plans with
+# thread counts, image attachment flags, etc.), and writes the result to the
+# Actions job summary. Posts nothing, commits nothing.
+#
+# Loop prevention: the on-merge publish workflow commits syndication IDs back
+# into essays/*.mdx, which would re-trigger this preview. Those commits carry
+# '[skip preview]' in their message, and the job-level `if` below short-circuits
+# on it.
+#
+# Relationship to the other two workflows:
+#   - syndicate.yml          — manual workflow_dispatch (post on demand)
+#   - syndicate-preview.yml  — THIS file (auto dry-run on essay push)
+#   - syndicate-on-merge.yml — auto publish when a 'publish'-labeled PR merges
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'essays/**'
+
+permissions:
+  contents: read
+
+# Don't cancel a preview mid-flight; serial runs keep the output unambiguous.
+concurrency:
+  group: syndicate-preview
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    # Skip the auto-preview when the push is the syndication write-back commit
+    # (it carries '[skip preview]' to break the loop).
+    if: ${{ !contains(github.event.head_commit.message, '[skip preview]') }}
+    runs-on: ubuntu-latest
+    # Same environment as the live workflows — gives the dry-run access to the
+    # real platform secrets so you see actual 'would-post' plans. If you later
+    # add required reviewers to this environment, each auto-preview will pause
+    # for approval.
+    environment: syndication
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./site
+        run: npm ci
+
+      - name: Setup Playwright (cache by lockfile)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('site/package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        working-directory: ./site
+        run: npx playwright install --with-deps chromium
+
+      - name: Build site (emits the screenshot harness routes)
+        working-directory: ./site
+        run: npm run build
+
+      # Run the dry-run, capturing stdout+stderr to a log file for the summary
+      # step. The script exits 0 even on partial platform failures (a preview
+      # should show the failures, not red the run), so we don't gate on exit code.
+      - name: Syndicate (dry-run)
+        working-directory: ./site
+        run: |
+          node scripts/syndicate.mjs --dry-run=true > /tmp/dry-run.log 2>&1
+          cat /tmp/dry-run.log
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://webbed-feet-and-antlers.github.io/blog-mono' }}
+          PUBLIC_OG_BASE_URL: ${{ vars.PUBLIC_OG_BASE_URL }}
+          DEV_TO_API_KEY: ${{ secrets.DEV_TO_API_KEY }}
+          BLUESKY_IDENTIFIER: ${{ secrets.BLUESKY_IDENTIFIER }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          MASTODON_INSTANCE: ${{ secrets.MASTODON_INSTANCE }}
+          MASTODON_TOKEN: ${{ secrets.MASTODON_TOKEN }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          BUFFER_X_CHANNEL_ID: ${{ secrets.BUFFER_X_CHANNEL_ID }}
+          LINKEDIN_TOKEN: ${{ secrets.LINKEDIN_TOKEN }}
+          LINKEDIN_TOKEN_ISSUED: ${{ secrets.LINKEDIN_TOKEN_ISSUED }}
+          LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
+
+      # Surface the dry-run output on the Actions run page (ANSI stripped) so
+      # you can see what WOULD post without digging into raw logs. Runs even if
+      # the syndicate step failed, so a crash is still visible in the summary.
+      - name: Add dry-run output to job summary
+        if: always()
+        working-directory: ./site
+        run: |
+          {
+            echo "## POSSE dry-run preview"
+            echo
+            echo '```'
+            sed 's/\x1b\[[0-9;]*m//g' /tmp/dry-run.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
