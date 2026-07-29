@@ -8,10 +8,10 @@ import sitemap from '@astrojs/sitemap';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 
-// Project page on an org Pages site: https://webbed-feet-and-antlers.github.io/blog-mono/
+// Custom apex domain: https://inkpens.tech
 export default defineConfig({
-  site: 'https://webbed-feet-and-antlers.github.io',
-  base: '/blog-mono',
+  site: 'https://inkpens.tech',
+  base: '/',
   integrations: [
     // Expressive Code MUST come before mdx so it can process fenced code blocks.
     astroExpressiveCode({
