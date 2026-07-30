@@ -9,6 +9,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check",
+    "test": "node --test",
+    "syndicate": "node --env-file-if-exists=.env scripts/syndicate.mjs",
     "astro": "astro"
   },
   "dependencies": {
@@ -16,21 +18,34 @@
     "@astrojs/react": "^4.0.0",
     "@astrojs/rss": "^4.0.0",
     "@astrojs/sitemap": "^3.2.1",
+    "@fontsource/inter": "^5.3.0",
     "@tailwindcss/vite": "^4.0.0",
     "astro": "^5.0.0",
     "astro-expressive-code": "^0.41.0",
+    "gray-matter": "^4.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.13.0",
     "rehype-katex": "^7.0.1",
+    "rehype-stringify": "^10.0.1",
+    "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "tailwindcss": "^4.0.0"
+    "remark-mdx": "^3.1.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "remark-stringify": "^11.0.0",
+    "satori": "^0.29.0",
+    "sharp": "^0.34.0",
+    "tailwindcss": "^4.0.0",
+    "unified": "^11.0.5",
+    "unist-util-remove": "^4.0.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
     "@tailwindcss/typography": "^0.5.16",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "playwright": "^1.62.0",
     "typescript": "^5.6.0"
   }
 }

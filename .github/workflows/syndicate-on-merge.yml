@@ -1,0 +1,111 @@
+name: Syndicate (on merge)
+
+# Option 3 — automatic LIVE publish when a PR labeled 'publish' is merged to main.
+# No label (or a close-without-merge) = nothing happens. The label is the explicit
+# opt-in, so everyday merges that touch essays (e.g. copy fixes) never post.
+#
+# Loop prevention: this workflow's commit step writes syndication IDs back into
+# essays/*.mdx, which would re-trigger the preview workflow. The commit message
+# carries '[skip preview]' and syndicate-preview.yml's job-level `if` skips on it.
+#
+# Create the label once (repo owner):
+#   gh label create publish --description "Merge publishes this essay to all platforms" --color F59E0B
+#
+# Relationship to the other two workflows:
+#   - syndicate.yml          — manual workflow_dispatch (post on demand)
+#   - syndicate-preview.yml  — auto dry-run on essay push to main
+#   - syndicate-on-merge.yml — THIS file (auto publish on labeled-PR merge)
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write # to commit syndication IDs back into essay frontmatter
+
+# Shares the `syndicate` group with the manual workflow so a manual publish and
+# an auto publish can't run concurrently (prevents double-posting). Serial, no cancel.
+concurrency:
+  group: syndicate
+  cancel-in-progress: false
+
+jobs:
+  syndicate:
+    # Only publish when the PR was actually merged AND carries the 'publish' label.
+    # A plain close, or a merge without the label, skips this job (shows gray, not red).
+    if: ${{ github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'publish') }}
+    runs-on: ubuntu-latest
+    # Gates all platform secrets behind the same environment as the manual workflow.
+    environment: syndication
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./site
+        run: npm ci
+
+      - name: Setup Playwright (cache by lockfile)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('site/package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        working-directory: ./site
+        run: npx playwright install --with-deps chromium
+
+      - name: Build site (emits the screenshot harness routes)
+        working-directory: ./site
+        run: npm run build
+
+      - name: Syndicate
+        working-directory: ./site
+        run: |
+          node scripts/syndicate.mjs --dry-run=false
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://webbed-feet-and-antlers.github.io/blog-mono' }}
+          PUBLIC_OG_BASE_URL: ${{ vars.PUBLIC_OG_BASE_URL }}
+          DEV_TO_API_KEY: ${{ secrets.DEV_TO_API_KEY }}
+          BLUESKY_IDENTIFIER: ${{ secrets.BLUESKY_IDENTIFIER }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          MASTODON_INSTANCE: ${{ secrets.MASTODON_INSTANCE }}
+          MASTODON_TOKEN: ${{ secrets.MASTODON_TOKEN }}
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+          BUFFER_X_CHANNEL_ID: ${{ secrets.BUFFER_X_CHANNEL_ID }}
+          LINKEDIN_TOKEN: ${{ secrets.LINKEDIN_TOKEN }}
+          LINKEDIN_TOKEN_ISSUED: ${{ secrets.LINKEDIN_TOKEN_ISSUED }}
+          LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
+          # Medium and Substack are manual platforms (no clean API) — no secrets.
+          # The syndication-package artifact they produce is uploaded below for paste.
+
+      # Always upload the manual syndication packages (Medium + Substack) and
+      # any per-run output, even if the run fails, so the manual platforms can
+      # be pasted by hand from a single download.
+      - name: Upload syndication packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: syndication-packages
+          path: site/.syndication-output/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Record returned IDs back into frontmatter AND commit the auto-generated
+      # component screenshots (they live in public/sshot and are served by Pages
+      # — they must be permanent since dev.to/Medium hotlink rather than re-host).
+      # The '[skip preview]' tag breaks the loop with syndicate-preview.yml,
+      # which would otherwise re-fire on this essays/*.mdx commit.
+      - name: Commit syndication IDs + screenshots
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore(syndicate): record cross-post IDs + screenshots [skip preview]"
+          file_pattern: "essays/*.mdx essays/*.md site/public/sshot/*.png"
