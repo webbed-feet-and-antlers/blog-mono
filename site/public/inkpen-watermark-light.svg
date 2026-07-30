@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="686.5 361 200 200" width="200" height="200">
   <!-- Hand-drawn fountain-pen nib watermark — LIGHT mode variant.
        Solid faint color (no opacity) so it reads as a soft tint, not a
-       see-through ghost. Used on the light background. -->
-  <g fill="none" fill-rule="nonzero" stroke="#d4d4d8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10">
+       see-through ghost. Used on the light background. Kept a light grey
+       (zinc-100) close to the page so it stays faint without vanishing. -->
+  <g fill="none" fill-rule="nonzero" stroke="#f4f4f5" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10">
     <path d="M800.72606,370.34118c0,0 -8.90384,14.67432 -11.57347,21.74409c-3.43951,3.71737 -6.73404,5.2409 -8.14237,8.26c-1.56177,3.34803 2.13882,6.3512 0.68061,11.64159c-5.20655,7.87421 -16.0197,15.86444 -25.45274,23.25953c-15.33725,13.76043 -23.22756,12.55727 -29.27398,22.51079c-6.38398,10.5092 -0.37099,22.15884 -6.55092,39.89213c-4.13263,16.7941 -17.88627,54.00951 -17.88627,54.00951c0,0 31.32073,-22.41958 46.62092,-29.69785c27.94932,-14.65009 38.71874,-9.50728 45.55586,-16.17718c2.57764,-9.60396 6.51789,-21.79005 10.93229,-32.68426c4.64251,-11.45716 13.42927,-29.71637 18.27356,-34.36969c4.19749,-1.74243 6.92678,4.69839 8.80721,3.269c2.06351,-1.56855 -1.11195,-9.30029 1.67754,-14.14104c5.2622,3.02185 36.07878,-27.04922 36.07878,-27.04922" />
     <path d="M785.99619,394.54025l25.2512,15.782l21.39338,17.88627" />
     <path d="M783.60767,411.9146c0,0 10.18722,7.99283 16.41697,12.08538c6.94383,4.56166 21.39338,15.43129 21.39338,15.43129" />

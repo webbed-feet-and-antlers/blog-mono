@@ -33,8 +33,35 @@
   --color-brand-950: #1e1b4b;
 }
 
-html {
-  scroll-behavior: smooth;
+/* Visually hidden but available to screen readers. Tailwind v4 ships no
+   .sr-only by default, so we define the standard clipping pattern here. Also
+   exposes .focus\\:not-sr-only for the skip-to-content link (revealed on focus). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.focus\:not-sr-only:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0.75rem 1rem;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 /* Anchor offset so headings aren't hidden under the sticky header when jumped to. */

@@ -23,10 +23,22 @@ import { visit } from 'unist-util-visit';
 const INTERACTIVE_NOTE = (canonicalUrl) =>
   `\n\n> 🔁 *Parts of this essay are interactive on the original post — see them live: ${canonicalUrl}*`;
 
+// Per-image "try it live" caption — emitted under each static screenshot so a
+// reader on a platform that can't run React knows the demo is interactive on the
+// canonical site. Raw HTML so it survives remark-rehype for the Medium/Substack
+// paste path; renders as a small centred link. Dev.to shows it inline too.
+const IMAGE_CAPTION = (canonicalUrl) =>
+  `<p style="text-align:center;font-size:0.9em;"><a href="${canonicalUrl}">↗ Try this demo live on inkpens.tech</a></p>`;
+
 /**
  * @param {string} mdxBody
  * @param {string} canonicalUrl
- * @param {Record<string, string>} [componentImages] - { BinPacker: "https://.../sshot/binpacker-x.png" }
+ * @param {Record<string, string | {dark?: string, light?: string}>} [componentImages]
+ *   - A string value is a single image URL (legacy / single-shot).
+ *   - An object value { dark, light } is a themed pair → emitted as a <picture>
+ *     that switches on prefers-color-scheme, with the dark image as the <img>
+ *     fallback (dev.to/Medium strip <picture> and show the <img> only, so dark
+ *     — the site's default — is what most readers see).
  * @returns {Promise<string>} sanitized Markdown
  */
 export async function mdxToMarkdown(mdxBody, canonicalUrl, componentImages = {}) {
@@ -44,30 +56,49 @@ export async function mdxToMarkdown(mdxBody, canonicalUrl, componentImages = {})
 
   const tree = processor.parse(noImports);
 
+  // Build the replacement NODES for a component tag: the image (a <picture>
+  // for a themed pair, a plain image for a single string) followed by a
+  // "try it live" caption linking to the canonical site. Returns an array so
+  // the visitor can splice both in. An empty image node array means no
+  // screenshot — we still emit nothing (the trailing INTERACTIVE_NOTE covers it).
+  const buildImageNodes = (name) => {
+    const entry = componentImages[name];
+    if (!entry) return []; // no screenshot — drop tag, end note still appears
+    const alt = `${name} demo (interactive on the original post)`;
+
+    if (typeof entry === 'string') {
+      // Single image (back-compat).
+      return [{ type: 'paragraph', children: [{ type: 'image', url: entry, alt }] }];
+    }
+
+    // Themed pair. Prefer both; degrade to whichever we have.
+    const { dark, light } = entry;
+    if (dark && light) {
+      // Raw HTML node: <picture> switches on theme; <img> is the dark fallback.
+      const html = `<picture><source srcset="${light}" media="(prefers-color-scheme: light)"><img src="${dark}" alt="${alt}"></picture>`;
+      return [{ type: 'html', value: html }];
+    }
+    // Only one variant captured — emit it as a plain image.
+    const url = dark || light;
+    return [{ type: 'paragraph', children: [{ type: 'image', url, alt }] }];
+  };
+
   // Replace each JSX component tag (raw `html` node whose tag starts with a
-  // capital letter) with a Markdown image node if we have a screenshot,
-  // otherwise remove it. Doing this on the AST keeps position/spacing correct.
+  // capital letter) with its image + caption, otherwise remove it. Splicing on
+  // the AST keeps position/spacing correct.
   visit(tree, 'html', (node, index, parent) => {
     const tagMatch = node.value.match(/<([A-Z][A-Za-z0-9]*)\b/);
     if (!tagMatch) return;
-    const name = tagMatch[1];
-    const imageUrl = componentImages[name];
-    if (imageUrl && typeof index === 'number' && parent) {
-      // Replace in place with a paragraph containing a Markdown image.
-      parent.children[index] = {
-        type: 'paragraph',
-        children: [
-          {
-            type: 'image',
-            url: imageUrl,
-            alt: `${name} demo (interactive on the original post)`,
-          },
-        ],
-      };
-    } else if (typeof index === 'number' && parent) {
-      // No screenshot available — drop the tag entirely.
+    if (typeof index !== 'number' || !parent) return;
+    const imageNodes = buildImageNodes(tagMatch[1]);
+    if (imageNodes.length === 0) {
+      // No screenshot — drop the tag entirely.
       parent.children[index] = { type: 'paragraph', children: [] };
+      return;
     }
+    // Image node(s) + the "try it live" caption beneath it.
+    const replacement = [...imageNodes, { type: 'html', value: IMAGE_CAPTION(canonicalUrl) }];
+    parent.children.splice(index, 1, ...replacement);
   });
 
   let result = processor.stringify(tree);
@@ -100,8 +131,11 @@ export async function markdownToHtml(markdown) {
     .use(remarkParse)
     .use(remarkMath)
     .use(remarkGfm) // GFM tables, strikethrough, autolinks
-    .use(remarkRehype)
-    .use(rehypeStringify)
+    // allowDangerousHtml: mdxToMarkdown may emit a raw <picture> node for themed
+    // screenshot pairs. Without this, remark-rehype drops raw HTML to nothing,
+    // losing the image entirely on the Medium/Substack paste path.
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeStringify, { allowDangerousHtml: true })
     .process(markdown);
   return String(output);
 }

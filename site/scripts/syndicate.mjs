@@ -67,27 +67,48 @@ async function selectEssays(opts) {
     .sort((a, b) => new Date(a.data.pubDate) - new Date(b.data.pubDate));
 }
 
-// ── screenshot each interactive component in an essay ─────────────────────
-// Returns { ComponentName: absoluteImageUrl } for inlining into cross-post
-// Markdown. Best-effort: failures skip the image (the tag is still stripped,
-// the interactive note still appears). Skipped silently if Playwright isn't
-// installed or the harness wasn't built.
+// ── screenshot each interactive component in an essay (dark + light pair) ──
+// Returns { ComponentName: { dark, light } } (absolute image URLs) for inlining
+// into cross-post Markdown as a <picture>. Best-effort: if a variant fails we
+// fall back to whichever we have; if both fail the image is skipped entirely
+// (the tag is still stripped, the interactive note still appears). Skipped
+// silently if Playwright isn't installed or the harness wasn't built.
+const SHOT_THEMES = ['dark', 'light'];
+
 async function screenshotComponentsForEssay(essay, siteUrl, summary) {
   const names = componentsInBody(essay.body);
   if (names.length === 0) return {};
 
   const images = {};
   for (const name of names) {
-    try {
-      const result = await screenshotComponent({ componentName: name, slug: essay.slug });
-      if (result) {
-        images[name] = `${siteUrl}${result.url}`;
-        summary.push(`  ${c.dim('shot')}  ${name.padEnd(14)} → ${result.url}`);
-      } else {
-        summary.push(`  ${c.yellow('warn')} no screenshot harness for ${name} (run \`npm run build\` first)`);
+    const variants = {};
+    let failures = 0;
+    for (const theme of SHOT_THEMES) {
+      try {
+        const result = await screenshotComponent({ componentName: name, slug: essay.slug, theme });
+        if (result) {
+          variants[theme] = `${siteUrl}${result.url}`;
+          summary.push(`  ${c.dim('shot')}  ${name.padEnd(14)} ${theme.padEnd(5)} → ${result.url}`);
+        } else {
+          failures++;
+        }
+      } catch (err) {
+        summary.push(`  ${c.yellow('warn')} screenshot failed for ${name}/${theme}: ${err.message}`);
       }
-    } catch (err) {
-      summary.push(`  ${c.yellow('warn')} screenshot failed for ${name}: ${err.message}`);
+    }
+    // If every theme returned null, this component has no screenshot harness.
+    // That's expected when an essay's body mentions a tag in prose (e.g. an
+    // inline-code example like `<Component />`) that `componentsInBody` matched
+    // but which isn't a real island — so we stay quiet rather than warn. The tag
+    // is still stripped in the cross-post, and the trailing interactive note covers it.
+    if (failures === SHOT_THEMES.length) {
+      summary.push(`  ${c.dim('skip')} ${name.padEnd(14)} (no harness — likely documentation text, not a real component)`);
+    }
+    // Record an entry only if we got at least one variant. dark is the primary
+    // (it's the <img> fallback on platforms that strip <picture>); if we only
+    // have light, we still record it and mdxToMarkdown degrades gracefully.
+    if (variants.dark || variants.light) {
+      images[name] = variants;
     }
   }
   return images;

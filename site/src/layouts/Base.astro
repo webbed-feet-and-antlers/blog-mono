@@ -64,8 +64,16 @@ const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
     class="min-h-screen bg-zinc-950 font-sans text-zinc-300 antialiased dark:bg-white dark:text-zinc-700 [--wm:var(--wm-dark)] dark:[--wm:var(--wm-light)]"
     style={`--wm-dark: url('${path('inkpen-watermark-dark.svg')}'); --wm-light: url('${path('inkpen-watermark-light.svg')}')`}
   >
+    {/* Skip link: first focusable element, hidden until focused. Lets keyboard
+        users bypass the header/nav and jump straight to page content. */}
+    <a
+      href="#main"
+      class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-white"
+    >
+      Skip to content
+    </a>
     <Header />
-    <main>
+    <main id="main" tabindex="-1">
       <slot />
     </main>
     <Footer />

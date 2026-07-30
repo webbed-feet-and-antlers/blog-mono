@@ -8,9 +8,23 @@ test('tagStyle: known tag returns its color family classes', () => {
   assert.ok(s.includes('ring-1'));
 });
 
-test('tagStyle: unknown tag falls back to zinc', () => {
-  const s = tagStyle('something-new');
-  assert.ok(s.includes('zinc'), 'unknown -> zinc');
+test('tagStyle: unknown tag gets a (stable) color, never bare grey zinc', () => {
+  // Unknown tags are auto-colored by a hash, so they should NOT fall back to
+  // the grey zinc pill. Same input must always map to the same color.
+  const a = tagStyle('something-new');
+  const b = tagStyle('something-new');
+  assert.ok(!a.includes('text-zinc-400'), 'unknown tag should not be grey');
+  assert.equal(a, b, 'same tag must always get the same color');
+});
+
+test('tagStyle: different unknown tags can map to different colors', () => {
+  // Across enough distinct tags, the hash should produce more than one color.
+  const colors = new Set(
+    ['astro', 'mdx', 'web', 'github-pages', 'rust', 'sql', 'react', 'docker'].map(
+      (t) => tagStyle(t).match(/text-([a-z]+)-\d/)?.[1],
+    ),
+  );
+  assert.ok(colors.size > 1, 'expected more than one color across distinct tags');
 });
 
 test('tagStyle: lookup is case-insensitive', () => {

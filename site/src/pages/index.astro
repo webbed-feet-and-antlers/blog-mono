@@ -15,7 +15,11 @@ const essayCount = all.length;
   <!-- Editorial hero (text-only, dark-first) -->
   <section class="mx-auto max-w-5xl px-5 pt-10 pb-16">
     <div class="max-w-3xl">
-      <!-- <div class="mb-5 h-1 w-12 rounded-full bg-brand-500"></div> -->
+      <!-- <div class="mb-5 h-1 w-12 rounded-full bg-brand-500"></div> */}
+      {/* The page heading. The hand-drawn signature below is the visual hero, but
+          an SVG with role="img" is exposed to AT as an image, not a heading — so
+          this visually-hidden h1 gives the page a proper heading structure. */}
+      <h1 class="sr-only">The Inkpens</h1>
       {/* Hand-drawn "The Inkpens" signature as the hero wordmark. Inlined (not <img>)
           so currentColor adapts to light/dark — an <img> can't inherit color. */}
       <svg
