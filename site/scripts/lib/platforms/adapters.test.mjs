@@ -7,6 +7,7 @@ import * as buffer from './buffer.mjs';
 import * as linkedin from './linkedin.mjs';
 import * as medium from './medium.mjs';
 import * as substack from './substack.mjs';
+import * as indiehackers from './indiehackers.mjs';
 import { rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,7 +19,7 @@ const ADAPTER_ENV = {
   bluesky: { BLUESKY_IDENTIFIER: 'h.bsky.social', BLUESKY_APP_PASSWORD: 'p' },
   mastodon: { MASTODON_INSTANCE: 'https://m.social', MASTODON_TOKEN: 't' },
   buffer: { BUFFER_API_KEY: 'k', BUFFER_X_CHANNEL_ID: 'c' },
-  linkedin: { LINKEDIN_TOKEN: 't', LINKEDIN_PERSON_URN: 'urn:li:person:x' },
+  linkedin: { BUFFER_API_KEY: 'k', BUFFER_LINKEDIN_CHANNEL_ID: 'c' },
 };
 
 // Snapshot of env so each test can mutate cleanly.
@@ -46,10 +47,11 @@ for (const [name, mod, env] of [
   });
 }
 
-test('medium + substack: always available (manual platforms, no credentials)', () => {
+test('manual platforms: always available (no credentials)', () => {
   restoreEnv();
   assert.equal(medium.available(), true);
   assert.equal(substack.available(), true);
+  assert.equal(indiehackers.available(), true);
 });
 
 // --- dry-run paths: each API adapter short-circuits before any HTTP/fetch ---
@@ -59,7 +61,7 @@ const DRY_RUN_INPUTS = {
   bluesky: { posts: ['a', 'b'], imagePath: null, dryRun: true },
   mastodon: { posts: ['a'], imagePath: null, dryRun: true },
   buffer: { posts: ['a', 'b'], slug: 's', dryRun: true },
-  // linkedin dry-run needs a non-expiring token; see dedicated test below
+  linkedin: { posts: ['a'], canonicalUrl: 'https://x', slug: 's', dryRun: true },
 };
 
 for (const [name, mod, input] of [
@@ -67,6 +69,7 @@ for (const [name, mod, input] of [
   ['bluesky', bluesky, DRY_RUN_INPUTS.bluesky],
   ['mastodon', mastodon, DRY_RUN_INPUTS.mastodon],
   ['buffer', buffer, DRY_RUN_INPUTS.buffer],
+  ['linkedin', linkedin, DRY_RUN_INPUTS.linkedin],
 ]) {
   test(`${name}.publish(dryRun:true): returns dry-run id without calling fetch`, async () => {
     restoreEnv();
@@ -86,50 +89,6 @@ for (const [name, mod, input] of [
     }
   });
 }
-
-test('linkedin.publish: throws on expired token even in dry-run (checkTokenExpiry runs first)', async () => {
-  restoreEnv();
-  process.env.LINKEDIN_TOKEN = 't';
-  process.env.LINKEDIN_PERSON_URN = 'urn:li:person:x';
-  process.env.LINKEDIN_TOKEN_ISSUED = '2020-01-01T00:00:00Z'; // long expired
-  await assert.rejects(
-    () => linkedin.publish({ posts: ['p'], canonicalUrl: 'https://x', imagePath: null, dryRun: true }),
-    /EXPIRED/i
-  );
-});
-
-test('linkedin.publish: warns when token near expiry (within 5 days)', async () => {
-  restoreEnv();
-  process.env.LINKEDIN_TOKEN = 't';
-  process.env.LINKEDIN_PERSON_URN = 'urn:li:person:x';
-  // 58 days ago -> 2 days remaining -> within the 5-day warn window
-  const issued = new Date(Date.now() - 58 * 86400_000).toISOString();
-  process.env.LINKEDIN_TOKEN_ISSUED = issued;
-  await assert.rejects(
-    () => linkedin.publish({ posts: ['p'], canonicalUrl: 'https://x', imagePath: null, dryRun: true }),
-    /expires in/i
-  );
-});
-
-test('linkedin.publish: passes expiry check when token is fresh', async () => {
-  restoreEnv();
-  process.env.LINKEDIN_TOKEN = 't';
-  process.env.LINKEDIN_PERSON_URN = 'urn:li:person:x';
-  process.env.LINKEDIN_TOKEN_ISSUED = new Date().toISOString(); // just issued
-  const result = await linkedin.publish({ posts: ['p'], canonicalUrl: 'https://x', imagePath: null, dryRun: true });
-  assert.equal(result.id, 'dry-run');
-});
-
-test('linkedin.publish: errors if LINKEDIN_TOKEN_ISSUED is missing or unparseable', async () => {
-  restoreEnv();
-  process.env.LINKEDIN_TOKEN = 't';
-  process.env.LINKEDIN_PERSON_URN = 'urn:li:person:x';
-  delete process.env.LINKEDIN_TOKEN_ISSUED;
-  await assert.rejects(
-    () => linkedin.publish({ posts: ['p'], canonicalUrl: 'https://x', imagePath: null, dryRun: true }),
-    /LINKEDIN_TOKEN_ISSUED/i
-  );
-});
 
 // --- manual adapters: write to a temp dir, return {id:'manual'} ---
 
@@ -161,4 +120,17 @@ test('substack.publish: returns {id:"manual"}', async () => {
     title: 'T', bodyMarkdown: 'body', socialPost: 'blurb', canonicalUrl: 'https://x', slug: 's',
   });
   assert.equal(result.id, 'manual');
+});
+
+test('indiehackers.publish: returns {id:"manual"} and produces no HTTP', async () => {
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = () => { throw new Error('indiehackers must not fetch'); };
+  try {
+    const result = await indiehackers.publish({
+      title: 'T', bodyMarkdown: 'body', socialPost: 'blurb', canonicalUrl: 'https://x', tags: [], slug: 's',
+    });
+    assert.equal(result.id, 'manual');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
 });

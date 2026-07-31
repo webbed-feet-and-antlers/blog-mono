@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- grid: a bold receding perspective grid spanning the frame — evokes
+       layout/structure (mdx/web). Strong vanishing point lower-right. -->
+  <g stroke="{{ACCENT}}" fill="none" opacity="0.85" stroke-width="6" stroke-linecap="round">
+    <!-- vanishing-point lines converging toward (1180, 300) -->
+    <line x1="-50" y1="630" x2="1180" y2="300" />
+    <line x1="150" y1="630" x2="1180" y2="300" />
+    <line x1="380" y1="630" x2="1180" y2="300" />
+    <line x1="620" y1="630" x2="1180" y2="300" />
+    <line x1="880" y1="630" x2="1180" y2="300" />
+    <!-- lines from the top edge converging to the same point -->
+    <line x1="-50" y1="-50" x2="1180" y2="300" />
+    <line x1="250" y1="-50" x2="1180" y2="300" />
+    <line x1="560" y1="-50" x2="1180" y2="300" />
+    <line x1="860" y1="-50" x2="1180" y2="300" />
+  </g>
+  <!-- horizontal "depth" bands (thicker, anchor the perspective) -->
+  <g stroke="{{ACCENT}}" fill="none" opacity="0.75" stroke-width="5" stroke-linecap="round">
+    <line x1="-50" y1="580" x2="1180" y2="580" />
+    <line x1="0" y1="520" x2="1180" y2="520" />
+    <line x1="80" y1="450" x2="1180" y2="450" />
+    <line x1="180" y1="370" x2="1180" y2="370" />
+  </g>
+  <!-- a few accent nodes where lines intersect near the vanishing point -->
+  <g fill="{{ACCENT}}" opacity="0.9">
+    <circle cx="1180" cy="300" r="14" />
+    <circle cx="880" cy="370" r="8" /><circle cx="620" cy="370" r="8" />
+    <circle cx="860" cy="450" r="8" /><circle cx="560" cy="450" r="8" />
+  </g>
+</svg>

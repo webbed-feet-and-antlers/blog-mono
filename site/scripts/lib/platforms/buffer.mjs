@@ -6,7 +6,7 @@
 // automatically. Images via assets:[{image:{url}}] — Buffer needs a PUBLIC URL
 // it can fetch, so the OG image is only attached if PUBLIC_OG_BASE_URL is set
 // (the deployed site origin). Otherwise the thread posts text-only.
-const ENDPOINT = 'https://api.buffer.com';
+import { createPost, ogImageUrl } from '../buffer-client.mjs';
 
 export const name = 'buffer (X)';
 
@@ -23,10 +23,7 @@ export function available() {
  */
 export async function publish({ posts, slug, dryRun }) {
   const channelId = process.env.BUFFER_X_CHANNEL_ID;
-
-  // Buffer fetches media by public URL. Only attach if we have a public base.
-  const ogBase = (process.env.PUBLIC_OG_BASE_URL || '').replace(/\/$/, '');
-  const imageUrl = ogBase ? `${ogBase}/og-${slug}.png` : undefined;
+  const imageUrl = ogImageUrl(slug);
 
   if (dryRun) {
     return {
@@ -45,29 +42,7 @@ export async function publish({ posts, slug, dryRun }) {
     ...(imageUrl ? { assets: [{ image: { url: imageUrl } }] } : {}),
   };
 
-  const mutation = `mutation CreateThreadedPost($input: CreatePostInput!) {
-    createPost(input: $input) {
-      ... on PostActionSuccess { post { id status } }
-      ... on MutationError { message }
-    }
-  }`;
-
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.BUFFER_API_KEY}`,
-    },
-    body: JSON.stringify({ query: mutation, variables: { input } }),
-  });
-  if (!res.ok) {
-    throw new Error(`buffer createPost failed: ${res.status} ${await res.text()}`);
-  }
-  const json = await res.json();
-  const success = json?.data?.createPost?.post;
-  if (!success) {
-    throw new Error(`buffer createPost returned an error: ${json?.data?.createPost?.message ?? JSON.stringify(json)}`);
-  }
+  const success = await createPost(input);
   return { id: String(success.id), url: 'https://x.com' };
 }
 
