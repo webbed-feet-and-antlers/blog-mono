@@ -72,7 +72,7 @@ jobs:
         run: |
           node scripts/syndicate.mjs --dry-run=false
         env:
-          SITE_URL: ${{ vars.SITE_URL || 'https://webbed-feet-and-antlers.github.io/blog-mono' }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://inkpens.tech' }}
           PUBLIC_OG_BASE_URL: ${{ vars.PUBLIC_OG_BASE_URL }}
           DEV_TO_API_KEY: ${{ secrets.DEV_TO_API_KEY }}
           BLUESKY_IDENTIFIER: ${{ secrets.BLUESKY_IDENTIFIER }}
@@ -81,9 +81,7 @@ jobs:
           MASTODON_TOKEN: ${{ secrets.MASTODON_TOKEN }}
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
           BUFFER_X_CHANNEL_ID: ${{ secrets.BUFFER_X_CHANNEL_ID }}
-          LINKEDIN_TOKEN: ${{ secrets.LINKEDIN_TOKEN }}
-          LINKEDIN_TOKEN_ISSUED: ${{ secrets.LINKEDIN_TOKEN_ISSUED }}
-          LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
+          BUFFER_LINKEDIN_CHANNEL_ID: ${{ secrets.BUFFER_LINKEDIN_CHANNEL_ID }}
           # Medium and Substack are manual platforms (no clean API) — no secrets.
           # The syndication-package artifact they produce is uploaded below for paste.
 

@@ -9,7 +9,10 @@ interface Props {
   readingTime?: number;
 }
 const { entry, readingTime } = Astro.props;
-const { title, description, pubDate, updatedDate, tags, syndication } = entry.data;
+const { title, description, pubDate, updatedDate, tags, syndication, heroImage } = entry.data;
+// OG/hero image source: a per-post heroImage overrides the auto-generated card.
+const slug = entry.id.replace(/\.(md|mdx)$/, '');
+const ogImageSrc = heroImage ?? path(`og/${slug}.png`);
 const dateStr = pubDate.toLocaleDateString('en-US', {
   year: 'numeric',
   month: 'long',
@@ -39,7 +42,7 @@ const syndLinks: SyndLink[] = [
 ].filter((l): l is SyndLink => l !== undefined && l !== null && l !== 0 && l !== '');
 ---
 
-<Base title={title} description={description}>
+<Base title={title} description={description} image={ogImageSrc}>
   <article class="mx-auto max-w-3xl px-5 py-12">
     <header class="mb-10 border-b border-zinc-800 pb-8 dark:border-zinc-200">
       <h1 class="font-serif text-3xl font-semibold tracking-tight text-zinc-100 sm:text-4xl dark:text-zinc-900">

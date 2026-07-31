@@ -52,9 +52,10 @@ const essays = defineCollection({
         bluesky: z.string().optional(), // at:// record uri
         mastodon: z.string().optional(), // status id
         buffer: z.string().optional(), // Buffer update id (the X post)
-        linkedin: z.string().optional(), // share URN (urn:li:share:...)
+        linkedin: z.string().optional(), // Buffer post id (LinkedIn posted via Buffer)
         medium: z.string().optional(), // Medium post id
         substack: z.string().optional(), // left null; manual platform (no API)
+        indiehackers: z.string().optional(), // left null; manual platform (no API/RSS)
       })
       .optional(),
   }),

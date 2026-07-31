@@ -9,7 +9,7 @@ export async function GET(context: APIContext) {
   );
 
   // @astrojs/rss does NOT prepend the configured `base`, so we do it manually.
-  const base = import.meta.env.BASE_URL; // '/blog-mono'
+  const base = import.meta.env.BASE_URL;
   const baseWithTrailingSlash = base.endsWith('/') ? base : base + '/';
 
   return rss({
@@ -17,7 +17,7 @@ export async function GET(context: APIContext) {
     description:
       'Data science and machine learning notes from Becky & Nathan Inkpen.',
     // site must be the origin WITHOUT base; we prefix each item link instead.
-    site: context.site ?? 'https://webbed-feet-and-antlers.github.io',
+    site: context.site ?? 'https://inkpens.tech',
     items: essays.map((entry) => ({
       title: entry.data.title,
       description: entry.data.description,
