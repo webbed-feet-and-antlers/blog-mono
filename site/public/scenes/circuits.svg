@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- circuits: bold chip + dense traces spanning the frame. Fills the canvas
+       so it reads clearly behind the card content. -->
+  <g fill="none" stroke="{{ACCENT}}" stroke-width="6" stroke-linecap="round" opacity="0.9">
+    <!-- large chip die, upper-right -->
+    <rect x="900" y="70" width="240" height="240" rx="16" stroke-width="10" />
+    <rect x="950" y="120" width="140" height="140" rx="8" opacity="0.6" />
+    <!-- chip pin legs -->
+    <path d="M900 110 H 850 M900 150 H 850 M900 190 H 850 M900 230 H 850 M900 270 H 850" />
+    <path d="M1140 110 H 1190 M1140 150 H 1190 M1140 190 H 1190 M1140 230 H 1190 M1140 270 H 1190" />
+    <path d="M940 70 V 20 M980 70 V 20 M1020 70 V 20 M1060 70 V 20 M1100 70 V 20" />
+    <path d="M940 310 V 360 M980 310 V 360 M1020 310 V 360 M1060 310 V 360 M1100 310 V 360" />
+  </g>
+  <g fill="{{ACCENT}}" opacity="0.9">
+    <circle cx="850" cy="110" r="9" /><circle cx="850" cy="150" r="9" /><circle cx="850" cy="190" r="9" /><circle cx="850" cy="230" r="9" /><circle cx="850" cy="270" r="9" />
+    <circle cx="1190" cy="110" r="9" /><circle cx="1190" cy="150" r="9" /><circle cx="1190" cy="190" r="9" /><circle cx="1190" cy="230" r="9" /><circle cx="1190" cy="270" r="9" />
+  </g>
+  <g fill="none" stroke="{{ACCENT}}" stroke-width="6" stroke-linecap="round" opacity="0.85">
+    <!-- dense trace network fanning out lower-left across the frame -->
+    <path d="M850 190 H 700 V 320 H 560 V 250 H 380" />
+    <path d="M850 230 H 720 V 430 H 540 V 520 H 360" />
+    <path d="M850 270 H 740 V 380 H 600 V 470" />
+    <path d="M850 110 H 660 V 200 H 480" />
+    <path d="M700 320 H 300 V 460 H 120" />
+    <path d="M560 250 H 240 V 380" />
+    <path d="M380 250 H 120 V 150" />
+    <path d="M360 520 H 160 V 580 H 60" />
+    <path d="M540 430 H 280 V 580" />
+    <path d="M600 470 H 760 V 580" />
+    <path d="M480 200 H 200 V 80" />
+    <path d="M660 200 H 540 V 560" />
+  </g>
+  <g fill="{{ACCENT}}" opacity="0.85">
+    <!-- trace vias -->
+    <circle cx="700" cy="320" r="10" /><circle cx="560" cy="250" r="10" /><circle cx="380" cy="250" r="10" />
+    <circle cx="720" cy="430" r="10" /><circle cx="540" cy="520" r="10" /><circle cx="360" cy="520" r="10" />
+    <circle cx="740" cy="380" r="10" /><circle cx="600" cy="470" r="10" /><circle cx="480" cy="200" r="10" />
+    <circle cx="300" cy="460" r="10" /><circle cx="120" cy="460" r="10" /><circle cx="240" cy="380" r="10" />
+    <circle cx="120" cy="150" r="10" /><circle cx="200" cy="80" r="10" /><circle cx="160" cy="580" r="10" />
+  </g>
+</svg>

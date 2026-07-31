@@ -2,6 +2,7 @@
 import type { CollectionEntry } from 'astro:content';
 import { path } from '../lib/path';
 import { tagStyle } from '../lib/tags';
+import HeroImage from './HeroImage.astro';
 
 interface Props {
   entry: CollectionEntry<'essays'>;
@@ -21,6 +22,7 @@ const dateStr = pubDate.toLocaleDateString('en-US', {
     href={href}
     class="flex h-full flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 transition-colors hover:border-brand-500/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-zinc-200 dark:bg-white dark:hover:border-brand-500/50 dark:hover:bg-zinc-50 dark:focus-visible:ring-brand-500"
   >
+    <HeroImage entry={entry} size="thumb" />
     <time
       datetime={pubDate.toISOString()}
       class="font-mono text-[11px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500"

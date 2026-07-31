@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // POSSE syndicator: cross-posts each essay to dev.to, Bluesky, Mastodon,
-// X (via Buffer), LinkedIn, Medium, and emits a Substack teaser.
+// X (via Buffer), LinkedIn (via Buffer), Medium, and emits Substack + Indie
+// Hackers teasers.
 //
 // Native POSSE: per-platform copy + threads (reply-chained) + native image
 // attachment. The canonical URL lives in the last post of a thread (or a
@@ -26,6 +27,7 @@ import * as buffer from './lib/platforms/buffer.mjs';
 import * as linkedin from './lib/platforms/linkedin.mjs';
 import * as medium from './lib/platforms/medium.mjs';
 import * as substack from './lib/platforms/substack.mjs';
+import * as indiehackers from './lib/platforms/indiehackers.mjs';
 
 // ── args ──────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
@@ -138,8 +140,12 @@ async function syndicateEssay(essay, opts) {
   let imagePath = null;
   const anyWantsImage = Object.values(social).some((s) => s.image);
   if (anyWantsImage) {
+    // Rough reading-time estimate for the OG badge (≈200 wpm).
+    const readingMinutes = Math.max(1, Math.round(bodyMarkdown.trim().split(/\s+/).filter(Boolean).length / 200));
     imagePath = await renderOgImage({
       title: data.title,
+      tags: data.tags ?? [],
+      readingMinutes,
       subtitle: 'The Inkpens',
       brand: 'theinkpens',
       slug: essay.slug,
@@ -183,7 +189,7 @@ async function syndicateEssay(essay, opts) {
       key: 'linkedin',
       label: linkedin.name,
       available: () => linkedin.available(),
-      run: () => linkedin.publish({ posts: social.linkedin.posts, canonicalUrl, imagePath, dryRun: opts.dryRun }),
+      run: () => linkedin.publish({ posts: social.linkedin.posts, canonicalUrl, slug: essay.slug, dryRun: opts.dryRun }),
       skipIf: () => opts.essay === undefined && syndication.linkedin,
     },
     {
@@ -199,6 +205,13 @@ async function syndicateEssay(essay, opts) {
       available: () => substack.available(),
       run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: essay.slug }),
       skipIf: () => opts.essay === undefined && syndication.substack,
+    },
+    {
+      key: 'indiehackers',
+      label: indiehackers.name,
+      available: () => indiehackers.available(),
+      run: () => indiehackers.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, tags: data.tags ?? [], slug: essay.slug }),
+      skipIf: () => opts.essay === undefined && syndication.indiehackers,
     },
   ];
 

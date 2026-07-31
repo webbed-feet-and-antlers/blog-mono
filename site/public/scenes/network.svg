@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <!-- network: a bold hub-and-spoke distribution graph — one canonical source
+       fanning out to endpoints, plus a secondary mesh. POSSE/syndication theme. -->
+  <g stroke="{{ACCENT}}" stroke-width="6" opacity="0.85" stroke-linecap="round">
+    <!-- primary spokes from the hub (right side) -->
+    <line x1="990" y1="315" x2="1140" y2="120" />
+    <line x1="990" y1="315" x2="1180" y2="250" />
+    <line x1="990" y1="315" x2="1170" y2="400" />
+    <line x1="990" y1="315" x2="1090" y2="530" />
+    <line x1="990" y1="315" x2="900" y2="560" />
+    <line x1="990" y1="315" x2="820" y2="120" />
+    <!-- inter-node links -->
+    <line x1="1140" y1="120" x2="1180" y2="250" />
+    <line x1="1170" y1="400" x2="1090" y2="530" />
+    <line x1="820" y1="120" x2="900" y2="560" opacity="0.5" />
+    <!-- links from hub into the left mesh -->
+    <line x1="990" y1="315" x2="760" y2="300" />
+    <line x1="990" y1="315" x2="800" y2="450" />
+  </g>
+  <!-- secondary mesh on the left -->
+  <g stroke="{{ACCENT}}" stroke-width="5" opacity="0.7" stroke-linecap="round">
+    <line x1="760" y1="300" x2="600" y2="200" />
+    <line x1="600" y1="200" x2="480" y2="320" />
+    <line x1="480" y1="320" x2="760" y2="300" />
+    <line x1="480" y1="320" x2="380" y2="460" />
+    <line x1="380" y1="460" x2="800" y2="450" />
+    <line x1="380" y1="460" x2="220" y2="380" />
+    <line x1="220" y1="380" x2="480" y2="320" />
+    <line x1="220" y1="380" x2="160" y2="540" />
+    <line x1="160" y1="540" x2="380" y2="460" />
+    <line x1="600" y1="200" x2="760" y2="300" opacity="0.5" />
+  </g>
+  <g fill="{{ACCENT}}">
+    <!-- hub -->
+    <circle cx="990" cy="315" r="26" opacity="0.95" />
+    <circle cx="990" cy="315" r="42" fill="none" stroke="{{ACCENT}}" stroke-width="5" opacity="0.5" />
+  </g>
+  <g fill="{{ACCENT}}" opacity="0.9">
+    <!-- primary spokes -->
+    <circle cx="1140" cy="120" r="16" /><circle cx="1180" cy="250" r="14" /><circle cx="1170" cy="400" r="15" />
+    <circle cx="1090" cy="530" r="15" /><circle cx="900" cy="560" r="15" /><circle cx="820" cy="120" r="14" />
+    <!-- secondary mesh nodes -->
+    <circle cx="760" cy="300" r="16" /><circle cx="600" cy="200" r="14" /><circle cx="480" cy="320" r="15" />
+    <circle cx="800" cy="450" r="15" /><circle cx="380" cy="460" r="14" /><circle cx="220" cy="380" r="13" />
+    <circle cx="160" cy="540" r="12" />
+  </g>
+</svg>
