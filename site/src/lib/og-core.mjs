@@ -96,7 +96,6 @@ export async function renderOgImageBytes({
   title,
   tags = [],
   readingMinutes,
-  subtitle = 'The Inkpens',
   brand = 'theinkpens',
   previewImage,
   slug,

@@ -65,7 +65,10 @@ export const GET: APIRoute = async ({ props }) => {
   if (!png) {
     return new Response('OG image generation failed (font unavailable).', { status: 500 });
   }
-  return new Response(png, {
+  // Wrap the bytes in a fresh Uint8Array over its own ArrayBuffer so the TS DOM
+  // lib's BodyInit accepts it (newer libs reject shared/ArrayBufferLike views).
+  const body = new Uint8Array(png);
+  return new Response(body, {
     headers: {
       'Content-Type': 'image/png',
       // Deterministic per title — safe to cache forever once built.
