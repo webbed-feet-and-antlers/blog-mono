@@ -25,6 +25,7 @@ import * as bluesky from './lib/platforms/bluesky.mjs';
 import * as mastodon from './lib/platforms/mastodon.mjs';
 import * as buffer from './lib/platforms/buffer.mjs';
 import * as linkedin from './lib/platforms/linkedin.mjs';
+import * as linkedinArticle from './lib/platforms/linkedin-article.mjs';
 import * as medium from './lib/platforms/medium.mjs';
 import * as substack from './lib/platforms/substack.mjs';
 import * as indiehackers from './lib/platforms/indiehackers.mjs';
@@ -191,6 +192,17 @@ async function syndicateEssay(essay, opts) {
       available: () => linkedin.available(),
       run: () => linkedin.publish({ posts: social.linkedin.posts, canonicalUrl, slug: essay.slug, dryRun: opts.dryRun }),
       skipIf: () => opts.essay === undefined && syndication.linkedin,
+    },
+    {
+      // The long-form LinkedIn Article (125k-char, UI-only — no API). Distinct
+      // key from the short `linkedin` post so the two surfaces don't collide on
+      // the syndication-idempotency field. Mirrors Medium/Substack: packages the
+      // full body for a manual paste into LinkedIn's "Write an article" UI.
+      key: 'linkedinArticle',
+      label: linkedinArticle.name,
+      available: () => linkedinArticle.available(),
+      run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: essay.slug }),
+      skipIf: () => opts.essay === undefined && syndication.linkedinArticle,
     },
     {
       key: 'medium',

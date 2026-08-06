@@ -53,6 +53,7 @@ const essays = defineCollection({
         mastodon: z.string().optional(), // status id
         buffer: z.string().optional(), // Buffer update id (the X post)
         linkedin: z.string().optional(), // Buffer post id (LinkedIn posted via Buffer)
+        linkedinArticle: z.string().optional(), // left null; manual platform (LinkedIn Article UI — no API)
         medium: z.string().optional(), // Medium post id
         substack: z.string().optional(), // left null; manual platform (no API)
         indiehackers: z.string().optional(), // left null; manual platform (no API/RSS)
