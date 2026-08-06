@@ -10,6 +10,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "node --test",
+    "scan": "node scripts/scan-components.mjs",
     "syndicate": "node --env-file-if-exists=.env scripts/syndicate.mjs",
     "astro": "astro"
   },

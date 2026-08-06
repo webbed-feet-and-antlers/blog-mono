@@ -1,0 +1,260 @@
+---
+title: 'How We Built the Blog: An Astro + MDX Site on GitHub Pages'
+description: 'How we built a fast, durable, static blog that is still interactive with Astro 5, MDX islands, and GitHub Pages, and where we deliberately chose to send no JavaScript at all.'
+pubDate: 2026-07-30
+tags: ['astro', 'mdx', 'web', 'github-pages']
+socialPost: 'Built our blog on Astro + MDX + GitHub Pages: static by default, with React islands that hydrate only when you scroll to them. Zero JS for almost every reader; full interactivity where it earns its keep.'
+social:
+  twitter:
+    - '1/ How we built the blog: static by default, interactive on purpose. Astro + MDX, deployed to GitHub Pages.'
+    - "2/ Most pages ship zero JavaScript. Interactivity is an island — a React component that hydrates only when you scroll it into view, and nothing else. You're looking at one right now."
+    - "3/ The clever bit is the theming: dark-first by default via a one-line Tailwind custom variant. Bare classes are dark; 'dark:' prefixes actually style *light* mode. Inverts the usual convention."
+    - "4/ Content lives at the repo root (outside the Astro project) and is pulled in by a glob loader. Type-safe frontmatter via Zod. Essays and app code don't tangle."
+    - '5/ What we left out on purpose: no comments, no analytics, no client-side router, no framework driving the whole site. Each absence is a choice.'
+    - 'Full writeup, with a live React component embedded in the prose:'
+  bluesky:
+    - 'How we built the blog: static by default, interactive on purpose.'
+    - "Most readers get zero JavaScript. Interactivity lives in React islands that hydrate only when scrolled into view — there's one sitting in the prose of this very post. The theming trick is nice too: dark-first via a one-line Tailwind custom variant. ↩"
+  mastodon: 'How we built the blog: Astro + MDX + GitHub Pages. Static by default, interactive on purpose — React islands hydrate only when scrolled into view, so most readers get zero JavaScript. Dark-first theming via a one-line Tailwind custom variant, content co-located outside the app, type-safe frontmatter, and a deliberate list of things we left out.'
+  linkedin: |
+    We recently rebuilt our technical blog and the guiding principle was simple: static by default, interactive on purpose. The stack is Astro 5 (static output) with MDX for essays, React 19 for the rare interactive component, Tailwind 4 for styling, and GitHub Pages for hosting. The interesting part is the restraint — almost every page ships zero JavaScript. Interactivity is an island that hydrates only when scrolled into view, and there's nothing else. This post walks through the stack, how MDX gives us live components inside prose, a one-line Tailwind trick that makes the whole site dark-first by default, and — the part we're proudest of — a list of what we deliberately chose NOT to build.
+---
+
+import BinPacker from '../site/src/components/react/BinPacker';
+import RenderingStrategies from '../site/src/components/react/RenderingStrategies';
+
+Both Becky and I had the same issue: we have many different projects that are all in progress and in various states of barely to mostly “done”. We needed something to motivate us to actually finish projects and provide a clean breakpoint and artefact, to stop our projects endlessly continuing… as there's always just one more thing we need to do. So this blog is our attempt at just that.
+
+Naturally, the common choice for this is to host it on [GitHub Pages](https://docs.github.com/en/pages). The advantages are, obviously, GitHub handles the hassle of hosting for free! As our issue was various messy in progress projects, having a single mono repo for both this site and those projects seemed an obvious choice.
+
+We were inspired by [Josh Comeau’s fantastic blog](https://www.joshwcomeau.com/) and how he utilises interactive elements in the page to explain concepts. Another inspiration was [Cory Doctorow’s adoption of POSSE (post own site, syndicate everywhere)](https://pluralistic.net/2021/10/10/dead-letters/#more-6162), and we liked the idea of both allowing people to view our content wherever they please, with the reassurance we have a platform we actually control (we have more about this in another essay soon 😄.)
+
+So the next question is how? Specifically, what tech stack are we going to use? We decided to use Astro for it for a couple of reasons:
+
+Firstly, I'd not used Astro before as it was on my long list of tech to try, so it felt like a good opportunity.
+
+Secondly, I used to be a front-end developer, so I am quite comfortable with React and JavaScript but want the site to be as static as possible, which a classic client side rendered JavaScript app wouldn't be. [Astro](https://astro.build/) solves this as by default it compiles down to static HTML and CSS files, perfect for GitHub Pages and for SEO and search engines. But Astro has a trick up its sleeve… **island architecture**.
+
+## Why static, why Astro
+
+The content in blogs doesn't change often, only when we make a new post, so they are ideal for being static webpages. Building these manually is difficult and time-consuming so it's common to use a framework that supports **static site generation (SSG)**. These compile content, be it markdown files or from a database, into static pages at build time, so they are precomputed.
+
+However, if we want some content to be updated more often, like a comments section or interactive UI elements, SSG won't quite cut it. Pages that need to respond to users have 2 options: **server-side rendering (SSR)** or **client-side rendering (CSR)**.
+
+Server-side rendering essentially compiles a static webpage whenever a user attempts to view the page. This has the advantage that new content can get updated once the page is viewed, so things like comment sections can be more up to date. However, once you have the page, it's still static. This makes rich user interactivity challenging, hence why many web apps are client-side rendered **single-page applications (SPAs)**. Client-side rendering struggles with SEO and page loading speed as it requires downloading the JavaScript, then running it before any page renders.
+
+Island architecture elegantly solves most of these issues. Pages are assumed to be static and pre-generated, as most blog content is inherently static. Elements that require interactivity or more timely updates can be client- or server-side rendered within the static pages. This gives us the benefits of static and options for interactivity.
+
+To demonstrate why this matters, the [average website takes over 3 seconds to load](https://www.pingdom.com/blog/page-load-time-really-affect-bounce-rate/), and users don't tolerate long page loads. For websites that take 5 seconds, 90% of users will leave; this is especially relevant for blogs, as readers will simply leave if it takes too long before they can start reading.
+
+The interactive element above showcases the time for processing each step of a typical request when handled by each of the four rendering approaches.
+Watch how the moment the page becomes visible (FCP) and usable (TTI) shifts with each approach:
+
+<RenderingStrategies client:visible />
+
+Because blogs have low interactivity, the **time to interaction (TTI)** matters less than the time it takes for the page to be visible (**FCP - first contentful paint**).
+
+**Islands** paints as fast as a fully-static SSG, because the page just precomputes HTML, and then the handful of interactive elements load (hydrate) afterwards.
+
+## The interactivity story
+
+What we love about Josh Comeau's blog are the interactive elements in the page that help explain concepts in a more tangible way. The previous rendering strategy's interactive block is an example of this.
+
+### React islands, hydrated lazily
+
+Islands in Astro are what make this interaction possible, and they support various JS frameworks; we chose React. By giving the component `client:visible` it becomes an **island**. However, there is an issue here - if we download all the code for the interactive elements, that will slow initial page loads, and we know how important that is! Again, Astro has an answer. The code for our islands is
+**fetched and hydrated only when the component scrolls into the viewport**. This means it’s lazily loaded, and this keeps initial page loads as fast as static. When an interactive element comes into view, we download the code and then update (hydrate) the webpage with the UI of the interactive island component. A reader who never reaches it downloads none of the interactive element code, as most of the page is still plain HTML.
+
+This is another example of an actual component (ignore the bin-packing domain as it's a demo from one of our future essays!) the point is that **a real React component with state, event handlers, and recomputation.**
+
+<BinPacker client:visible budget={8192} />
+
+As it’s just a React component, it is instantiated with `<BinPacker client:visible budget={8192} />` in the MDX essay source. It has `useState`, a `useMemo` recomputing the packing on every change, click handlers that add and remove documents, and live efficiency stats. It runs in the browser and doesn’t exist on the server-rendered page until you scroll to it.
+
+### Astro `<script>` for the theme toggle
+
+Most interactive elements are islands; however… the theme toggle is actually _not_ a React island. This is necessary as we need to set the correct theme **before the first paint**, or you would get a flash of the wrong colors (FOUC - flash of unstyled content). As islands are lazily-hydrated this would cause it to flash. Instead, we use a small script in the `<head>` that runs immediately, before most of the content is painted:
+
+```js
+// Runs before paint: read saved theme (or OS preference), set the class.
+(function () {
+ const saved = localStorage.getItem('theme');
+ const light = saved === 'light' || (!saved && matchMedia('(prefers-color-scheme: light)').matches));
+ if (light) document.documentElement.classList.add('light');
+})();
+```
+
+As the theme is a simple component, this works better than an island and is just a few bytes of vanilla JS.
+
+### CSS interactivity where possible
+
+For simple ‘normal’ web interactivity like hover states, focus, transitions, the sticky header, the responsive layout - this is all Tailwind classes. So actually the vast majority of "interactivity" on the site is really just CSS, not Javascript, as CSS is free for these cases.
+
+## Why MDX, not just Markdown
+
+We store our essays in a separate folder and not in the same source directory as the website code. This allows for the essays to be portable and less coupled to our blog specifically. We chose to store them in MDX instead of the obvious choice of markdown.
+
+[MDX](https://mdxjs.com/) is an extension of markdown that allows for plugins/extensions. We utilise a pipeline of [remark](https://remark.js.org/)/[rehype](https://github.com/rehypejs/rehype) plugins that the build runs over it to allow for greater functionality than basic markdown offers.
+
+To demonstrate this:
+Everything below is rendered by the same build that produced this paragraph.
+
+**Components in text.** You can import React components and drop it into a sentence or, as above, render a full interactive island with `<BinPacker client:visible />`. But it's just that, JSX expressions work inline too.
+This sentence contains a value computed in the MDX module scope:
+one plus one is {1 + 1} (in the source it looks like `one plus one is {1 + 1}`, and this page was last updated {new Date().toLocaleDateString('en-US', { dateStyle: 'long' })} (`{new Date().toLocaleDateString('en-US', { dateStyle: 'long' })}`) . These aren’t static strings; they’re JavaScript expressions that are evaluated at build time.
+
+**Maths via [KaTeX](https://katex.org/)** (`remark-math` + `rehype-katex`). Inline math like $E = mc^2$ renders mid-sentence, and block math gets its own centred display. For example, the attention-cost equation from an essay we are working on appears like this:
+
+$$
+\text{cost} = \sum_i L_i^2 \;\neq\; B \cdot L_{\max}^2
+$$
+
+**Syntax-highlighted code**, with light and dark theme support, line numbers and a copy button. This is a step up from basic markdown code block rendering:
+
+```python
+def first_fit_decreasing(docs, budget):
+   """Sort descending, then greedily place each doc in the first batch it fits."""
+   for doc in sorted(docs, key=lambda d: -d.tokens):
+       for batch in batches:
+           if batch.used + doc.tokens <= budget:
+               batch.add(doc)
+               break
+       else:
+           batches.append(Batch(doc))
+```
+
+**GFM (GitHub Flavoured Markdown) tables**. As the official markdown spec doesn’t support tables, GitHub built their own flavour of markdown that does (with some other improvements too). This plugin supports markdown tables and renders them natively.
+
+| Extension         | Plugin                         | Renders as             |
+| ----------------- | ------------------------------ | ---------------------- |
+| Math              | `remark-math` + `rehype-katex` | KaTeX spans/blocks     |
+| Code highlighting | `astro-expressive-code`        | themed `<figure><pre>` |
+| Tables            | GFM (built into Astro)         | `<table>`              |
+| Components        | MDX + `@astrojs/react`         | hydrated React islands |
+
+**Styling typography**: all the headings, paragraphs, code blocks, tables, and lists are styled by the Tailwind Typography plugin's `prose` container. This lets us just write semantic Markdown and the build makes all the styles, or you're looking at it right now.
+
+## The real power: custom extensions
+
+The built-in plugins get you maths, code, and tables support. But the thing that makes MDX really worth it is that **you can build your own.** Any React component is a blog extension.
+
+### Building extensions is hard (but AI is getting good)
+
+The bottleneck to the interactive explainers is that you need to code a mini React app for each component explaining a concept. This is quite tedious and labour-intensive compared to just writing, which is why most blogs don't do this.
+
+However, LLMs have been focusing more on and improving their coding skills. React and Tailwind are a very common modern stack, and so has ample training data. Personally, we use GLM-5.2 via the coding plan from [z.ai](https://zcode.z.ai/en), and their model now scores very well on the [webdev arena](https://arena.ai/leaderboard/code/webdev).
+
+As creating these components is a repeated task and they must follow some guidelines, we created an agent skill to help guide the coding agent.
+
+### Codifying the rules
+
+Rather than having to prompt the agent to add the same parts to every component, we put our specific design and conventions into the skill.
+This includes rules on being dark mode first, add a `not-prose` wrapper to prevent our text styling clashing with the components' styles, and no new third-party dependencies. We also added instructions to make the components accessible and compatible for screenshotting (this will be important in a future essay) to the `SKILL.md` file, and included a starter template the agent can build new components from.
+
+In order to enforce consistent quality , we added a `verify.sh` script. This checks the component against our rules before anything ships and essentially acts as a linter. It checks:
+
+- Colour classes missing a `dark:` counterparts
+- Rejects external charting libraries to keep things lightweight
+- Ensures the component is wrapped correctly and registered in our test harness
+
+Now the flow for the coding agent has a simple feedback loop: **copy the template → add the logic → run the script → fix whatever it flags.**
+
+### Building as we write
+
+We still have a slight bottleneck of needing to prompt the agent to build each of the components, and writing these detailed prompts can be challenging. Instead, we now have a flow that works better for us:
+
+- **Prompt with plain prose:** we write the blog as normal, the same exact paragraph we’d have included anyway, then we can insert a placeholder for the agent to indicate we want an interactive component there. We can then simply ask the agent, and it utilises the surrounding blog paragraphs as context; the paragraph we wrote essentially acts as an implicit spec for the agent.
+- **Instant tweaks:** We can then follow up with the agent to improve the finishing touches. Changes take seconds as we use HMR (hot module reloading), allowing us to see the updated component and reducing the feedback loop to seconds.
+- **Normal, reviewable code:** As these components are all just standard React code, they get type-checked in CI with `astro check`. Us humans still review and own the code as we would any other part of the site.
+
+### Pragmatic Security: CSP + Build Scanner
+
+As these components are small and we’ll likely build many, there are some risks here. Running poorly checked AI code in-browser carries risk from hallucinated `fetch()` calls, dynamic `import()`s, or `innerHTML` injections.
+
+Our initial thought was to copy Anthropic's solution for the MCP apps protocol. They wanted MCP servers to be able to display UI within the Claude UI (think showing a Jira ticket with its UI in Claude, rather than just text about it). The issue was they couldn’t verify the safety of the code as they didn’t control it; their solution was to utilise a double iframe as a sandbox. This is actually how Claude makes its SVG-based diagrams; this unverified AI code is run as an MCP app and therefore is sandboxed off.
+
+This wouldn’t quite work for us as that level of containerization breaks Astro's native `client:visible` hydration model. Instead, we use a two-layer defence:
+
+1. **CI Build Scanner (`scan-components.mjs`):** This fails PRs containing `eval`, dynamic imports, DOM injection, or external `fetch` calls.
+2. **Strict CSP (`connect-src 'self'`):** This blocks network requests at the browser level just in case a bad network call ever slipped through.
+
+## Metadata
+
+The final part we need is to include metadata about the post. We decided to store this directly with each essay in the MDX file as type-safe frontmatter. This is the block of metadata that you can add at the start of a Markdown file:
+
+```md
+---
+title: 'How We Built the Blog: An Astro + MDX Site on GitHub Pages'
+description: 'How we built a fast, durable, static blog that is still interactive with Astro 5'
+pubDate: 2026-08-05
+tags: ['astro', 'mdx', 'react', 'web', 'github-pages']
+---
+
+Both Becky and I had the same issue; we have many different projects ...
+...
+THE REST OF THE ESSAY
+...
+```
+
+The `SKILL.md` spec also utilises this for the skill name and description:
+
+```md
+---
+
+name: skill-creator
+description: Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialised knowledge, workflows, or tool integrations.
+license: Complete terms in LICENSE.txt
+ーーー
+
+# Skill Creator
+
+This skill provides guidance for creating effective skills.
+...
+```
+
+As this metadata is processed by our site (the dates and tags are used for filters), we validate the metadata against a Zod schema at build time. The `title`, `description`, and `pubDate` are required; `tags` default to empty; malformed dates or missing fields fail the build; this prevents us from shipping a broken page.
+
+## The stack at a glance
+
+There isn't much to it, which is the point:
+
+| Piece            | What it's for                                                                                                        |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Astro 5**      | The site framework. It builds to static HTML at compile time, so no server running at request time.                  |
+| **MDX**          | The authoring format. Markdown, but you can drop components into the text.                                           |
+| **React 19**     | The framework we use with Astro and for the interactive bits that genuinely need client-side state. Hydrated lazily. |
+| **Tailwind 4**   | Styling, configured entirely in CSS via the Vite plugin. No `tailwind.config.js`.                                    |
+| **GitHub Pages** | Hosting. Free, static, and ours as long as the repo exists.                                                          |
+
+And that's the whole toolchain. We simply didn’t need a database, server runtime, client-side router, etc and we like to follow YAGNI (you’re not going to need it). The site builds to a folder of HTML/CSS/JS and that folder is served verbatim.
+
+## Deployment
+
+The deployment is again pretty boring, and boring is the goal as boring usually just works. Pushing to `main` triggers a GitHub Actions workflow that runs [`withastro/action`](https://github.com/withastro/action) to build the `site/` directory and publishes the result to GitHub Pages. Our custom domain (`inkpens.tech`) is configured by a one-line `CNAME` file in the public assets. As this site rarely gets updated, it’s just one concurrent deployment at a time, and no mid-flight cancellations, which makes the deployment pretty trivial. Again, [YAGNI](https://en.wikipedia.org/wiki/You_aren%27t_gonna_need_it) (you aren't going to need it).
+
+Before anything reaches `main`, a separate workflow checks the PRs. We type-check (`astro check`), build, and run the test suite (just Node.js's built-in test runner main). A broken essay or a type error in the frontmatter fails in PR, before we even deploy.
+
+## What we deliberately left out
+
+Here's the part we're proudest of, and like our best decisions, it's a list of negatives. Everything in the list was deliberately left out as it reduces maintenance and scopes down the project to just what matters:
+
+- **No comment system.** No Disqus or third-party embed to handle comments. Comments are a moderation and spam nightmare we don't need; we syndicate most of our content to other platforms too to help with engagement, so the conversation happens on the platforms we syndicate to anyway (more on this in a future post). If people want to contact us directly, our contact details and email address are available on the site under the [About](./about) section
+- **No invasive analytics or tracking.** We utilise basic analytics to get page view counts using [Umami](https://umami.is/)’s free hobby plan. This means we don’t need cookies or banners.
+- **No client-side router.** As it’s just a static site, there is no need for client-side routing. This simplifies the site and means there’s no JavaScript between you and the page. Navigation is a full page load, but for a blog that’s not a problem, and feels virtually instant on a static site.
+- **No framework driving the whole site.** Because the site is compiled, we can utilise React where it makes sense for the site. We utilise it primarily where interactivity and client-side rendering matters.
+
+## What we learned
+
+A few things we'd tell anyone starting an Astro blog:
+
+**Static until proven otherwise.** Default to SSG and only upgrade to a proper server if you actually need it. It makes the deployment story, the performance, and the durability much simpler.
+
+**Interactivity is an island, not a default.** You don't need React for the whole page; you can just use it where you actually get benefits. Astro’s `client:visible` means you only pay the interactivity tax when a reader actually sees it; if they just load the page, it’s essentially the same as pure static.
+
+**Content collections + Zod beat ad-hoc frontmatter.** Type checking and validating frontmatter can catch the mistakes that you might otherwise miss and can check it on PR. It's a small upfront cost for a decent guarantee, so it’s worth it.
+
+**Co-locate for authoring, separate for build.** Keep your essays and posts at the repo root and separate from the app in `site/`, you can then pull them together using a glob loader. The content stays portable, and the app doesn’t get cluttered with posts.
+
+**Dark-first is a one-line custom variant.** You don't need a theming library to default to dark mode. You can use a `@custom-variant` line to flip the light and dark mode convention.
+
+The full source code for the site [lives on our GitHub](https://github.com/webbed-feet-and-antlers/blog-mono) along with all our future work and experiments.

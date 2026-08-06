@@ -28,6 +28,7 @@ import '../../../styles/global.css';
 import BinPacker from '../../../components/react/BinPacker';
 import Chart from '../../../components/react/Chart';
 import LearningRateScheduler from '../../../components/react/LearningRateScheduler';
+import RenderingStrategies from '../../../components/react/RenderingStrategies';
 
 // Components this harness can render. Each must also have an explicit import
 // above AND a render branch below (Astro's client:only compiler constraint).
@@ -37,7 +38,7 @@ import LearningRateScheduler from '../../../components/react/LearningRateSchedul
 
 export async function getStaticPaths() {
   // Must match the imports + render branches below.
-  const KNOWN = new Set(['BinPacker', 'Chart', 'LearningRateScheduler']);
+  const KNOWN = new Set(['BinPacker', 'Chart', 'LearningRateScheduler', 'RenderingStrategies']);
   const __dirname = dirname(fileURLToPath(import.meta.url));
   // src/pages/sshot/[component] -> site/ -> repo root -> essays/
   const essaysDir = join(__dirname, '..', '..', '..', '..', '..', 'essays');
@@ -88,7 +89,7 @@ export async function getStaticPaths() {
 const { component, theme } = Astro.params;
 // Page-scope KNOWN for the defensive "unknown component" render below. getStaticPaths
 // already filters to these, so this branch only fires if the two lists drift apart.
-const KNOWN = new Set(['BinPacker', 'Chart', 'LearningRateScheduler']);
+const KNOWN = new Set(['BinPacker', 'Chart', 'LearningRateScheduler', 'RenderingStrategies']);
 // Dark-first: no class on <html> renders the dark default; .light opts into light.
 const rootClass = theme === 'light' ? 'light' : '';
 ---
@@ -129,6 +130,7 @@ const rootClass = theme === 'light' ? 'light' : '';
         />
       )}
       {component === 'LearningRateScheduler' && <LearningRateScheduler client:only="react" />}
+      {component === 'RenderingStrategies' && <RenderingStrategies client:only="react" />}
       {!KNOWN.has(component) && (
         <div class="unknown">
           Unknown component: {component}. If this is a new component, add an import
