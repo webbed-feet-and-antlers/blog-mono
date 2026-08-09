@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..agent.graph import run_generation
 from ..db import get_session
-from ..models import Document
+from ..models import ContentItem, Document
 from ..schemas import ContentItemOut, GenerateRequest
 
 router = APIRouter(prefix="/api/generate", tags=["generate"])
@@ -45,4 +45,8 @@ async def generate(
 
     # Commit the ContentItem + memory writes the agent staged on the session.
     await session.commit()
-    return item
+
+    # Re-fetch the persisted ContentItem so the response includes server-set
+    # fields (created_at) the agent's in-memory dict doesn't carry.
+    saved = await session.get(ContentItem, item["id"])
+    return saved

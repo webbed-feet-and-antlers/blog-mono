@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -106,7 +106,7 @@ class AgentMemoryOut(BaseModel):
     scope: str
     ref_id: str
     key: str
-    value: dict
+    value: Any
     updated_at: datetime
 
     model_config = {"from_attributes": True}

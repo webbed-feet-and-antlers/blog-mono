@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -81,6 +81,10 @@ class AgentMemory(Base):
     """
 
     __tablename__ = "agent_memory"
+    __table_args__ = (
+        # Upsert target: one value per (scope, ref_id, key).
+        UniqueConstraint("scope", "ref_id", "key", name="uq_agent_memory_scope_ref_key"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     scope: Mapped[str] = mapped_column(String, nullable=False)  # doc|user
