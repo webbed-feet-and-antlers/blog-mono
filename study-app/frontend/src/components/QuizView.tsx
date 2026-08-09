@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, X, Loader2 } from "lucide-react";
 import * as api from "../api/client";
 import type { QuizContent, QuizQuestion } from "../types";
 
@@ -8,17 +9,17 @@ interface Props {
   content: QuizContent;
 }
 
+const LETTERS = ["A", "B", "C", "D", "E", "F"];
+
 export function QuizView({ contentId, content }: Props) {
   const queryClient = useQueryClient();
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
 
   const submit = useMutation({
-    mutationFn: (a: Record<string, number>) =>
-      api.submitQuiz(contentId, a),
+    mutationFn: (a: Record<string, number>) => api.submitQuiz(contentId, a),
     onSuccess: () => {
       setSubmitted(true);
-      // New attempt affects agent memory downstream.
       queryClient.invalidateQueries({ queryKey: ["memory"] });
     },
   });
@@ -32,15 +33,26 @@ export function QuizView({ contentId, content }: Props) {
   const scorePct = attempt
     ? Math.round((attempt.correct_count / attempt.total_count) * 100)
     : null;
+  const passed = scorePct !== null && scorePct >= 70;
 
   return (
     <div>
       {submitted && attempt && (
         <div className="score-banner">
-          Score: <strong>{attempt.correct_count}/{attempt.total_count}</strong>{" "}
-          ({scorePct}%) — {scorePct !== null && scorePct >= 70
-            ? "Nice work! 🎉"
-            : "Keep studying 💪"}
+          <div className={`score-ring ${passed ? "pass" : "fail"}`}>
+            {scorePct}%
+          </div>
+          <div className="score-info">
+            <div className="score-label">Your Score</div>
+            <div className="score-detail">
+              {attempt.correct_count}/{attempt.total_count} correct
+            </div>
+            <div className="score-msg">
+              {passed
+                ? "Nice work! You've got a solid grasp of this. 🎉"
+                : "Keep studying — you're getting there. 💪"}
+            </div>
+          </div>
         </div>
       )}
 
@@ -50,7 +62,8 @@ export function QuizView({ contentId, content }: Props) {
         return (
           <div className="quiz-q" key={q.id}>
             <div className="prompt">
-              {qi + 1}. {q.prompt}
+              <span className="q-num">{qi + 1}.</span>
+              <span>{q.prompt}</span>
             </div>
             {q.options.map((opt, oi) => {
               let cls = "quiz-opt";
@@ -65,17 +78,28 @@ export function QuizView({ contentId, content }: Props) {
                   key={oi}
                   className={cls}
                   onClick={() => select(q.id, oi)}
+                  disabled={submitted}
                 >
-                  {opt}
+                  <span className="opt-badge">{LETTERS[oi]}</span>
+                  <span>{opt}</span>
                 </button>
               );
             })}
             {submitted && (
-              <div className="quiz-explanation">
-                {picked === correctIdx
-                  ? "✅ Correct. "
-                  : "❌ Incorrect. "}
-                {q.explanation}
+              <div
+                className={`quiz-explanation ${
+                  picked === correctIdx ? "correct-exp" : "wrong-exp"
+                }`}
+              >
+                {picked === correctIdx ? (
+                  <Check size={16} className="exp-icon ok" />
+                ) : (
+                  <X size={16} className="exp-icon bad" />
+                )}
+                <span>
+                  {picked === correctIdx ? "Correct. " : "Not quite. "}
+                  {q.explanation}
+                </span>
               </div>
             )}
           </div>
@@ -85,16 +109,27 @@ export function QuizView({ contentId, content }: Props) {
       {!submitted && (
         <button
           className="primary"
+          style={{ marginTop: 8 }}
           disabled={Object.keys(answers).length < content.questions.length}
           onClick={() => submit.mutate(answers)}
         >
-          {submit.isPending
-            ? "Submitting…"
-            : `Submit (${Object.keys(answers).length}/${content.questions.length} answered)`}
+          {submit.isPending ? (
+            <>
+              <Loader2 size={16} className="spinner" />
+              Submitting…
+            </>
+          ) : (
+            <>
+              Submit (
+              {Object.keys(answers).length}/{content.questions.length} answered)
+            </>
+          )}
         </button>
       )}
       {submit.isError && (
-        <div className="error">Submit failed: {(submit.error as Error).message}</div>
+        <div className="error">
+          Submit failed: {(submit.error as Error).message}
+        </div>
       )}
     </div>
   );

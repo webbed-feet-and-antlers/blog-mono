@@ -1,5 +1,12 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  BookOpen,
+  FileText,
+  UploadCloud,
+  X,
+  Loader2,
+} from "lucide-react";
 import * as api from "../api/client";
 
 interface Props {
@@ -36,18 +43,31 @@ export function Sidebar({ selectedId, onSelect }: Props) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h1>📚 Study App</h1>
-        <p>Upload a document, then generate notes, quizzes, or flashcards.</p>
+        <div className="brand-mark">
+          <BookOpen size={20} strokeWidth={2.2} />
+        </div>
+        <div className="brand-text">
+          <h1>Study Studio</h1>
+          <p>AI-powered notes, quizzes & flashcards</p>
+        </div>
       </div>
 
       <div className="doc-list">
-        {docs.isLoading && <div className="loading">Loading…</div>}
+        {docs.isLoading && (
+          <div className="loading">
+            <Loader2 size={16} className="spinner" />
+            Loading…
+          </div>
+        )}
         {docs.data?.map((doc) => (
           <div
             key={doc.id}
             className={`doc-item ${doc.id === selectedId ? "active" : ""}`}
             onClick={() => onSelect(doc.id)}
           >
+            <span className="doc-icon">
+              <FileText size={17} />
+            </span>
             <div className="meta">
               <span className="filename">{doc.filename}</span>
               <span className="sub">
@@ -57,18 +77,19 @@ export function Sidebar({ selectedId, onSelect }: Props) {
               </span>
             </div>
             <button
-              className="small danger"
+              className="delete-btn ghost"
               onClick={(e) => {
                 e.stopPropagation();
                 remove.mutate(doc.id);
               }}
+              aria-label="Delete document"
             >
-              ✕
+              <X size={15} />
             </button>
           </div>
         ))}
-        {docs.data?.length === 0 && (
-          <div className="empty">No documents yet.</div>
+        {docs.data?.length === 0 && !docs.isLoading && (
+          <div className="empty">No documents yet</div>
         )}
       </div>
 
@@ -94,9 +115,22 @@ export function Sidebar({ selectedId, onSelect }: Props) {
             handleFiles(e.dataTransfer.files);
           }}
         >
-          {upload.isPending
-            ? "Uploading…"
-            : "📎 Drop a PDF / TXT / MD or click to upload"}
+          {upload.isPending ? (
+            <>
+              <Loader2 size={22} className="spinner dz-icon" />
+              Uploading…
+            </>
+          ) : (
+            <>
+              <UploadCloud size={24} className="dz-icon" />
+              <span>
+                Drop a file or <strong>click to upload</strong>
+              </span>
+              <span style={{ fontSize: "0.72rem", color: "var(--text-faint)" }}>
+                PDF, TXT, or MD
+              </span>
+            </>
+          )}
         </div>
         {upload.isError && (
           <div className="error">

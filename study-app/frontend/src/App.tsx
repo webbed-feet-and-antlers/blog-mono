@@ -1,5 +1,15 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  FileText,
+  CircleHelp,
+  Layers,
+  Sparkles,
+  Loader2,
+  BookOpen,
+  Trash2,
+  FileUp,
+} from "lucide-react";
 import * as api from "./api/client";
 import { ApiError } from "./api/client";
 import type { ContentItem, TaskType } from "./types";
@@ -8,10 +18,10 @@ import { NotesView } from "./components/NotesView";
 import { QuizView } from "./components/QuizView";
 import { FlashcardView } from "./components/FlashcardView";
 
-const TABS: { id: TaskType; label: string }[] = [
-  { id: "notes", label: "📝 Notes" },
-  { id: "quiz", label: "❓ Quiz" },
-  { id: "flashcards", label: "🎴 Flashcards" },
+const TABS: { id: TaskType; label: string; icon: typeof FileText }[] = [
+  { id: "notes", label: "Notes", icon: FileText },
+  { id: "quiz", label: "Quiz", icon: CircleHelp },
+  { id: "flashcards", label: "Flashcards", icon: Layers },
 ];
 
 export default function App() {
@@ -61,40 +71,53 @@ export default function App() {
 
       <main className="main">
         {!selectedDocId && (
-          <div className="empty">
-            <h2>No document selected</h2>
-            <p>Upload or pick a document from the sidebar to begin.</p>
+          <div className="empty-hero">
+            <div className="empty-icon">
+              <BookOpen size={34} strokeWidth={1.8} />
+            </div>
+            <h2>Start studying</h2>
+            <p>
+              Upload a document and your AI agent will generate study notes,
+              quizzes, and flashcards — learning as it goes.
+            </p>
           </div>
         )}
 
         {selectedDocId && (
           <>
             <div className="section-head">
+              <div className="doc-title-icon">
+                <FileText size={20} strokeWidth={1.8} />
+              </div>
               <h2>{doc.data?.filename ?? "Loading…"}</h2>
             </div>
 
             <div className="tabs">
-              {TABS.map((t) => (
-                <button
-                  key={t.id}
-                  className={`tab ${tab === t.id ? "active" : ""}`}
-                  onClick={() => setTab(t.id)}
-                >
-                  {t.label}
-                </button>
-              ))}
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={t.id}
+                    className={`tab ${tab === t.id ? "active" : ""}`}
+                    onClick={() => setTab(t.id)}
+                  >
+                    <Icon size={16} />
+                    {t.label}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Generate controls */}
-            <div style={{ marginBottom: 24 }}>
+            <div className="generate-bar">
               <input
                 className="hint-input"
                 placeholder={
                   tab === "quiz"
-                    ? "Optional hint, e.g. 'focus on chapter 3, 10 questions'"
+                    ? "Hint: focus on chapter 3, 10 questions"
                     : tab === "notes"
-                      ? "Optional hint, e.g. 'concise bullet points'"
-                      : "Optional hint, e.g. 'definition-style cards'"
+                      ? "Hint: concise bullet points"
+                      : "Hint: definition-style cards"
                 }
                 value={hint}
                 onChange={(e) => setHint(e.target.value)}
@@ -105,16 +128,24 @@ export default function App() {
                 disabled={generating}
                 onClick={() => generate.mutate()}
               >
-                {generating
-                  ? `🤖 Agent is generating ${tab}…`
-                  : `Generate ${tab} via agent`}
+                {generating ? (
+                  <>
+                    <Loader2 size={16} className="spinner" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} />
+                    Generate {tab}
+                  </>
+                )}
               </button>{" "}
               {latest && !generating && (
                 <button
-                  className="small danger"
+                  className="danger"
                   onClick={() => removeContent.mutate(latest.id)}
                 >
-                  Delete current
+                  <Trash2 size={15} />
                 </button>
               )}
             </div>
@@ -134,17 +165,23 @@ export default function App() {
 
             {generating && (
               <div className="loading">
-                The agent is reading the document, planning, and generating. This
-                takes a few seconds…
+                <Loader2 size={18} className="spinner" />
+                <div>
+                  The agent is reading the document, planning, and generating.
+                  This takes a few seconds…
+                </div>
               </div>
             )}
 
-            {!generating && latest && (
-              <ContentRender item={latest} />
-            )}
+            {!generating && latest && <ContentRender item={latest} />}
 
             {!generating && !latest && !content.isLoading && (
               <div className="empty">
+                <FileUp
+                  size={40}
+                  strokeWidth={1.4}
+                  style={{ margin: "0 auto 12px", display: "block", opacity: 0.3 }}
+                />
                 No {tab} yet. Click <strong>Generate</strong> to have the agent
                 create some.
               </div>

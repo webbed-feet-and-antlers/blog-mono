@@ -1,4 +1,10 @@
 import { useState } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Check,
+  RotateCcw,
+} from "lucide-react";
 import type { FlashcardContent } from "../types";
 
 interface Props {
@@ -12,6 +18,7 @@ export function FlashcardView({ content }: Props) {
 
   const card = content.cards[index];
   const isLast = index === content.cards.length - 1;
+  const progressPct = Math.round((known.size / content.cards.length) * 100);
 
   function next() {
     setFlipped(false);
@@ -23,50 +30,66 @@ export function FlashcardView({ content }: Props) {
   }
   function markKnown(value: boolean) {
     setKnown((prev) => {
-      const next = new Set(prev);
-      if (value) next.add(card.id);
-      else next.delete(card.id);
-      return next;
+      const updated = new Set(prev);
+      if (value) updated.add(card.id);
+      else updated.delete(card.id);
+      return updated;
     });
     if (!isLast) next();
   }
 
   return (
-    <div>
-      <div className="card-deck">
+    <div className="card-deck">
+      <div className="card-progress">
         <div
-          className="flashcard"
+          className="card-progress-fill"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
+
+      <div className="flashcard-scene">
+        <div
+          className={`flashcard ${flipped ? "flipped" : ""}`}
           onClick={() => setFlipped((f) => !f)}
-          key={card.id + String(flipped)}
         >
-          <span className="face-label">
-            {flipped ? "Answer" : "Question"} · click to flip
-          </span>
-          {flipped ? card.back : card.front}
+          <div className="card-face front">
+            <span className="face-pill">Question</span>
+            <div className="card-text">{card.front}</div>
+            <span className="card-hint">Click to flip</span>
+          </div>
+          <div className="card-face back">
+            <span className="face-pill">Answer</span>
+            <div className="card-text">{card.back}</div>
+            <span className="card-hint">Click to flip back</span>
+          </div>
         </div>
+      </div>
 
-        <div className="card-nav">
-          <button onClick={prev} disabled={index === 0}>
-            ← Prev
-          </button>
-          <span className="card-counter">
-            {index + 1} / {content.cards.length}
-          </span>
-          <button onClick={next} disabled={isLast}>
-            Next →
-          </button>
-        </div>
+      <div className="card-nav">
+        <button className="icon-btn ghost" onClick={prev} disabled={index === 0}>
+          <ChevronLeft size={20} />
+        </button>
+        <span className="card-counter">
+          {index + 1} / {content.cards.length}
+        </span>
+        <button className="icon-btn ghost" onClick={next} disabled={isLast}>
+          <ChevronRight size={20} />
+        </button>
+      </div>
 
-        <div className="card-nav" style={{ marginTop: 8 }}>
-          <button onClick={() => markKnown(false)}>Still learning</button>
-          <button className="primary" onClick={() => markKnown(true)}>
-            ✓ I know this
-          </button>
-        </div>
+      <div className="card-nav">
+        <button onClick={() => markKnown(false)}>
+          <RotateCcw size={15} />
+          Still learning
+        </button>
+        <button className="primary" onClick={() => markKnown(true)}>
+          <Check size={16} />
+          I know this
+        </button>
+      </div>
 
-        <div className="card-counter" style={{ marginTop: 4 }}>
-          {known.size} / {content.cards.length} marked known
-        </div>
+      <div className="card-counter" style={{ marginTop: 4 }}>
+        {known.size} of {content.cards.length} mastered
       </div>
     </div>
   );
