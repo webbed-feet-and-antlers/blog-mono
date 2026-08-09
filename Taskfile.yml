@@ -1,9 +1,11 @@
 version: "3"
 
 # Top-level entrypoint. Site/dev tasks live here; POSSE syndication tasks are
-# namespaced under `posse:` and pulled in from site/Taskfile.posse.yml.
+# namespaced under `posse:` and pulled in from site/Taskfile.posse.yml; AI
+# study-app tasks are namespaced under `study-app:`.
 #
-# Run `task --list` to see everything, `task posse --list` for syndication.
+# Run `task --list` to see everything, `task posse --list` for syndication,
+# `task study-app --list` for the study app.
 
 includes:
   posse:
@@ -46,3 +48,38 @@ tasks:
     dir: site
     cmds:
       - npm test
+
+  # --- AI Study App ----------------------------------------------------------
+  # A POC for an agent-driven product: an AI study tools app where notes,
+  # quizzes, and flashcards are all produced by one shared LangGraph agent.
+  # See study-app/README.md for the architecture.
+
+  study-app:install:
+    desc: "Install study-app backend (uv) + frontend (npm) deps"
+    cmds:
+      - cmd: "uv --directory study-app/backend sync"
+      - cmd: "npm --prefix study-app/frontend install"
+
+  study-app:backend:
+    desc: "Start the study-app FastAPI backend on :8000"
+    dir: study-app/backend
+    cmds:
+      - "uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+
+  study-app:frontend:
+    desc: "Start the study-app Vite dev server on :5173"
+    dir: study-app/frontend
+    cmds:
+      - npm run dev
+
+  study-app:dev:
+    desc: "Start both the backend (:8000) and frontend (:5173)"
+    deps:
+      - study-app:backend
+      - study-app:frontend
+
+  study-app:check:
+    desc: "Type-check the frontend"
+    dir: study-app/frontend
+    cmds:
+      - npm run check

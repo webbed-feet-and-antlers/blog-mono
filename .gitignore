@@ -233,3 +233,8 @@ site/.syndication-output/
 # NOTE: the Python `lib/` rule above is overridden so our lib dirs are tracked.
 !/site/src/lib/
 !/site/scripts/lib/
+
+# Study app — local DB + uploaded files (generated at runtime, not source)
+study-app/backend/study_app.db
+study-app/backend/storage/
+study-app/frontend/dist/
