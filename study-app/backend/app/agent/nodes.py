@@ -1,0 +1,217 @@
+"""LangGraph nodes — each step in the agent pipeline.
+
+Flow: analyze_document → plan → retrieve_memory → generate → validate → finalize
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..models import ContentItem
+from . import tools
+from . import memory as memory_store
+from .state import AgentState
+
+logger = logging.getLogger(__name__)
+
+
+def _trace(state: AgentState, msg: str) -> None:
+    state.setdefault("messages", []).append(msg)
+    logger.info("[agent] %s", msg)
+
+
+# --- Node 1: analyze_document ---
+
+
+async def analyze_document(state: AgentState) -> dict[str, Any]:
+    """Extract document structure. Cached in per-doc memory."""
+    session: AsyncSession = state["session"]
+    doc_id = state["document_id"]
+
+    cached = await memory_store.read_memory(session, "doc", doc_id, "analysis")
+    if cached:
+        _trace(state, f"analysis: cache hit for doc {doc_id}")
+        return {"analysis": cached}
+
+    analysis = await tools.analyze_document(state["document_text"])
+    await memory_store.write_memory(session, "doc", doc_id, "analysis", analysis)
+    _trace(state, f"analysis: extracted {len(analysis.get('concepts', []))} concepts")
+    return {"analysis": analysis}
+
+
+# --- Node 2: plan ---
+
+
+async def plan(state: AgentState) -> dict[str, Any]:
+    """Decide how to generate the requested content type."""
+    plan_result = await tools.plan_task(
+        task_type=state["task_type"],
+        analysis=state.get("analysis", {}),
+        memory=state.get("memory", {}),
+        instructions=state.get("instructions"),
+    )
+    _trace(
+        state,
+        f"plan: {state['task_type']} -> {json_summary(plan_result)}",
+    )
+    return {"plan": plan_result}
+
+
+# --- Node 3: retrieve_memory ---
+
+
+async def retrieve_memory(state: AgentState) -> dict[str, Any]:
+    """Pull together all relevant memory for the generation step."""
+    session: AsyncSession = state["session"]
+    doc_id = state["document_id"]
+
+    doc_memory = await memory_store.read_memory_scope(session, "doc", doc_id)
+    user_memory = await memory_store.read_memory_scope(session, "user", "")
+
+    # Compose a focused memory dict the generation tools know how to read.
+    memory: dict[str, Any] = {}
+    weak = user_memory.get("weak_topics") or []
+    if weak:
+        memory["weak_topics"] = weak
+    if "notes_style" in user_memory:
+        memory["notes_style"] = user_memory["notes_style"]
+    prior = doc_memory.get("prior_generations") or []
+    if prior:
+        memory["prior_generations"] = prior
+    attempts = doc_memory.get("quiz_attempts")
+    if attempts:
+        memory["quiz_attempts"] = attempts
+
+    _trace(state, f"memory: doc keys={list(doc_memory)} user keys={list(user_memory)}")
+    return {"memory": memory}
+
+
+# --- Node 4: generate ---
+
+
+async def generate(state: AgentState) -> dict[str, Any]:
+    """Dispatch to the feature-specific generation tool."""
+    task_type = state["task_type"]
+    common = (
+        state["document_text"],
+        state.get("analysis", {}),
+        state.get("plan", {}),
+        state.get("memory", {}),
+    )
+    if task_type == "notes":
+        output = await tools.generate_notes(*common)
+    elif task_type == "quiz":
+        output = await tools.generate_quiz(*common)
+    elif task_type == "flashcards":
+        output = await tools.generate_flashcards(*common)
+    else:  # pragma: no cover — task_type is validated upstream
+        raise ValueError(f"Unknown task_type: {task_type}")
+
+    _trace(state, f"generate: produced {task_type} ({output_summary(task_type, output)})")
+    return {"output": output}
+
+
+# --- Node 5: validate ---
+
+
+async def validate(state: AgentState) -> dict[str, Any]:
+    """Structural validation of the generated content (cheap, no LLM call)."""
+    task_type = state["task_type"]
+    output = state.get("output", {})
+    problems: list[str] = []
+
+    if task_type == "notes":
+        md = output.get("markdown", "")
+        if len(md.strip()) < 80:
+            problems.append("notes markdown too short")
+    elif task_type == "quiz":
+        qs = output.get("questions", [])
+        if len(qs) < 3:
+            problems.append(f"only {len(qs)} questions (need >=3)")
+        for q in qs:
+            opts = q.get("options", [])
+            if len(opts) != 4:
+                problems.append(f"question {q.get('id')} has {len(opts)} options")
+            if not (0 <= int(q.get("answer_idx", -1)) < len(opts)):
+                problems.append(f"question {q.get('id')} has bad answer_idx")
+    elif task_type == "flashcards":
+        cards = output.get("cards", [])
+        if len(cards) < 3:
+            problems.append(f"only {len(cards)} cards (need >=3)")
+        for c in cards:
+            if not c.get("front") or not c.get("back"):
+                problems.append(f"card {c.get('id')} missing front/back")
+
+    ok = not problems
+    _trace(state, f"validate: {'PASS' if ok else 'FAIL ' + '; '.join(problems)}")
+    return {"validation": {"ok": ok, "problems": problems}}
+
+
+# --- Node 6: finalize ---
+
+
+async def finalize(state: AgentState) -> dict[str, Any]:
+    """Persist the ContentItem and write back learnings to memory."""
+    if not state.get("validation", {}).get("ok"):
+        # Validation failed — surface the problems rather than persisting junk.
+        return {
+            "error": "Validation failed: "
+            + "; ".join(state["validation"].get("problems", []))
+        }
+
+    session: AsyncSession = state["session"]
+    doc_id = state["document_id"]
+    task_type = state["task_type"]
+
+    content_id = tools.new_content_id()
+    item = ContentItem(
+        id=content_id,
+        document_id=doc_id,
+        type=task_type,
+        content=state["output"],
+    )
+    session.add(item)
+    await session.flush()
+
+    # Record this generation in per-doc memory so future runs know what exists.
+    prior = (
+        await memory_store.read_memory(session, "doc", doc_id, "prior_generations")
+    ) or []
+    prior.append({"type": task_type, "content_id": content_id})
+    await memory_store.write_memory(
+        session, "doc", doc_id, "prior_generations", prior
+    )
+
+    _trace(state, f"finalize: persisted {task_type} content_id={content_id}")
+    return {
+        "content_item": {
+            "id": content_id,
+            "document_id": doc_id,
+            "type": task_type,
+            "content": state["output"],
+        },
+        "error": None,
+    }
+
+
+# --- Helpers ---
+
+
+def json_summary(obj: Any) -> str:
+    import json
+
+    s = json.dumps(obj)
+    return s if len(s) < 140 else s[:137] + "..."
+
+
+def output_summary(task_type: str, output: dict[str, Any]) -> str:
+    if task_type == "notes":
+        return f"{len(output.get('markdown', ''))} chars"
+    if task_type == "quiz":
+        return f"{len(output.get('questions', []))} questions"
+    if task_type == "flashcards":
+        return f"{len(output.get('cards', []))} cards"
+    return "?"
