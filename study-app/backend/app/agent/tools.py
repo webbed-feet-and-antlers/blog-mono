@@ -70,6 +70,7 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
     mastery = memory.get("concept_mastery") or []
     if mastery and task_type in ("quiz", "flashcards"):
         lines = []
+        due_count = 0
         for m in mastery[:10]:
             pct = m.get("mastery_pct")
             if pct is None:
@@ -83,12 +84,24 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
             correct = m.get("correct", 0)
             seen = m.get("seen", 0)
             seen_str = f"{correct}/{seen} correct" if seen else "untested"
-            lines.append(f"  - {m['concept']}: {seen_str} [{label}]")
-        hints.append(
+            # FSRS due marker — concepts scientifically scheduled for review.
+            due_marker = ""
+            if m.get("due"):
+                due_marker = " ⚡ DUE"
+                due_count += 1
+            lines.append(f"  - {m['concept']}: {seen_str} [{label}]{due_marker}")
+        instruction = (
             "The learner's per-concept mastery (weight questions/cards toward "
-            "weak/very-weak concepts; only briefly review strong ones):\n"
-            + "\n".join(lines)
+            "weak/very-weak concepts; only briefly review strong ones"
         )
+        if due_count:
+            instruction += (
+                f". {due_count} concept(s) marked ⚡ DUE are scientifically "
+                "scheduled for spaced-repetition review — prioritize them "
+                "to prevent forgetting"
+            )
+        instruction += "):\n" + "\n".join(lines)
+        hints.append(instruction)
     elif memory.get("weak_topics") and task_type in ("quiz", "flashcards"):
         # Fallback: flat weak-topics list (no mastery detail).
         weak = memory["weak_topics"]
@@ -181,7 +194,10 @@ async def plan_task(
                 "Match the preferred_difficulty for the difficulty mix. If preferred_formats "
                 "specify a quiz_length, card_style, or notes_depth, use those as defaults. "
                 "For beginner-level learners, favor simpler wording and more foundational "
-                "concepts; for advanced learners, include harder application questions."
+                "concepts; for advanced learners, include harder application questions.\n\n"
+                "If concept_mastery entries have due=true, prioritize those concepts in the "
+                "plan. These are due for spaced-repetition review — the learner is at risk "
+                "of forgetting them."
             ),
         },
         {

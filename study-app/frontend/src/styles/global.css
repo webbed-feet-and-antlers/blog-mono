@@ -895,6 +895,21 @@ button.small {
   color: var(--text-faint);
 }
 
+/* --- Due badge (FSRS spaced repetition) ---------------------------------- */
+
+.due-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  background: #fef3c7;
+  color: #b45309;
+  margin-bottom: 10px;
+}
+
 /* --- Document viewer ----------------------------------------------------- */
 
 .document-view {

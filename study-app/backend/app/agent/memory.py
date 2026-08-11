@@ -153,9 +153,15 @@ async def get_review_candidates(
     from ..models import ContentItem, Document  # local import avoids cycles
 
     weak = await get_weak_topics(session)
-    if not weak:
+    weak_names = {w["topic"] for w in weak} if weak else set()
+
+    # FSRS due concepts — the scientifically-scheduled review trigger.
+    all_due = await get_due_concepts(session)
+    due_names = {d["concept"] for d in all_due} if all_due else set()
+
+    # Need at least one signal to act on.
+    if not weak_names and not due_names:
         return []
-    weak_names = {w["topic"] for w in weak}
 
     cooldown_cutoff = datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)
 
@@ -169,9 +175,10 @@ async def get_review_candidates(
     candidates: list[dict[str, Any]] = []
     for doc_id, analysis in doc_ids_with_analysis.items():
         doc_concepts = {str(c) for c in (analysis.get("concepts") or [])}
-        # Intersect the doc's concepts with the learner's weak topics.
-        relevant_weak = sorted(weak_names & doc_concepts)
-        if not relevant_weak:
+        # Union of weak topics AND FSRS-due concepts — either is a reason to
+        # proactively generate a review deck for this document.
+        relevant = sorted((weak_names | due_names) & doc_concepts)
+        if not relevant:
             continue
 
         # Dedup: skip if a proactive deck was generated for this doc recently.
@@ -195,7 +202,7 @@ async def get_review_candidates(
 
         candidates.append({
             "document_id": doc_id,
-            "weak_topics": relevant_weak,
+            "weak_topics": relevant,
             "document_text": doc.text,
         })
     return candidates
@@ -224,17 +231,29 @@ def _as_jsonable(value: Any) -> Any:
 
 
 async def update_concept_mastery(
-    session: AsyncSession, concept: str, correct: bool
+    session: AsyncSession, concept: str, correct: bool, rating: int | None = None
 ) -> None:
     """Record one interaction outcome for a concept.
 
-    Increments seen + (correct|wrong), recomputes mastery_pct. Concept mastery
-    is cross-document (user scope) so mastering a concept in one doc carries
-    over. Skips empty/whitespace concept strings.
+    Increments seen + (correct|wrong), recomputes mastery_pct, and updates
+    the concept's FSRS spaced-repetition state (stability, difficulty, due
+    date). Concept mastery is cross-document (user scope) so mastering a
+    concept in one doc carries over. Skips empty/whitespace concept strings.
+
+    Args:
+        correct: Whether the learner got it right (quiz/flashcard).
+        rating: FSRS rating (1=Again, 2=Hard, 3=Good, 4=Easy). If None,
+                inferred from `correct`: Good if correct, Again if wrong.
     """
     concept = (concept or "").strip()
     if not concept:
         return
+
+    # Infer FSRS rating from correctness if not explicitly provided.
+    if rating is None:
+        rating = 3 if correct else 1  # Good / Again
+
+    from . import fsrs_scheduler
 
     mastery = await get_concept_mastery(session)
     entry = mastery.get(concept) or {"correct": 0, "wrong": 0, "seen": 0}
@@ -244,6 +263,11 @@ async def update_concept_mastery(
     else:
         entry["wrong"] = entry["wrong"] + 1
     entry["mastery_pct"] = round(entry["correct"] / entry["seen"], 3)
+
+    # Update FSRS spaced-repetition scheduling.
+    existing_fsrs = entry.get("fsrs")
+    entry["fsrs"] = fsrs_scheduler.schedule_review(existing_fsrs, rating)
+
     mastery[concept] = entry
     await write_memory(session, "user", "", "concept_mastery", mastery)
 
@@ -286,6 +310,48 @@ async def get_mastery_for_concepts(
     result.sort(
         key=lambda e: e["mastery_pct"] if e["mastery_pct"] is not None else -1
     )
+    return result
+
+
+async def get_due_concepts(
+    session: AsyncSession, concepts: list[str] | None = None
+) -> list[dict]:
+    """Return concepts that are due for spaced-repetition review, most overdue first.
+
+    A concept is "due" if its FSRS due date has passed, or if it has no FSRS
+    state yet (new/untested = due immediately).
+
+    Args:
+        concepts: If provided, filter to only these concept names. If None,
+                  returns all due concepts across all documents (for the
+                  proactive agent).
+
+    Returns a list of {concept, due_in_days, stability, mastery_pct, fsrs}.
+    """
+    from . import fsrs_scheduler
+
+    mastery = await get_concept_mastery(session)
+    result: list[dict] = []
+
+    target_concepts = set(concepts) if concepts else set(mastery.keys())
+    for concept in target_concepts:
+        concept = (concept or "").strip()
+        if not concept:
+            continue
+        entry = mastery.get(concept)
+        fsrs = (entry or {}).get("fsrs")
+        if not fsrs_scheduler.is_due(fsrs):
+            continue
+        result.append({
+            "concept": concept,
+            "due_in_days": fsrs_scheduler.due_in_days(fsrs),
+            "stability": (fsrs or {}).get("stability"),
+            "mastery_pct": (entry or {}).get("mastery_pct"),
+            "fsrs": fsrs,
+        })
+
+    # Sort: most overdue first (most negative due_in_days), then new (None).
+    result.sort(key=lambda e: e["due_in_days"] if e["due_in_days"] is not None else 999)
     return result
 
 

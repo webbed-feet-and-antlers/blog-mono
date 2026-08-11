@@ -100,6 +100,14 @@ async def retrieve_memory(state: AgentState) -> dict[str, Any]:
             session, doc_concepts
         )
         if mastery:
+            # Annotate each concept with FSRS due status so the plan/generate
+            # steps can prioritize concepts due for spaced-repetition review.
+            from . import fsrs_scheduler
+
+            for entry in mastery:
+                fsrs = entry.get("fsrs")
+                entry["due"] = fsrs_scheduler.is_due(fsrs)
+                entry["due_in_days"] = fsrs_scheduler.due_in_days(fsrs)
             memory["concept_mastery"] = mastery
 
     # Learner profile: who the learner is (level, preferred difficulty/formats,
