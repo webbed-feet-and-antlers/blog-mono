@@ -48,5 +48,14 @@ async def submit_flashcard_review(
             )
             recorded += 1
 
+    # Feed the flashcard review results into the learner profile.
+    if req.results:
+        await memory_store.update_learner_profile(
+            session,
+            flashcard_results=[
+                {"known": r.known, "concept": r.concept} for r in req.results
+            ],
+        )
+
     await session.commit()
     return FlashcardReviewResponse(recorded=recorded)

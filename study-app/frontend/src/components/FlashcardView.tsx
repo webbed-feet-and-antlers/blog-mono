@@ -40,6 +40,7 @@ export function FlashcardView({ contentId, content }: Props) {
     onSuccess: () => {
       // Invalidate memory queries so mastery-driven features refresh.
       queryClient.invalidateQueries({ queryKey: ["memory"] });
+      queryClient.invalidateQueries({ queryKey: ["learner-profile"] });
       queryClient.invalidateQueries({ queryKey: ["proactive-decks"] });
     },
   });

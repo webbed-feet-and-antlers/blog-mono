@@ -21,6 +21,7 @@ export function QuizView({ contentId, content }: Props) {
     onSuccess: () => {
       setSubmitted(true);
       queryClient.invalidateQueries({ queryKey: ["memory"] });
+      queryClient.invalidateQueries({ queryKey: ["learner-profile"] });
     },
   });
 

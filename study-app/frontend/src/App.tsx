@@ -81,6 +81,7 @@ export default function App() {
             queryKey: ["content", selectedDocId, tab],
           });
           queryClient.invalidateQueries({ queryKey: ["memory"] });
+          queryClient.invalidateQueries({ queryKey: ["learner-profile"] });
           queryClient.invalidateQueries({ queryKey: ["proactive-decks"] });
         },
         onError: (message) => setGenError(message),

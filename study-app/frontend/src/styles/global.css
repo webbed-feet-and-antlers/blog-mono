@@ -835,6 +835,66 @@ button.small {
   }
 }
 
+/* --- Learner profile card (sidebar) -------------------------------------- */
+
+.profile-card {
+  margin: 8px 12px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-xs);
+}
+.profile-card.unknown {
+  opacity: 0.6;
+}
+.profile-level-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.profile-level-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  color: #fff;
+}
+.profile-level-badge.beginner {
+  background: #f59e0b;
+}
+.profile-level-badge.intermediate {
+  background: var(--accent);
+}
+.profile-level-badge.advanced {
+  background: var(--ok);
+}
+.profile-level-badge.unknown {
+  background: var(--text-faint);
+}
+.profile-level-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: capitalize;
+}
+.profile-stats {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.profile-stats .stat-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.profile-stats .stat-sep {
+  color: var(--text-faint);
+}
+
 /* --- Document viewer ----------------------------------------------------- */
 
 .document-view {

@@ -38,3 +38,11 @@ async def get_proactive_decks(session: AsyncSession = Depends(get_session)):
         if isinstance(item.content, dict)
         and item.content.get("origin") == "proactive"
     ]
+
+
+@router.get("/profile", tags=["profile"])
+async def get_profile(session: AsyncSession = Depends(get_session)):
+    """Return the learner profile — the agent's understanding of the learner."""
+    from ..agent.memory import get_learner_profile
+
+    return await get_learner_profile(session)

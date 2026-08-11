@@ -176,6 +176,33 @@ export async function listProactiveDecks(): Promise<ContentItem[]> {
   return request<ContentItem[]>("/api/memory/proactive");
 }
 
+// --- Learner profile ---
+
+export interface LearnerProfile {
+  learner_level: string;
+  preferred_difficulty: string;
+  preferred_formats: {
+    quiz_length: number | null;
+    card_style: string | null;
+    notes_depth: string | null;
+  };
+  study_goal: string;
+  stats: {
+    total_quizzes: number;
+    total_flashcard_reviews: number;
+    avg_score: number | null;
+    score_history: { score: number; difficulty: string; ts: string }[];
+    flashcard_known_ratio: number | null;
+    first_interaction: string | null;
+    last_interaction: string | null;
+  };
+  updated_at: string | null;
+}
+
+export async function getLearnerProfile(): Promise<LearnerProfile> {
+  return request<LearnerProfile>("/api/memory/profile");
+}
+
 // --- Flashcard reviews ---
 
 export async function submitFlashcardReview(

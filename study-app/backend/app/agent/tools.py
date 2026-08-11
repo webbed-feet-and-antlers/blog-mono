@@ -39,6 +39,32 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
     """Surface relevant prior learnings (the shared-backbone payoff)."""
     hints: list[str] = []
 
+    # --- Learner profile (the highest-level personalization context) ---
+    profile = memory.get("learner_profile") or {}
+    if profile and profile.get("learner_level", "unknown") != "unknown":
+        parts = [f"{profile['learner_level']} learner"]
+        avg = (profile.get("stats") or {}).get("avg_score")
+        if avg is not None:
+            parts.append(f"avg {int(avg * 100)}%")
+        diff = profile.get("preferred_difficulty")
+        if diff:
+            parts.append(f"prefers {diff} difficulty")
+        fmts = profile.get("preferred_formats") or {}
+        if task_type == "quiz" and fmts.get("quiz_length"):
+            parts.append(f"{fmts['quiz_length']}-question quizzes")
+        if task_type == "flashcards" and fmts.get("card_style"):
+            parts.append(f"{fmts['card_style']}-style cards")
+        if task_type == "notes" and fmts.get("notes_depth"):
+            parts.append(f"{fmts['notes_depth']} notes")
+        goal = profile.get("study_goal")
+        if goal and goal != "unknown":
+            parts.append(f"studying for {goal.replace('_', ' ')}")
+        hints.append(
+            "Learner profile: "
+            + ", ".join(parts)
+            + ". Calibrate difficulty and format accordingly."
+        )
+
     # Prefer the rich per-concept mastery signal when available — it captures
     # both quiz and flashcard outcomes and lets the agent weight precisely.
     mastery = memory.get("concept_mastery") or []
@@ -150,7 +176,12 @@ async def plan_task(
             "content": (
                 "You plan how an AI study agent should generate study material "
                 "from a document, informed by what the agent already knows about "
-                f"the learner. {task_descriptions[task_type]}"
+                f"the learner. {task_descriptions[task_type]}\n\n"
+                "IMPORTANT: Use the learner_profile in the memory to calibrate your plan. "
+                "Match the preferred_difficulty for the difficulty mix. If preferred_formats "
+                "specify a quiz_length, card_style, or notes_depth, use those as defaults. "
+                "For beginner-level learners, favor simpler wording and more foundational "
+                "concepts; for advanced learners, include harder application questions."
             ),
         },
         {

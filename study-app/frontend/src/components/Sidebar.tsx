@@ -8,6 +8,7 @@ import {
   Loader2,
 } from "lucide-react";
 import * as api from "../api/client";
+import { ProfileCard } from "./ProfileCard";
 
 interface Props {
   selectedId: string | null;
@@ -92,6 +93,8 @@ export function Sidebar({ selectedId, onSelect }: Props) {
           <div className="empty">No documents yet</div>
         )}
       </div>
+
+      <ProfileCard />
 
       <div className="upload">
         <input

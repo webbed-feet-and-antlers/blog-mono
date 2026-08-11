@@ -102,6 +102,11 @@ async def retrieve_memory(state: AgentState) -> dict[str, Any]:
         if mastery:
             memory["concept_mastery"] = mastery
 
+    # Learner profile: who the learner is (level, preferred difficulty/formats,
+    # study goal). Grows automatically from interactions.
+    profile = await memory_store.get_learner_profile(session)
+    memory["learner_profile"] = profile
+
     _trace(state, f"memory: doc keys={list(doc_memory)} user keys={list(user_memory)}")
     return {"memory": memory}
 

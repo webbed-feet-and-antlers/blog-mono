@@ -101,6 +101,18 @@ async def submit_quiz_attempt(
             session, "doc", doc_id, "quiz_attempts", int(prior_attempts) + 1
         )
 
+    # --- Learner profile update (always on) ---
+    # Feed the quiz score + doc difficulty into the profile so the agent can
+    # calibrate level, preferred difficulty, and formats for future generations.
+    doc_id = item.document_id
+    analysis = await memory_store.read_memory(
+        session, "doc", doc_id, "analysis"
+    )
+    doc_difficulty = (analysis or {}).get("difficulty") if analysis else None
+    await memory_store.update_learner_profile(
+        session, quiz_score=score, doc_difficulty=doc_difficulty
+    )
+
     await session.commit()
     await session.refresh(attempt)
     return attempt

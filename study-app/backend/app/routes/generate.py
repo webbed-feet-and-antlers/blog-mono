@@ -74,6 +74,16 @@ async def generate_stream(req: GenerateRequest):
                 yield _sse("error", {"message": "Document not found"})
                 return
 
+            # Persist the hint as a profile signal — if the user keeps asking
+            # for "concise notes" or "10 questions", the profile learns it.
+            if req.instructions and req.instructions.strip():
+                from ..agent import memory as memory_store
+
+                await memory_store.update_learner_profile(
+                    session, hint=req.instructions.strip()
+                )
+                await session.commit()
+
             try:
                 final_state = None
                 async for status, state in run_generation_streamed(
