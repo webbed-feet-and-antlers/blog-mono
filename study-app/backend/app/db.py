@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -11,6 +13,8 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 engine = create_async_engine(
     settings.db_url,
@@ -32,8 +36,22 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 async def init_db() -> None:
-    """Create all tables. Called from the FastAPI lifespan."""
-    from .models import Base  # noqa: F811 — imported here to avoid circular import
+    """Create all tables and run lightweight migrations. Called from lifespan."""
+    from .models import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Guarded migration: add lesson_id to existing documents table.
+        # create_all won't mutate an existing table, so we check + ALTER.
+        result = await conn.execute(
+            text("PRAGMA table_info(documents)")
+        )
+        columns = {row[1] for row in result.fetchall()}
+        if "lesson_id" not in columns:
+            await conn.execute(
+                text(
+                    "ALTER TABLE documents ADD COLUMN lesson_id VARCHAR "
+                    "REFERENCES lessons(id)"
+                )
+            )
+            logger.info("Migrated documents table: added lesson_id column")

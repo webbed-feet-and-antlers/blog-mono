@@ -10,6 +10,7 @@ export interface Document {
   page_count: number;
   char_count: number;
   uploaded_at: string;
+  lesson_id?: string | null;
 }
 
 export interface DocumentDetail extends Document {
@@ -78,4 +79,26 @@ export interface GenerateRequest {
   document_id: string;
   task_type: TaskType;
   instructions?: string;
+}
+
+// --- Modules & Lessons (organization hierarchy) ---
+
+export interface Lesson {
+  id: string;
+  title: string;
+  module_id: string;
+  created_at: string;
+  documents: Document[];
+}
+
+export interface Module {
+  id: string;
+  title: string;
+  created_at: string;
+  lessons: Lesson[];
+}
+
+export interface ModuleTree {
+  modules: Module[];
+  unfiled: Document[];
 }

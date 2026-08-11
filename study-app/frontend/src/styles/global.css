@@ -835,6 +835,171 @@ button.small {
   }
 }
 
+/* --- Sidebar tree (Module → Lesson → Document) --------------------------- */
+
+.tree-module {
+  margin-bottom: 2px;
+}
+.tree-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.12s;
+  user-select: none;
+}
+.tree-node:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+.tree-chevron {
+  color: var(--text-faint);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.tree-chevron.expanded {
+  transform: rotate(90deg);
+}
+.tree-module-head {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.tree-module-head > svg {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.tree-lesson-head {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  padding-left: 24px;
+}
+.tree-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-count {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  background: var(--sidebar-bg);
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  flex-shrink: 0;
+}
+.tree-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.tree-node:hover .tree-actions {
+  opacity: 1;
+}
+.tree-action-btn {
+  padding: 3px;
+}
+.tree-children {
+  padding-left: 0;
+}
+.tree-docs {
+  padding-left: 44px;
+}
+.tree-empty {
+  padding: 4px 0 4px 44px;
+  font-size: 0.74rem;
+  color: var(--text-faint);
+  font-style: italic;
+}
+.tree-unfiled {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.tree-unfiled-head {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  padding: 4px 8px;
+}
+.tree-create-input {
+  padding: 4px 8px 4px 24px;
+}
+.tree-create-input input,
+.tree-lesson-input input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--panel);
+  border: 1px solid var(--accent-tint-strong);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-xs);
+}
+.tree-create-input input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.doc-item-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.doc-item:hover .doc-item-actions {
+  opacity: 1;
+}
+.move-menu {
+  position: absolute;
+  z-index: 100;
+  right: 8px;
+  top: 100%;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+}
+.move-menu-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  padding: 4px 8px;
+}
+.move-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8rem;
+  border-radius: var(--r-sm);
+  box-shadow: none;
+  cursor: pointer;
+}
+.move-menu-item:hover {
+  background: var(--accent-tint);
+}
+.move-menu-empty {
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
 /* --- Learner profile card (sidebar) -------------------------------------- */
 
 .profile-card {

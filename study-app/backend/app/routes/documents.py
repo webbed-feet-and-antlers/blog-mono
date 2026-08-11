@@ -24,7 +24,9 @@ ALLOWED_SUFFIXES = {".pdf", ".txt", ".md"}
 
 @router.post("", response_model=DocumentOut, status_code=201)
 async def upload_document(
-    file: UploadFile, session: AsyncSession = Depends(get_session)
+    file: UploadFile,
+    lesson_id: str | None = None,
+    session: AsyncSession = Depends(get_session),
 ):
     filename = file.filename or "upload"
     suffix = Path(filename).suffix.lower()
@@ -57,6 +59,7 @@ async def upload_document(
         text=text,
         page_count=page_count,
         char_count=len(text),
+        lesson_id=lesson_id,
     )
     session.add(doc)
     await session.commit()

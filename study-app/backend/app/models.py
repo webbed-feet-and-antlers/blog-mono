@@ -16,6 +16,36 @@ class Base(DeclarativeBase):
     pass
 
 
+class Module(Base):
+    """A course module (e.g. 'BIO201 - Cell Biology')."""
+
+    __tablename__ = "modules"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    lessons: Mapped[list["Lesson"]] = relationship(
+        back_populates="module", cascade="all, delete-orphan"
+    )
+
+
+class Lesson(Base):
+    """A lesson within a module (e.g. 'Week 5 - Respiration')."""
+
+    __tablename__ = "lessons"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    module_id: Mapped[str] = mapped_column(
+        ForeignKey("modules.id", ondelete="CASCADE"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    module: Mapped["Module"] = relationship(back_populates="lessons")
+    documents: Mapped[list["Document"]] = relationship(back_populates="lesson")
+
+
 class Document(Base):
     __tablename__ = "documents"
 
@@ -27,10 +57,16 @@ class Document(Base):
     page_count: Mapped[int] = mapped_column(default=0)
     char_count: Mapped[int] = mapped_column(default=0)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    # Optional: which lesson this document belongs to. Nullable so existing
+    # flat documents keep working (NULL = unfiled).
+    lesson_id: Mapped[str | None] = mapped_column(
+        ForeignKey("lessons.id", ondelete="SET NULL"), nullable=True, default=None
+    )
 
     content_items: Mapped[list[ContentItem]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
+    lesson: Mapped["Lesson | None"] = relationship(back_populates="documents")
 
 
 class ContentItem(Base):

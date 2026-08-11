@@ -18,6 +18,7 @@ class DocumentOut(BaseModel):
     page_count: int
     char_count: int
     uploaded_at: datetime
+    lesson_id: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -129,3 +130,48 @@ class AgentMemoryOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Modules & Lessons (organization hierarchy) ---
+
+
+class ModuleCreate(BaseModel):
+    title: str
+
+
+class LessonCreate(BaseModel):
+    title: str
+
+
+class ModuleOut(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LessonOut(BaseModel):
+    id: str
+    title: str
+    module_id: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LessonWithDocs(LessonOut):
+    documents: list[DocumentOut] = []
+
+
+class ModuleWithTree(ModuleOut):
+    lessons: list[LessonWithDocs] = []
+
+
+class ModuleTreeResponse(BaseModel):
+    modules: list[ModuleWithTree]
+    unfiled: list[DocumentOut]
+
+
+class DocumentMove(BaseModel):
+    lesson_id: str | None = None

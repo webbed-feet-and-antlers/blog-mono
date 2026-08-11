@@ -6,8 +6,14 @@ import {
   UploadCloud,
   X,
   Loader2,
+  Plus,
+  ChevronRight,
+  FolderOpen,
+  Folder,
+  FolderInput,
 } from "lucide-react";
 import * as api from "../api/client";
+import type { ModuleTree } from "../types";
 import { ProfileCard } from "./ProfileCard";
 
 interface Props {
@@ -19,27 +25,95 @@ export function Sidebar({ selectedId, onNavigate }: Props) {
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    // Persist expanded state in localStorage.
+    try {
+      const saved = localStorage.getItem("sidebar-expanded");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const [addingToModule, setAddingToModule] = useState<string | null>(null);
+  const [newModuleName, setNewModuleName] = useState("");
+  const [showNewModule, setShowNewModule] = useState(false);
 
-  const docs = useQuery({ queryKey: ["documents"], queryFn: api.listDocuments });
+  const tree = useQuery({
+    queryKey: ["module-tree"],
+    queryFn: api.listModuleTree,
+  });
 
   const upload = useMutation({
-    mutationFn: api.uploadDocument,
+    mutationFn: (file: File) => api.uploadDocument(file),
     onSuccess: (doc) => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["module-tree"] });
       onNavigate(doc.id);
     },
   });
 
   const remove = useMutation({
     mutationFn: api.deleteDocument,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["documents"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["module-tree"] });
+    },
   });
+
+  const createModule = useMutation({
+    mutationFn: (title: string) => api.createModule(title),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["module-tree"] });
+      setNewModuleName("");
+      setShowNewModule(false);
+    },
+  });
+
+  const createLesson = useMutation({
+    mutationFn: ({ moduleId, title }: { moduleId: string; title: string }) =>
+      api.createLesson(moduleId, title),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["module-tree"] });
+      setAddingToModule(null);
+    },
+  });
+
+  const deleteModule = useMutation({
+    mutationFn: api.deleteModule,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["module-tree"] }),
+  });
+
+  const deleteLesson = useMutation({
+    mutationFn: api.deleteLesson,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["module-tree"] }),
+  });
+
+  function toggle(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem("sidebar-expanded", JSON.stringify([...next]));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     await upload.mutateAsync(files[0]);
     if (fileInput.current) fileInput.current.value = "";
   }
+
+  const allDocs = [
+    ...(tree.data?.modules.flatMap((m) =>
+      m.lessons.flatMap((l) => l.documents),
+    ) ?? []),
+    ...(tree.data?.unfiled ?? []),
+  ];
 
   return (
     <aside className="sidebar">
@@ -51,45 +125,189 @@ export function Sidebar({ selectedId, onNavigate }: Props) {
           <h1>Study Studio</h1>
           <p>AI-powered notes, quizzes & flashcards</p>
         </div>
+        <button
+          className="ghost icon-btn"
+          title="New module"
+          onClick={() => setShowNewModule((v) => !v)}
+        >
+          <Plus size={18} />
+        </button>
       </div>
 
       <div className="doc-list">
-        {docs.isLoading && (
+        {tree.isLoading && (
           <div className="loading">
             <Loader2 size={16} className="spinner" />
             Loading…
           </div>
         )}
-        {docs.data?.map((doc) => (
-          <div
-            key={doc.id}
-            className={`doc-item ${doc.id === selectedId ? "active" : ""}`}
-            onClick={() => onNavigate(doc.id)}
-          >
-            <span className="doc-icon">
-              <FileText size={17} />
-            </span>
-            <div className="meta">
-              <span className="filename">{doc.filename}</span>
-              <span className="sub">
-                {doc.page_count > 1
-                  ? `${doc.page_count} pages`
-                  : `${(doc.char_count / 1000).toFixed(1)}k chars`}
-              </span>
-            </div>
-            <button
-              className="delete-btn ghost"
-              onClick={(e) => {
-                e.stopPropagation();
-                remove.mutate(doc.id);
+
+        {/* New module input */}
+        {showNewModule && (
+          <div className="tree-create-input">
+            <input
+              autoFocus
+              placeholder="Module name…"
+              value={newModuleName}
+              onChange={(e) => setNewModuleName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newModuleName.trim()) {
+                  createModule.mutate(newModuleName.trim());
+                }
               }}
-              aria-label="Delete document"
-            >
-              <X size={15} />
-            </button>
+            />
           </div>
-        ))}
-        {docs.data?.length === 0 && !docs.isLoading && (
+        )}
+
+        {/* Module → Lesson → Document tree */}
+        {tree.data?.modules.map((mod) => {
+          const isExpanded = expanded.has(mod.id);
+          return (
+            <div key={mod.id} className="tree-module">
+              <div className="tree-node tree-module-head" onClick={() => toggle(mod.id)}>
+                <ChevronRight
+                  size={14}
+                  className={`tree-chevron ${isExpanded ? "expanded" : ""}`}
+                />
+                {isExpanded ? <FolderOpen size={15} /> : <Folder size={15} />}
+                <span className="tree-label">{mod.title}</span>
+                <div className="tree-actions">
+                  <button
+                    className="ghost icon-btn tree-action-btn"
+                    title="Add lesson"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAddingToModule(
+                        addingToModule === mod.id ? null : mod.id,
+                      );
+                      if (!isExpanded) toggle(mod.id);
+                    }}
+                  >
+                    <Plus size={14} />
+                  </button>
+                  <button
+                    className="ghost icon-btn tree-action-btn"
+                    title="Delete module"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete "${mod.title}"? Lessons will be removed; documents become unfiled.`)) {
+                        deleteModule.mutate(mod.id);
+                      }
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {isExpanded && (
+                <div className="tree-children">
+                  {/* New lesson input */}
+                  {addingToModule === mod.id && (
+                    <div className="tree-create-input tree-lesson-input">
+                      <input
+                        autoFocus
+                        placeholder="Lesson name…"
+                        onKeyDown={(e) => {
+                          const val = (e.target as HTMLInputElement).value.trim();
+                          if (e.key === "Enter" && val) {
+                            createLesson.mutate({ moduleId: mod.id, title: val });
+                          }
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {mod.lessons.map((les) => {
+                    const lesExpanded = expanded.has(les.id);
+                    return (
+                      <div key={les.id} className="tree-lesson">
+                        <div
+                          className="tree-node tree-lesson-head"
+                          onClick={() => toggle(les.id)}
+                        >
+                          <ChevronRight
+                            size={14}
+                            className={`tree-chevron ${lesExpanded ? "expanded" : ""}`}
+                          />
+                          <span className="tree-label">{les.title}</span>
+                          <span className="tree-count">{les.documents.length}</span>
+                          <div className="tree-actions">
+                            <button
+                              className="ghost icon-btn tree-action-btn"
+                              title="Delete lesson"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Delete "${les.title}"? Documents become unfiled.`)) {
+                                  deleteLesson.mutate(les.id);
+                                }
+                              }}
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {lesExpanded && (
+                          <div className="tree-docs">
+                            {les.documents.map((doc) => (
+                              <DocItem
+                                key={doc.id}
+                                doc={doc}
+                                active={doc.id === selectedId}
+                                onClick={() => onNavigate(doc.id)}
+                                onDelete={() => remove.mutate(doc.id)}
+                                tree={tree.data}
+                                onMove={(lessonId) =>
+                                  api.moveDocument(doc.id, lessonId).then(() =>
+                                    queryClient.invalidateQueries({
+                                      queryKey: ["module-tree"],
+                                    }),
+                                  )
+                                }
+                              />
+                            ))}
+                            {les.documents.length === 0 && (
+                              <div className="tree-empty">No documents</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {mod.lessons.length === 0 && !addingToModule && (
+                    <div className="tree-empty">No lessons yet</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Unfiled documents */}
+        {(tree.data?.unfiled?.length ?? 0) > 0 && (
+          <div className="tree-unfiled">
+            <div className="tree-unfiled-head">Unfiled</div>
+            {tree.data?.unfiled.map((doc) => (
+              <DocItem
+                key={doc.id}
+                doc={doc}
+                active={doc.id === selectedId}
+                onClick={() => onNavigate(doc.id)}
+                onDelete={() => remove.mutate(doc.id)}
+                tree={tree.data}
+                onMove={(lessonId) =>
+                  api.moveDocument(doc.id, lessonId).then(() =>
+                    queryClient.invalidateQueries({ queryKey: ["module-tree"] }),
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
+
+        {allDocs.length === 0 && !tree.isLoading && !showNewModule && (
           <div className="empty">No documents yet</div>
         )}
       </div>
@@ -142,5 +360,96 @@ export function Sidebar({ selectedId, onNavigate }: Props) {
         )}
       </div>
     </aside>
+  );
+}
+
+// --- Document item with move-to-lesson menu ---
+
+function DocItem({
+  doc,
+  active,
+  onClick,
+  onDelete,
+  tree,
+  onMove,
+}: {
+  doc: { id: string; filename: string; page_count: number; char_count: number };
+  active: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+  tree: ModuleTree | undefined;
+  onMove: (lessonId: string | null) => void;
+}) {
+  const [showMenu, setShowMenu] = useState(false);
+  const allLessons =
+    tree?.modules.flatMap((m) =>
+      m.lessons.map((l) => ({ ...l, moduleTitle: m.title })),
+    ) ?? [];
+
+  return (
+    <div className={`doc-item ${active ? "active" : ""}`} onClick={onClick}>
+      <span className="doc-icon">
+        <FileText size={15} />
+      </span>
+      <div className="meta">
+        <span className="filename">{doc.filename}</span>
+        <span className="sub">
+          {doc.page_count > 1
+            ? `${doc.page_count} pages`
+            : `${(doc.char_count / 1000).toFixed(1)}k chars`}
+        </span>
+      </div>
+      <div className="doc-item-actions">
+        <button
+          className="ghost icon-btn delete-btn"
+          title="File into lesson"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowMenu((v) => !v);
+          }}
+        >
+          <FolderInput size={13} />
+        </button>
+        <button
+          className="ghost icon-btn delete-btn"
+          title="Delete document"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+        >
+          <X size={14} />
+        </button>
+      </div>
+      {showMenu && (
+        <div className="move-menu" onClick={(e) => e.stopPropagation()}>
+          <div className="move-menu-title">Move to…</div>
+          <button
+            className="move-menu-item"
+            onClick={() => {
+              onMove(null);
+              setShowMenu(false);
+            }}
+          >
+            Unfiled
+          </button>
+          {allLessons.map((l) => (
+            <button
+              key={l.id}
+              className="move-menu-item"
+              onClick={() => {
+                onMove(l.id);
+                setShowMenu(false);
+              }}
+            >
+              {l.moduleTitle} → {l.title}
+            </button>
+          ))}
+          {allLessons.length === 0 && (
+            <div className="move-menu-empty">No lessons available</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

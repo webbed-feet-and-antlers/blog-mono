@@ -7,6 +7,9 @@ import type {
   Document,
   DocumentDetail,
   GenerateRequest,
+  Lesson,
+  Module,
+  ModuleTree,
   QuizAttempt,
   TaskType,
 } from "../types";
@@ -40,10 +43,17 @@ async function request<T>(
 
 // --- Documents ---
 
-export async function uploadDocument(file: File): Promise<Document> {
+export async function uploadDocument(
+  file: File,
+  lessonId?: string,
+): Promise<Document> {
   const form = new FormData();
   form.append("file", file);
-  return request<Document>("/api/documents", { method: "POST", body: form });
+  const qs = lessonId ? `?lesson_id=${lessonId}` : "";
+  return request<Document>(`/api/documents${qs}`, {
+    method: "POST",
+    body: form,
+  });
 }
 
 export async function listDocuments(): Promise<Document[]> {
@@ -247,4 +257,67 @@ export async function submitFlashcardReview(
       body: JSON.stringify({ results }),
     },
   );
+}
+
+// --- Modules & Lessons (organization hierarchy) ---
+
+export async function listModuleTree(): Promise<ModuleTree> {
+  return request<ModuleTree>("/api/modules");
+}
+
+export async function createModule(title: string): Promise<Module> {
+  return request<Module>("/api/modules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function renameModule(id: string, title: string): Promise<Module> {
+  return request<Module>(`/api/modules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteModule(id: string): Promise<void> {
+  await request<void>(`/api/modules/${id}`, { method: "DELETE" });
+}
+
+export async function createLesson(
+  moduleId: string,
+  title: string,
+): Promise<Lesson> {
+  return request<Lesson>(`/api/modules/${moduleId}/lessons`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function renameLesson(
+  id: string,
+  title: string,
+): Promise<Lesson> {
+  return request<Lesson>(`/api/lessons/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteLesson(id: string): Promise<void> {
+  await request<void>(`/api/lessons/${id}`, { method: "DELETE" });
+}
+
+export async function moveDocument(
+  docId: string,
+  lessonId: string | null,
+): Promise<Document> {
+  return request<Document>(`/api/documents/${docId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lesson_id: lessonId }),
+  });
 }
