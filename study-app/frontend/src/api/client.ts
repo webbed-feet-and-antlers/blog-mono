@@ -108,3 +108,9 @@ export async function listMemory(
   const qs = params.toString();
   return request<AgentMemory[]>(`/api/memory${qs ? `?${qs}` : ""}`);
 }
+
+// --- Proactive decks ---
+
+export async function listProactiveDecks(): Promise<ContentItem[]> {
+  return request<ContentItem[]>("/api/memory/proactive");
+}

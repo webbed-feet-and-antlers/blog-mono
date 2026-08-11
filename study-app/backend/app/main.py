@@ -7,13 +7,16 @@ thin route handlers that delegate to the agent layer.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .config import settings
 from .db import init_db
+from .proactive import proactive_loop
 from .routes import content, documents, generate, memory, quiz
 
 logger = logging.getLogger(__name__)
@@ -27,8 +30,23 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Initializing database…")
     await init_db()
+
+    # Launch the proactive agent if enabled. Runs as a background task on the
+    # shared event loop; cancelled cleanly on shutdown.
+    proactive_task: asyncio.Task | None = None
+    if settings.proactive_enabled:
+        proactive_task = asyncio.create_task(proactive_loop())
+        logger.info("Proactive agent enabled — background loop started")
+
     logger.info("Study app backend ready")
     yield
+
+    if proactive_task is not None:
+        proactive_task.cancel()
+        try:
+            await proactive_task
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="Study App Backend", lifespan=lifespan)

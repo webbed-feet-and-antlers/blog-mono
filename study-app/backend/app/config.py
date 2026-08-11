@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     storage_dir: Path = base_dir / "storage"
     db_path: Path = base_dir / "study_app.db"
 
+    # Proactive agent — a background job that learns from quiz misses and
+    # pre-generates flashcard review decks for weak topics. Default OFF so
+    # the app behaves as before until explicitly enabled.
+    proactive_enabled: bool = False
+    proactive_interval_seconds: int = 1800  # 30 min
+    proactive_score_threshold: float = 0.7  # below this counts as "struggled"
+    proactive_cooldown_hours: int = 24  # don't regenerate a deck within this
+
     # SQLite URL is derived from db_path.
     @property
     def db_url(self) -> str:

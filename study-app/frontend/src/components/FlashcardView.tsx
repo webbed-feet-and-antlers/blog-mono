@@ -5,6 +5,7 @@ import {
   Check,
   RotateCcw,
 } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import type { FlashcardContent } from "../types";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function FlashcardView({ content }: Props) {
+  const isProactive = (content as any).origin === "proactive";
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [known, setKnown] = useState<Set<string>>(new Set());
@@ -40,6 +42,12 @@ export function FlashcardView({ content }: Props) {
 
   return (
     <div className="card-deck">
+      {isProactive && (
+        <div className="deck-origin-pill">
+          <Sparkles size={13} />
+          Agent-prepared review
+        </div>
+      )}
       <div className="card-progress">
         <div
           className="card-progress-fill"

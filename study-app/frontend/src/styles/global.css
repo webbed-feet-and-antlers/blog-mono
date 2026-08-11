@@ -823,3 +823,58 @@ button.small {
     padding: 24px 20px;
   }
 }
+
+/* --- Proactive badge ----------------------------------------------------- */
+
+.proactive-banner {
+  background: linear-gradient(135deg, var(--accent-tint) 0%, #f5f3ff 100%);
+  border: 1px solid var(--accent-tint-strong);
+  border-radius: var(--r-md);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.proactive-banner .pb-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-accent);
+}
+.proactive-banner .pb-text {
+  flex: 1;
+  min-width: 0;
+}
+.proactive-banner .pb-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.proactive-banner .pb-sub {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.deck-origin-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--accent-tint);
+  color: var(--accent);
+  margin-bottom: 14px;
+}

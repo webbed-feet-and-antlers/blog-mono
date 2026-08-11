@@ -9,6 +9,8 @@ import {
   BookOpen,
   Trash2,
   FileUp,
+  Wand2,
+  ArrowRight,
 } from "lucide-react";
 import * as api from "./api/client";
 import { ApiError } from "./api/client";
@@ -41,6 +43,16 @@ export default function App() {
     queryFn: () => api.listContent(selectedDocId!, tab),
     enabled: !!selectedDocId,
   });
+
+  // Proactive decks the agent generated on its own (for the banner).
+  const proactiveDecks = useQuery({
+    queryKey: ["proactive-decks"],
+    queryFn: api.listProactiveDecks,
+    refetchInterval: 15000, // poll so newly-generated decks appear live
+  });
+  const docProactiveDeck = proactiveDecks.data?.find(
+    (d) => d.document_id === selectedDocId,
+  );
 
   const generate = useMutation({
     mutationFn: () =>
@@ -91,6 +103,14 @@ export default function App() {
               </div>
               <h2>{doc.data?.filename ?? "Loading…"}</h2>
             </div>
+
+            {/* Proactive banner: the agent prepared something for you */}
+            {docProactiveDeck && (
+              <ProactiveBanner
+                deck={docProactiveDeck}
+                onView={() => setTab("flashcards")}
+              />
+            )}
 
             <div className="tabs">
               {TABS.map((t) => {
@@ -189,6 +209,59 @@ export default function App() {
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+function ProactiveBanner({
+  deck,
+  onView,
+}: {
+  deck: ContentItem;
+  onView: () => void;
+}) {
+  const title =
+    (deck.content as any)?.title ?? "Review deck";
+  const cardCount = (deck.content as any)?.cards?.length ?? 0;
+  // Track in localStorage so the banner doesn't nag after the user has seen it.
+  const seenKey = `proactive-seen-${deck.id}`;
+  const [seen, setSeen] = useState(() => {
+    try {
+      return localStorage.getItem(seenKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  if (seen) return null;
+  return (
+    <div className="proactive-banner">
+      <div className="pb-icon">
+        <Wand2 size={20} />
+      </div>
+      <div className="pb-text">
+        <div className="pb-title">
+          <Sparkles size={14} />
+          Agent prepared a review deck for you
+        </div>
+        <div className="pb-sub">
+          {title} · {cardCount} cards targeting your weak areas
+        </div>
+      </div>
+      <button
+        className="primary"
+        onClick={() => {
+          try {
+            localStorage.setItem(seenKey, "1");
+          } catch {
+            /* ignore */
+          }
+          setSeen(true);
+          onView();
+        }}
+      >
+        Review now
+        <ArrowRight size={15} />
+      </button>
     </div>
   );
 }

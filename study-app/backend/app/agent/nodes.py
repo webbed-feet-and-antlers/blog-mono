@@ -73,9 +73,14 @@ async def retrieve_memory(state: AgentState) -> dict[str, Any]:
 
     # Compose a focused memory dict the generation tools know how to read.
     memory: dict[str, Any] = {}
-    weak = user_memory.get("weak_topics") or []
-    if weak:
-        memory["weak_topics"] = weak
+    weak_raw = user_memory.get("weak_topics") or []
+    # weak_topics is stored as [{"topic": str, "missed_count": int, ...}] dicts;
+    # the generation tools only need the topic names as strings.
+    weak_names = [
+        w["topic"] if isinstance(w, dict) else str(w) for w in weak_raw
+    ]
+    if weak_names:
+        memory["weak_topics"] = weak_names
     if "notes_style" in user_memory:
         memory["notes_style"] = user_memory["notes_style"]
     prior = doc_memory.get("prior_generations") or []
