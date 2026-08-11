@@ -68,6 +68,67 @@ export async function generate(req: GenerateRequest): Promise<ContentItem> {
   });
 }
 
+/**
+ * Stream generation progress via SSE. Calls onStatus for each status update,
+ * onDone with the final ContentItem, or onError on failure.
+ *
+ * Uses fetch + ReadableStream (not EventSource) because this is a POST.
+ */
+export async function generateStream(
+  req: GenerateRequest,
+  callbacks: {
+    onStatus: (status: string) => void;
+    onDone: (item: ContentItem) => void;
+    onError: (message: string) => void;
+  },
+): Promise<void> {
+  const res = await fetch("/api/generate/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+
+  if (!res.ok || !res.body) {
+    callbacks.onError(`HTTP ${res.status}`);
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE events are separated by double newlines.
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? ""; // last partial chunk stays in buffer
+
+      for (const raw of events) {
+        const eventLine = raw.match(/^event: (.+)$/m);
+        const dataLine = raw.match(/^data: (.+)$/m);
+        if (!eventLine || !dataLine) continue;
+
+        const eventType = eventLine[1].trim();
+        const data = JSON.parse(dataLine[1]);
+
+        if (eventType === "status") {
+          callbacks.onStatus(data.status);
+        } else if (eventType === "done") {
+          callbacks.onDone(data.item);
+        } else if (eventType === "error") {
+          callbacks.onError(data.message);
+        }
+      }
+    }
+  } catch (err) {
+    callbacks.onError((err as Error).message);
+  }
+}
+
 // --- Content ---
 
 export async function listContent(

@@ -11,16 +11,20 @@ import {
   FileUp,
   Wand2,
   ArrowRight,
+  Eye,
 } from "lucide-react";
 import * as api from "./api/client";
-import { ApiError } from "./api/client";
 import type { ContentItem, TaskType } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { NotesView } from "./components/NotesView";
 import { QuizView } from "./components/QuizView";
 import { FlashcardView } from "./components/FlashcardView";
+import { DocumentView } from "./components/DocumentView";
 
-const TABS: { id: TaskType; label: string; icon: typeof FileText }[] = [
+type TabId = TaskType | "document";
+
+const TABS: { id: TabId; label: string; icon: typeof FileText }[] = [
+  { id: "document", label: "Document", icon: Eye },
   { id: "notes", label: "Notes", icon: FileText },
   { id: "quiz", label: "Quiz", icon: CircleHelp },
   { id: "flashcards", label: "Flashcards", icon: Layers },
@@ -29,7 +33,7 @@ const TABS: { id: TaskType; label: string; icon: typeof FileText }[] = [
 export default function App() {
   const queryClient = useQueryClient();
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  const [tab, setTab] = useState<TaskType>("notes");
+  const [tab, setTab] = useState<TabId>("document");
   const [hint, setHint] = useState("");
 
   const doc = useQuery({
@@ -40,8 +44,8 @@ export default function App() {
 
   const content = useQuery({
     queryKey: ["content", selectedDocId, tab],
-    queryFn: () => api.listContent(selectedDocId!, tab),
-    enabled: !!selectedDocId,
+    queryFn: () => api.listContent(selectedDocId!, tab as TaskType),
+    enabled: !!selectedDocId && tab !== "document",
   });
 
   // Proactive decks the agent generated on its own (for the banner).
@@ -54,18 +58,38 @@ export default function App() {
     (d) => d.document_id === selectedDocId,
   );
 
-  const generate = useMutation({
-    mutationFn: () =>
-      api.generate({
-        document_id: selectedDocId!,
-        task_type: tab,
+  const [generating, setGenerating] = useState(false);
+  const [genStatus, setGenStatus] = useState<string | null>(null);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    if (!selectedDocId || tab === "document") return;
+    setGenerating(true);
+    setGenStatus("Reading the document…");
+    setGenError(null);
+
+    await api.generateStream(
+      {
+        document_id: selectedDocId,
+        task_type: tab as TaskType,
         instructions: hint.trim() || undefined,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["content", selectedDocId, tab] });
-      queryClient.invalidateQueries({ queryKey: ["memory"] });
-    },
-  });
+      },
+      {
+        onStatus: (status) => setGenStatus(status),
+        onDone: () => {
+          queryClient.invalidateQueries({
+            queryKey: ["content", selectedDocId, tab],
+          });
+          queryClient.invalidateQueries({ queryKey: ["memory"] });
+          queryClient.invalidateQueries({ queryKey: ["proactive-decks"] });
+        },
+        onError: (message) => setGenError(message),
+      },
+    );
+
+    setGenerating(false);
+    setGenStatus(null);
+  }
 
   const removeContent = useMutation({
     mutationFn: (id: string) => api.deleteContent(id),
@@ -75,7 +99,6 @@ export default function App() {
 
   const items: ContentItem[] = content.data ?? [];
   const latest = items[0]; // list is ordered newest-first
-  const generating = generate.isPending;
 
   return (
     <div className="app">
@@ -128,83 +151,82 @@ export default function App() {
               })}
             </div>
 
-            {/* Generate controls */}
-            <div className="generate-bar">
-              <input
-                className="hint-input"
-                placeholder={
-                  tab === "quiz"
-                    ? "Hint: focus on chapter 3, 10 questions"
-                    : tab === "notes"
-                      ? "Hint: concise bullet points"
-                      : "Hint: definition-style cards"
-                }
-                value={hint}
-                onChange={(e) => setHint(e.target.value)}
-                disabled={generating}
-              />
-              <button
-                className="primary"
-                disabled={generating}
-                onClick={() => generate.mutate()}
-              >
-                {generating ? (
-                  <>
-                    <Loader2 size={16} className="spinner" />
-                    Generating…
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} />
-                    Generate {tab}
-                  </>
-                )}
-              </button>{" "}
-              {latest && !generating && (
-                <button
-                  className="danger"
-                  onClick={() => removeContent.mutate(latest.id)}
-                >
-                  <Trash2 size={15} />
-                </button>
-              )}
-            </div>
+            {/* Document tab: show the original source text */}
+            {tab === "document" && doc.data && (
+              <DocumentView doc={doc.data} />
+            )}
 
-            {generate.isError && (
-              <div className="error">
-                Generation failed: {(generate.error as Error).message}
-                {generate.error instanceof ApiError &&
-                  generate.error.status === 502 && (
-                    <span>
-                      {" "}
-                      — check that OPENROUTER_API_KEY is set in the backend .env
-                    </span>
+            {/* AI-generation tabs: generate controls + content */}
+            {tab !== "document" && (
+              <>
+                <div className="generate-bar">
+                  <input
+                    className="hint-input"
+                    placeholder={
+                      tab === "quiz"
+                        ? "Hint: focus on chapter 3, 10 questions"
+                        : tab === "notes"
+                          ? "Hint: concise bullet points"
+                          : "Hint: definition-style cards"
+                    }
+                    value={hint}
+                    onChange={(e) => setHint(e.target.value)}
+                    disabled={generating}
+                  />
+                  <button
+                    className="primary"
+                    disabled={generating}
+                    onClick={handleGenerate}
+                  >
+                    {generating ? (
+                      <>
+                        <Loader2 size={16} className="spinner" />
+                        Generating…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        Generate {tab}
+                      </>
+                    )}
+                  </button>{" "}
+                  {latest && !generating && (
+                    <button
+                      className="danger"
+                      onClick={() => removeContent.mutate(latest.id)}
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   )}
-              </div>
-            )}
-
-            {generating && (
-              <div className="loading">
-                <Loader2 size={18} className="spinner" />
-                <div>
-                  The agent is reading the document, planning, and generating.
-                  This takes a few seconds…
                 </div>
-              </div>
-            )}
 
-            {!generating && latest && <ContentRender item={latest} />}
+                {genError && (
+                  <div className="error">
+                    Generation failed: {genError}
+                  </div>
+                )}
 
-            {!generating && !latest && !content.isLoading && (
-              <div className="empty">
-                <FileUp
-                  size={40}
-                  strokeWidth={1.4}
-                  style={{ margin: "0 auto 12px", display: "block", opacity: 0.3 }}
-                />
-                No {tab} yet. Click <strong>Generate</strong> to have the agent
-                create some.
-              </div>
+                {generating && (
+                  <div className="loading">
+                    <Loader2 size={18} className="spinner" />
+                    <div className="gen-status">{genStatus}</div>
+                  </div>
+                )}
+
+                {!generating && latest && <ContentRender item={latest} />}
+
+                {!generating && !latest && !content.isLoading && (
+                  <div className="empty">
+                    <FileUp
+                      size={40}
+                      strokeWidth={1.4}
+                      style={{ margin: "0 auto 12px", display: "block", opacity: 0.3 }}
+                    />
+                    No {tab} yet. Click <strong>Generate</strong> to have the agent
+                    create some.
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

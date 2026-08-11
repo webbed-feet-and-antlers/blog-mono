@@ -73,3 +73,73 @@ async def run_generation(
     }
     final_state = await GRAPH.ainvoke(initial)
     return final_state
+
+
+# Maps each agent node to a friendly, human-readable status label for the UI.
+# These are deliberately vague/pleasant — they say what stage the agent is at
+# without exposing implementation details or trace logs.
+NODE_STATUSES: dict[str, str] = {
+    "analyze_document": "Reading the document…",
+    "plan": "Planning what to create…",
+    "retrieve_memory": "Recalling what you know…",
+    "generate": "Creating your {task_type}…",
+    "validate": "Checking the quality…",
+    "finalize": "Saving the results…",
+}
+
+
+def _friendly_status(node: str, task_type: str) -> str:
+    """Return a user-facing status string for a node name."""
+    template = NODE_STATUSES.get(node, "Working…")
+    if "{task_type}" in template:
+        # task_type is notes/quiz/flashcards — use the singular noun.
+        noun = task_type.rstrip("s") if task_type.endswith("s") else task_type
+        return template.format(task_type=noun)
+    return template
+
+
+async def run_generation_streamed(
+    *,
+    document_id: str,
+    document_text: str,
+    task_type: TaskType,
+    session: Any,
+    instructions: str | None = None,
+):
+    """Run the agent pipeline, yielding (status_str, state_dict) tuples as
+    each node completes.
+
+    The final yield has status "done" and the full final state. If the agent
+    errors, the status is "error" and the state carries the error message.
+
+    Usage:
+        async for status, state in run_generation_streamed(...):
+            # status is a friendly string; state is the latest AgentState
+    """
+    initial: AgentState = {
+        "document_id": document_id,
+        "document_text": document_text,
+        "task_type": task_type,
+        "instructions": instructions,
+        "session": session,
+        "messages": [],
+        "error": None,
+    }
+
+    # Emit the very first status before any node runs.
+    yield _friendly_status("analyze_document", task_type), initial
+
+    final_state = initial
+    try:
+        async for chunk in GRAPH.astream(initial, stream_mode="updates"):
+            # LangGraph "updates" mode yields {node_name: state_delta} per step.
+            for node_name in chunk:
+                final_state = {**final_state, **chunk[node_name]}
+                yield _friendly_status(node_name, task_type), final_state
+    except Exception as exc:
+        logger.exception("Agent streaming generation failed")
+        final_state["error"] = str(exc)
+        yield "error", final_state
+        return
+
+    yield "done", final_state
