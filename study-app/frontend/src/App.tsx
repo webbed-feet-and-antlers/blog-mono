@@ -6,7 +6,6 @@ import {
   Layers,
   Sparkles,
   Loader2,
-  BookOpen,
   Trash2,
   FileUp,
   Wand2,
@@ -20,6 +19,7 @@ import { NotesView } from "./components/NotesView";
 import { QuizView } from "./components/QuizView";
 import { FlashcardView } from "./components/FlashcardView";
 import { DocumentView } from "./components/DocumentView";
+import { RecommendationPanel } from "./components/RecommendationPanel";
 
 type TabId = TaskType | "document";
 
@@ -62,27 +62,42 @@ export default function App() {
   const [genStatus, setGenStatus] = useState<string | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
 
-  async function handleGenerate() {
-    if (!selectedDocId || tab === "document") return;
+  async function handleGenerate(
+    overrideDocId?: string,
+    overrideTaskType?: string,
+  ) {
+    const docId = overrideDocId || selectedDocId;
+    const taskType = (overrideTaskType || tab) as TaskType;
+    if (!docId) return;
+
+    // If generating from a recommendation, navigate to that doc + tab first.
+    if (overrideDocId && overrideDocId !== selectedDocId) {
+      setSelectedDocId(overrideDocId);
+    }
+    if (overrideTaskType) {
+      setTab(overrideTaskType as TabId);
+    }
+
     setGenerating(true);
     setGenStatus("Reading the document…");
     setGenError(null);
 
     await api.generateStream(
       {
-        document_id: selectedDocId,
-        task_type: tab as TaskType,
+        document_id: docId,
+        task_type: taskType,
         instructions: hint.trim() || undefined,
       },
       {
         onStatus: (status) => setGenStatus(status),
         onDone: () => {
           queryClient.invalidateQueries({
-            queryKey: ["content", selectedDocId, tab],
+            queryKey: ["content", docId, taskType],
           });
           queryClient.invalidateQueries({ queryKey: ["memory"] });
           queryClient.invalidateQueries({ queryKey: ["learner-profile"] });
           queryClient.invalidateQueries({ queryKey: ["proactive-decks"] });
+          queryClient.invalidateQueries({ queryKey: ["recommend"] });
         },
         onError: (message) => setGenError(message),
       },
@@ -106,17 +121,12 @@ export default function App() {
       <Sidebar selectedId={selectedDocId} onSelect={setSelectedDocId} />
 
       <main className="main">
-        {!selectedDocId && (
-          <div className="empty-hero">
-            <div className="empty-icon">
-              <BookOpen size={34} strokeWidth={1.8} />
-            </div>
-            <h2>Start studying</h2>
-            <p>
-              Upload a document and your AI agent will generate study notes,
-              quizzes, and flashcards — learning as it goes.
-            </p>
-          </div>
+        {!selectedDocId && !generating && (
+          <RecommendationPanel
+            onSelect={setSelectedDocId}
+            onTab={(t) => setTab(t as TabId)}
+            onGenerate={(docId, taskType) => handleGenerate(docId, taskType)}
+          />
         )}
 
         {selectedDocId && (
@@ -177,7 +187,7 @@ export default function App() {
                   <button
                     className="primary"
                     disabled={generating}
-                    onClick={handleGenerate}
+                    onClick={() => handleGenerate()}
                   >
                     {generating ? (
                       <>

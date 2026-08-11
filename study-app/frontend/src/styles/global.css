@@ -895,6 +895,148 @@ button.small {
   color: var(--text-faint);
 }
 
+/* --- Recommendation panel (home screen) ---------------------------------- */
+
+.recommend-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 0;
+}
+
+.rec-context {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.rec-context-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rec-context-sep {
+  color: var(--text-faint);
+}
+.rec-due {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.rec-primary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 28px;
+  background: var(--panel);
+  border: 1px solid var(--accent-tint-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  position: relative;
+  overflow: hidden;
+}
+.rec-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--accent-tint) 0%, transparent 60%);
+  pointer-events: none;
+}
+.rec-primary-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-accent);
+  position: relative;
+  z-index: 1;
+}
+.rec-primary-body {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+.rec-primary-body h2 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.rec-primary-body p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+.rec-action-btn {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+
+.rec-alternatives {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rec-alt-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-left: 4px;
+}
+.rec-alt-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-xs);
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.rec-alt-card:hover {
+  border-color: var(--accent-tint-strong);
+  box-shadow: var(--shadow-sm);
+}
+.rec-alt-icon {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.rec-alt-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.rec-alt-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.rec-alt-rationale {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+.rec-alt-arrow {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
 /* --- Due badge (FSRS spaced repetition) ---------------------------------- */
 
 .due-badge {

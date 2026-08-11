@@ -203,6 +203,36 @@ export async function getLearnerProfile(): Promise<LearnerProfile> {
   return request<LearnerProfile>("/api/memory/profile");
 }
 
+// --- Recommendations ---
+
+export interface Recommendation {
+  action: string;
+  title: string;
+  rationale: string;
+  document_id: string | null;
+  tab: string | null;
+  ready: boolean;
+  deck?: { title: string; cards: any[] } | null;
+  content_id?: string;
+}
+
+export interface RecommendationResponse {
+  primary: Recommendation;
+  alternatives: Recommendation[];
+  context: {
+    due_count: number;
+    learner_level: string;
+    total_concepts: number;
+    mastered_count: number;
+    welcome_back: string | null;
+    total_quizzes: number;
+  };
+}
+
+export async function getRecommendation(): Promise<RecommendationResponse> {
+  return request<RecommendationResponse>("/api/recommend");
+}
+
 // --- Flashcard reviews ---
 
 export async function submitFlashcardReview(
