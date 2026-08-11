@@ -43,8 +43,14 @@ async def chat(
     json_mode: bool = False,
     temperature: float = 0.3,
     max_tokens: int | None = None,
+    retries: int = 2,
 ) -> str:
-    """Run a chat completion and return the assistant's text content."""
+    """Run a chat completion and return the assistant's text content.
+
+    Retries on empty responses (a common transient failure on cheap/free LLM
+    endpoints like OpenRouter's free tier — the model returns "" on rate limits
+    or timeouts). Backs off 1s, then 2s.
+    """
     client = _get_client()
     kwargs: dict[str, Any] = {
         "model": settings.openrouter_model,
@@ -58,8 +64,35 @@ async def chat(
         # models; the underlying provider may or may not honor it.
         kwargs["response_format"] = {"type": "json_object"}
 
-    response = await client.chat.completions.create(**kwargs)
-    return response.choices[0].message.content or ""
+    import asyncio as _asyncio
+
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            response = await client.chat.completions.create(**kwargs)
+            content = response.choices[0].message.content or ""
+            if content.strip():
+                return content
+            # Empty response — retry after backoff.
+            logger.warning(
+                "LLM returned empty response (attempt %d/%d), retrying…",
+                attempt + 1,
+                retries + 1,
+            )
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "LLM call failed (attempt %d/%d): %s",
+                attempt + 1,
+                retries + 1,
+                exc,
+            )
+        if attempt < retries:
+            await _asyncio.sleep(1.0 * (attempt + 1))
+
+    if last_exc:
+        raise last_exc
+    return ""  # all retries returned empty
 
 
 async def chat_json(
@@ -70,9 +103,53 @@ async def chat_json(
 ) -> dict[str, Any]:
     """Chat expecting a JSON object response. Parses and returns the dict.
 
+    Robust against two failure modes common on cheap LLM endpoints:
+    1. Empty responses — `chat` already retries these internally.
+    2. Non-JSON output (prose wrapping, markdown fences) — we retry the call
+       with an explicit "return ONLY valid JSON" nudge before giving up.
+
     Falls back to extracting the first {...} block if the model wraps the JSON
     in prose or doesn't honour json mode.
     """
+    import asyncio as _asyncio
+
+    raw = await chat(
+        messages,
+        json_mode=True,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        try:
+            return _extract_json_object(raw)
+        except (ValueError, json.JSONDecodeError):
+            pass
+
+        # The model didn't return parseable JSON. Retry once with a nudge
+        # appended to the system message.
+        logger.warning(
+            "LLM returned unparseable JSON (%.40r…), retrying with nudge", raw
+        )
+        nudged = list(messages)
+        nudged[0] = {
+            **nudged[0],
+            "content": nudged[0]["content"]
+            + "\n\nIMPORTANT: respond with ONLY a single valid JSON object, "
+            "no markdown, no prose, no code fences.",
+        }
+        await _asyncio.sleep(1)
+        raw = await chat(
+            nudged,
+            json_mode=True,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return _extract_json_object(raw)
     raw = await chat(
         messages,
         json_mode=True,
