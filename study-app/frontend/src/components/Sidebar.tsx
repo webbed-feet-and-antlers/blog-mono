@@ -19,9 +19,10 @@ import { ProfileCard } from "./ProfileCard";
 interface Props {
   selectedId: string | null;
   onNavigate: (id: string) => void;
+  onHome: () => void;
 }
 
-export function Sidebar({ selectedId, onNavigate }: Props) {
+export function Sidebar({ selectedId, onNavigate, onHome }: Props) {
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -118,12 +119,18 @@ export function Sidebar({ selectedId, onNavigate }: Props) {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <div className="brand-mark">
-          <BookOpen size={20} strokeWidth={2.2} />
-        </div>
-        <div className="brand-text">
-          <h1>Study Studio</h1>
-          <p>AI-powered notes, quizzes & flashcards</p>
+        <div
+          className="brand-clickable"
+          onClick={onHome}
+          title="Home"
+        >
+          <div className="brand-mark">
+            <BookOpen size={20} strokeWidth={2.2} />
+          </div>
+          <div className="brand-text">
+            <h1>Study Studio</h1>
+            <p>AI-powered notes, quizzes & flashcards</p>
+          </div>
         </div>
         <button
           className="ghost icon-btn"

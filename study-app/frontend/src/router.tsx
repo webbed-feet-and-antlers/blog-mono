@@ -36,6 +36,7 @@ function Layout() {
           onNavigate={(id: string) =>
             navigate({ to: "/documents/$docId", params: { docId: id } })
           }
+          onHome={() => navigate({ to: "/" })}
         />
         <main className="main">
           <Outlet />

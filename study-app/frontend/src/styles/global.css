@@ -156,6 +156,19 @@ button.small {
   align-items: center;
   gap: 12px;
 }
+.brand-clickable {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  margin: -4px;
+  padding: 4px;
+  transition: opacity 0.12s;
+}
+.brand-clickable:hover {
+  opacity: 0.8;
+}
 .brand-mark {
   width: 38px;
   height: 38px;
