@@ -41,11 +41,23 @@ async def submit_quiz_attempt(
     for q in questions:
         qid = q.get("id")
         answer_idx = q.get("answer_idx")
-        if qid is not None and req.answers.get(qid) == answer_idx:
+        is_correct = qid is not None and req.answers.get(qid) == answer_idx
+        answered = qid is not None and qid in req.answers
+        if is_correct:
             correct += 1
-        elif qid is not None and qid in req.answers:
-            # Missed — record the question prompt so we can concept-match.
+        elif answered:
+            # Missed — record the question prompt so we can concept-match
+            # for the (legacy) weak-topics feedback loop below.
             missed_concepts.append(q.get("prompt", ""))
+
+        # --- Always-on mastery tracking (both right AND wrong) ---
+        # Each question now carries a 'concept' tag from generation time.
+        # Record the outcome so the agent can customize future generations.
+        concept = q.get("concept", "")
+        if answered and concept:
+            await memory_store.update_concept_mastery(
+                session, concept, correct=is_correct
+            )
 
     score = (correct / total) if total else 0.0
     attempt = QuizAttempt(

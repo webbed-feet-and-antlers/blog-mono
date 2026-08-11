@@ -208,3 +208,82 @@ def _as_jsonable(value: Any) -> Any:
         return value
     except (TypeError, ValueError):
         return {"raw": str(value)}
+
+
+# --- Per-concept mastery (the interaction-tracking signal) -----------------
+#
+# concept_mastery lives at scope="user", ref_id="", key="concept_mastery" and
+# is a dict keyed by concept name:
+#   {concept: {"correct": int, "wrong": int, "seen": int, "mastery_pct": float}}
+#
+# Both quiz answers (right AND wrong) and flashcard reviews ("I know this" /
+# "Still learning") feed this tally. It's always-on (not gated like the
+# weak-topics feedback loop) because we want the full picture — mastery
+# reflects correct answers too, not just misses. retrieve_memory passes this
+# to generation so the agent can weight toward low-mastery concepts.
+
+
+async def update_concept_mastery(
+    session: AsyncSession, concept: str, correct: bool
+) -> None:
+    """Record one interaction outcome for a concept.
+
+    Increments seen + (correct|wrong), recomputes mastery_pct. Concept mastery
+    is cross-document (user scope) so mastering a concept in one doc carries
+    over. Skips empty/whitespace concept strings.
+    """
+    concept = (concept or "").strip()
+    if not concept:
+        return
+
+    mastery = await get_concept_mastery(session)
+    entry = mastery.get(concept) or {"correct": 0, "wrong": 0, "seen": 0}
+    entry["seen"] = entry["seen"] + 1
+    if correct:
+        entry["correct"] = entry["correct"] + 1
+    else:
+        entry["wrong"] = entry["wrong"] + 1
+    entry["mastery_pct"] = round(entry["correct"] / entry["seen"], 3)
+    mastery[concept] = entry
+    await write_memory(session, "user", "", "concept_mastery", mastery)
+
+
+async def get_concept_mastery(session: AsyncSession) -> dict[str, dict]:
+    """Return the full concept_mastery dict (empty if none recorded)."""
+    val = await read_memory(session, "user", "", "concept_mastery")
+    if isinstance(val, dict):
+        return val
+    return {}
+
+
+async def get_mastery_for_concepts(
+    session: AsyncSession, concepts: list[str]
+) -> list[dict]:
+    """Return mastery info for a set of concepts, weakest first.
+
+    Each entry: {concept, correct, wrong, seen, mastery_pct}. Concepts with no
+    recorded history get a zero-seen placeholder so the agent knows they're new.
+    """
+    mastery = await get_concept_mastery(session)
+    result: list[dict] = []
+    for concept in concepts:
+        concept = (concept or "").strip()
+        if not concept:
+            continue
+        entry = mastery.get(concept)
+        if entry:
+            result.append({"concept": concept, **entry})
+        else:
+            # New concept the learner hasn't been tested on yet.
+            result.append({
+                "concept": concept,
+                "correct": 0,
+                "wrong": 0,
+                "seen": 0,
+                "mastery_pct": None,
+            })
+    # Sort: unseen first (None), then lowest mastery first.
+    result.sort(
+        key=lambda e: e["mastery_pct"] if e["mastery_pct"] is not None else -1
+    )
+    return result

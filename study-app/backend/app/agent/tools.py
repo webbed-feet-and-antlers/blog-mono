@@ -38,12 +38,39 @@ def _concept_hint(analysis: dict[str, Any]) -> str:
 def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
     """Surface relevant prior learnings (the shared-backbone payoff)."""
     hints: list[str] = []
-    weak = memory.get("weak_topics") or []
-    if weak and task_type in ("quiz", "flashcards"):
+
+    # Prefer the rich per-concept mastery signal when available — it captures
+    # both quiz and flashcard outcomes and lets the agent weight precisely.
+    mastery = memory.get("concept_mastery") or []
+    if mastery and task_type in ("quiz", "flashcards"):
+        lines = []
+        for m in mastery[:10]:
+            pct = m.get("mastery_pct")
+            if pct is None:
+                label = "new (untested)"
+            elif pct < 0.4:
+                label = "VERY WEAK"
+            elif pct < 0.7:
+                label = "weak"
+            else:
+                label = "strong"
+            correct = m.get("correct", 0)
+            seen = m.get("seen", 0)
+            seen_str = f"{correct}/{seen} correct" if seen else "untested"
+            lines.append(f"  - {m['concept']}: {seen_str} [{label}]")
+        hints.append(
+            "The learner's per-concept mastery (weight questions/cards toward "
+            "weak/very-weak concepts; only briefly review strong ones):\n"
+            + "\n".join(lines)
+        )
+    elif memory.get("weak_topics") and task_type in ("quiz", "flashcards"):
+        # Fallback: flat weak-topics list (no mastery detail).
+        weak = memory["weak_topics"]
         hints.append(
             "The learner has struggled with these topics in past quizzes — "
             f"weight questions/cards toward them: {', '.join(weak[:8])}."
         )
+
     style = memory.get("notes_style")
     if style and task_type == "notes":
         hints.append(f"Preferred notes style: {style}.")
@@ -193,10 +220,13 @@ async def generate_quiz(
                 "understanding (not trivia). Each question has 4 options, "
                 "exactly one correct answer, and a concise explanation of why "
                 "the answer is correct. Distractors must be plausible. "
+                "Every question MUST include a 'concept' field naming the "
+                "single concept it tests (from the plan's concepts_to_cover). "
                 "Return ONLY JSON: "
                 '{"title": string, "questions": ['
                 '{"id": "q1", "prompt": string, "options": [4 strings], '
-                '"answer_idx": 0-3, "explanation": string}]}. '
+                '"answer_idx": 0-3, "explanation": string, '
+                '"concept": string}]}. '
                 f"Generate exactly {target_count} questions."
             ),
         },
@@ -229,9 +259,12 @@ async def generate_flashcards(
                 "You create flashcards for active recall. Each card has a "
                 "concise front (prompt) and a clear back (answer). Keep cards "
                 "atomic — one idea per card. Be accurate to the source. "
+                "Every card MUST include a 'concept' field naming the single "
+                "concept it covers (from the plan's concepts_to_cover). "
                 "Return ONLY JSON: "
                 '{"title": string, "cards": ['
-                '{"id": "c1", "front": string, "back": string}]}.'
+                '{"id": "c1", "front": string, "back": string, '
+                '"concept": string}]}.'
             ),
         },
         {
@@ -260,6 +293,10 @@ def _normalize_quiz_ids(result: dict[str, Any]) -> None:
             q["id"] = str(q["id"])
         q["answer_idx"] = int(q.get("answer_idx", 0))
         q["options"] = list(q.get("options", []))
+        # Ensure every question carries a concept tag for mastery tracking.
+        q.setdefault("concept", "")
+        if not isinstance(q["concept"], str):
+            q["concept"] = str(q["concept"])
 
 
 def _normalize_flashcard_ids(result: dict[str, Any]) -> None:
@@ -269,6 +306,10 @@ def _normalize_flashcard_ids(result: dict[str, Any]) -> None:
             c["id"] = f"c{i}"
         else:
             c["id"] = str(c["id"])
+        # Ensure every card carries a concept tag for mastery tracking.
+        c.setdefault("concept", "")
+        if not isinstance(c["concept"], str):
+            c["concept"] = str(c["concept"])
 
 
 def new_content_id() -> str:

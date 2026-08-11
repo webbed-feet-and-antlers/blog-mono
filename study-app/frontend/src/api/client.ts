@@ -114,3 +114,19 @@ export async function listMemory(
 export async function listProactiveDecks(): Promise<ContentItem[]> {
   return request<ContentItem[]>("/api/memory/proactive");
 }
+
+// --- Flashcard reviews ---
+
+export async function submitFlashcardReview(
+  contentId: string,
+  results: { card_id: string; known: boolean; concept: string }[],
+): Promise<{ recorded: number }> {
+  return request<{ recorded: number }>(
+    `/api/flashcards/${contentId}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ results }),
+    },
+  );
+}

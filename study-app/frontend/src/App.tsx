@@ -273,5 +273,5 @@ function ContentRender({ item }: { item: ContentItem }) {
   if (item.type === "quiz") {
     return <QuizView contentId={item.id} content={item.content as any} />;
   }
-  return <FlashcardView content={item.content as any} />;
+  return <FlashcardView contentId={item.id} content={item.content as any} />;
 }

@@ -1,26 +1,67 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
   Check,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
-import { Sparkles } from "lucide-react";
+import * as api from "../api/client";
 import type { FlashcardContent } from "../types";
 
 interface Props {
+  contentId: string;
   content: FlashcardContent;
 }
 
-export function FlashcardView({ content }: Props) {
+export function FlashcardView({ contentId, content }: Props) {
   const isProactive = (content as any).origin === "proactive";
+  const queryClient = useQueryClient();
+
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
-  const [known, setKnown] = useState<Set<string>>(new Set());
+  // Track per-card review state: "known" | "learning" | undefined (unreviewed).
+  // We send all reviewed cards to the backend on unmount so mastery persists.
+  const [reviews, setReviews] = useState<Record<string, "known" | "learning">>(
+    {},
+  );
+  const reviewsRef = useRef(reviews);
+  reviewsRef.current = reviews;
 
   const card = content.cards[index];
   const isLast = index === content.cards.length - 1;
-  const progressPct = Math.round((known.size / content.cards.length) * 100);
+  const knownCount = Object.values(reviews).filter((r) => r === "known").length;
+  const progressPct = Math.round((knownCount / content.cards.length) * 100);
+
+  const reviewMutation = useMutation({
+    mutationFn: (results: { card_id: string; known: boolean; concept: string }[]) =>
+      api.submitFlashcardReview(contentId, results),
+    onSuccess: () => {
+      // Invalidate memory queries so mastery-driven features refresh.
+      queryClient.invalidateQueries({ queryKey: ["memory"] });
+      queryClient.invalidateQueries({ queryKey: ["proactive-decks"] });
+    },
+  });
+
+  // POST all accumulated reviews when the component unmounts (user navigates
+  // away or a new deck loads). This makes flashcard mastery durable.
+  useEffect(() => {
+    return () => {
+      const reviewed = reviewsRef.current;
+      const results = content.cards
+        .filter((c) => reviewed[c.id])
+        .map((c) => ({
+          card_id: c.id,
+          known: reviewed[c.id] === "known",
+          concept: c.concept ?? "",
+        }));
+      if (results.length > 0) {
+        reviewMutation.mutate(results);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentId]);
 
   function next() {
     setFlipped(false);
@@ -31,12 +72,10 @@ export function FlashcardView({ content }: Props) {
     setIndex((i) => Math.max(i - 1, 0));
   }
   function markKnown(value: boolean) {
-    setKnown((prev) => {
-      const updated = new Set(prev);
-      if (value) updated.add(card.id);
-      else updated.delete(card.id);
-      return updated;
-    });
+    setReviews((prev) => ({
+      ...prev,
+      [card.id]: value ? "known" : "learning",
+    }));
     if (!isLast) next();
   }
 
@@ -97,7 +136,7 @@ export function FlashcardView({ content }: Props) {
       </div>
 
       <div className="card-counter" style={{ marginTop: 4 }}>
-        {known.size} of {content.cards.length} mastered
+        {knownCount} of {content.cards.length} mastered
       </div>
     </div>
   );

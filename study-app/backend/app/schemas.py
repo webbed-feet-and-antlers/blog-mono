@@ -86,6 +86,25 @@ class QuizAttemptRequest(BaseModel):
     )
 
 
+# --- Flashcard reviews ---
+
+
+class FlashcardReviewItem(BaseModel):
+    card_id: str
+    known: bool
+    concept: str = ""
+
+
+class FlashcardReviewRequest(BaseModel):
+    results: list[FlashcardReviewItem] = Field(
+        ..., description="per-card review outcomes"
+    )
+
+
+class FlashcardReviewResponse(BaseModel):
+    recorded: int
+
+
 class QuizAttemptOut(BaseModel):
     id: str
     content_id: str

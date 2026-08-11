@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .db import init_db
 from .proactive import proactive_loop
-from .routes import content, documents, generate, memory, quiz
+from .routes import content, documents, flashcards, generate, memory, quiz
 
 logger = logging.getLogger(__name__)
 
@@ -73,4 +73,5 @@ app.include_router(documents.router)
 app.include_router(generate.router)
 app.include_router(content.router)
 app.include_router(quiz.router)
+app.include_router(flashcards.router)
 app.include_router(memory.router)

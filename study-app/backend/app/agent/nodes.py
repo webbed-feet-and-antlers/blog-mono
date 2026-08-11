@@ -90,6 +90,18 @@ async def retrieve_memory(state: AgentState) -> dict[str, Any]:
     if attempts:
         memory["quiz_attempts"] = attempts
 
+    # Per-concept mastery: the richest signal. Intersect the doc's concepts
+    # with the learner's mastery history so the plan/generate steps can weight
+    # toward weak areas and skip mastered ones.
+    analysis = doc_memory.get("analysis") or {}
+    doc_concepts = [str(c) for c in (analysis.get("concepts") or [])]
+    if doc_concepts:
+        mastery = await memory_store.get_mastery_for_concepts(
+            session, doc_concepts
+        )
+        if mastery:
+            memory["concept_mastery"] = mastery
+
     _trace(state, f"memory: doc keys={list(doc_memory)} user keys={list(user_memory)}")
     return {"memory": memory}
 

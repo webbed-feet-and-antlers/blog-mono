@@ -21,6 +21,7 @@ export interface QuizQuestion {
   options: string[];
   answer_idx: number;
   explanation: string;
+  concept?: string;
 }
 
 export interface QuizContent {
@@ -32,6 +33,7 @@ export interface Flashcard {
   id: string;
   front: string;
   back: string;
+  concept?: string;
 }
 
 export interface FlashcardContent {
