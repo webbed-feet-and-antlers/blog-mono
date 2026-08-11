@@ -13,8 +13,7 @@ import * as api from "../api/client";
 import type { Recommendation } from "../api/client";
 
 interface Props {
-  onSelect: (docId: string) => void;
-  onTab: (tab: string) => void;
+  onNavigate: (docId: string, tab?: string) => void;
   onGenerate: (docId: string, taskType: string) => void;
 }
 
@@ -27,7 +26,7 @@ const ACTION_ICONS: Record<string, typeof Zap> = {
   view_document: BookOpen,
 };
 
-export function RecommendationPanel({ onSelect, onTab, onGenerate }: Props) {
+export function RecommendationPanel({ onNavigate, onGenerate }: Props) {
   const rec = useQuery({
     queryKey: ["recommend"],
     queryFn: api.getRecommendation,
@@ -49,17 +48,14 @@ export function RecommendationPanel({ onSelect, onTab, onGenerate }: Props) {
   const { primary, alternatives, context } = rec.data;
 
   function handleAction(r: Recommendation) {
+    if (!r.document_id) return;
     if (r.ready) {
-      if (r.document_id) onSelect(r.document_id);
-      if (r.tab) onTab(r.tab);
+      onNavigate(r.document_id, r.tab ?? undefined);
+    } else if (r.action.startsWith("generate_")) {
+      const taskType = r.action.replace("generate_", "");
+      onGenerate(r.document_id, taskType);
     } else {
-      if (r.document_id && r.action.startsWith("generate_")) {
-        const taskType = r.action.replace("generate_", "");
-        onGenerate(r.document_id, taskType);
-      } else if (r.document_id) {
-        onSelect(r.document_id);
-        if (r.tab) onTab(r.tab);
-      }
+      onNavigate(r.document_id, r.tab ?? undefined);
     }
   }
 

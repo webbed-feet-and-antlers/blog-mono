@@ -57,14 +57,14 @@ tasks:
   study-app:install:
     desc: "Install study-app backend (uv) + frontend (npm) deps"
     cmds:
-      - cmd: "uv --directory study-app/backend sync"
+      - cmd: "VIRTUAL_ENV= uv --directory study-app/backend sync"
       - cmd: "npm --prefix study-app/frontend install"
 
   study-app:backend:
     desc: "Start the study-app FastAPI backend on :8000"
     dir: study-app/backend
     cmds:
-      - "uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+      - "VIRTUAL_ENV= uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
 
   study-app:frontend:
     desc: "Start the study-app Vite dev server on :5173"

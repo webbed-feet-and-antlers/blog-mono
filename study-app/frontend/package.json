@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.51.0",
+    "@tanstack/react-router": "^1.95.0",
     "lucide-react": "^0.439.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.1",
-    "react-router-dom": "^6.26.0",
     "remark-gfm": "^4.0.0"
   },
   "devDependencies": {

@@ -12,10 +12,10 @@ import { ProfileCard } from "./ProfileCard";
 
 interface Props {
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onNavigate: (id: string) => void;
 }
 
-export function Sidebar({ selectedId, onSelect }: Props) {
+export function Sidebar({ selectedId, onNavigate }: Props) {
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -26,7 +26,7 @@ export function Sidebar({ selectedId, onSelect }: Props) {
     mutationFn: api.uploadDocument,
     onSuccess: (doc) => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
-      onSelect(doc.id);
+      onNavigate(doc.id);
     },
   });
 
@@ -64,7 +64,7 @@ export function Sidebar({ selectedId, onSelect }: Props) {
           <div
             key={doc.id}
             className={`doc-item ${doc.id === selectedId ? "active" : ""}`}
-            onClick={() => onSelect(doc.id)}
+            onClick={() => onNavigate(doc.id)}
           >
             <span className="doc-icon">
               <FileText size={17} />

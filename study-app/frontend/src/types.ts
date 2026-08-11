@@ -1,6 +1,7 @@
 // Shared types mirroring the backend Pydantic schemas (app/schemas.py).
 
 export type TaskType = "notes" | "quiz" | "flashcards";
+export type TabId = TaskType | "document";
 
 export interface Document {
   id: string;
