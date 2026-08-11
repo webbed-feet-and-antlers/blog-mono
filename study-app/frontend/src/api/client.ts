@@ -3,6 +3,7 @@
 
 import type {
   AgentMemory,
+  ConceptWithGraph,
   ContentItem,
   Document,
   DocumentDetail,
@@ -320,4 +321,10 @@ export async function moveDocument(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ lesson_id: lessonId }),
   });
+}
+
+// --- Concepts (knowledge graph) ---
+
+export async function listConcepts(): Promise<ConceptWithGraph[]> {
+  return request<ConceptWithGraph[]>("/api/concepts");
 }

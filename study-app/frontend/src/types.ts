@@ -1,7 +1,7 @@
 // Shared types mirroring the backend Pydantic schemas (app/schemas.py).
 
 export type TaskType = "notes" | "quiz" | "flashcards";
-export type TabId = TaskType | "document";
+export type TabId = TaskType | "document" | "concepts";
 
 export interface Document {
   id: string;
@@ -101,4 +101,28 @@ export interface Module {
 export interface ModuleTree {
   modules: Module[];
   unfiled: Document[];
+}
+
+// --- Concepts (knowledge graph + mastery) ---
+
+export interface PrerequisiteMastery {
+  concept: string;
+  mastery_pct: number | null;
+  seen: number;
+}
+
+export interface ConceptWithGraph {
+  concept: string;
+  mastery_pct: number | null;
+  seen: number;
+  correct: number;
+  wrong: number;
+  due: boolean;
+  due_in_days: number | null;
+  prerequisites: string[];
+  related: string[];
+  documents: string[];
+  modules: string[];
+  prerequisite_mastery: PrerequisiteMastery[];
+  prerequisite_blocked: boolean;
 }

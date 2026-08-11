@@ -1215,6 +1215,112 @@ button.small {
   flex-shrink: 0;
 }
 
+/* --- Concept list (knowledge graph + mastery) ---------------------------- */
+
+.concept-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.concept-summary {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+.concept-row {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 14px 18px;
+  box-shadow: var(--shadow-xs);
+}
+.concept-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mastery-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.mastery-dot.very-weak { background: var(--danger); }
+.mastery-dot.weak { background: #f59e0b; }
+.mastery-dot.strong { background: var(--ok); }
+.mastery-dot.new { background: var(--text-faint); }
+.concept-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.concept-pct {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.concept-label {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+.concept-due-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: #fef3c7;
+  color: #b45309;
+}
+.concept-blocked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+.concept-prereqs {
+  margin-top: 8px;
+  padding-left: 20px;
+}
+.prereq-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  margin-bottom: 2px;
+}
+.prereq-arrow {
+  color: var(--text-faint);
+}
+.prereq-mastery { color: var(--text-dim); }
+.prereq-mastery.very-weak { color: var(--danger); font-weight: 500; }
+.prereq-mastery.weak { color: #b45309; }
+.prereq-mastery.strong { color: var(--ok); }
+.prereq-mastery.new { color: var(--text-faint); }
+.concept-modules {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.concept-module-tag {
+  font-size: 0.68rem;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  background: var(--sidebar-bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
 /* --- Due badge (FSRS spaced repetition) ---------------------------------- */
 
 .due-badge {

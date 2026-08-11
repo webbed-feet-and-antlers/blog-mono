@@ -71,6 +71,8 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
     if mastery and task_type in ("quiz", "flashcards"):
         lines = []
         due_count = 0
+        # Build a lookup so we can show prerequisite mastery inline.
+        mastery_by_name = {m["concept"]: m for m in mastery}
         for m in mastery[:10]:
             pct = m.get("mastery_pct")
             if pct is None:
@@ -89,7 +91,27 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
             if m.get("due"):
                 due_marker = " ⚡ DUE"
                 due_count += 1
-            lines.append(f"  - {m['concept']}: {seen_str} [{label}]{due_marker}")
+            line = f"  - {m['concept']}: {seen_str} [{label}]{due_marker}"
+
+            # Knowledge graph: show prerequisite mastery so the agent can
+            # sequence material along the dependency chain.
+            prereqs = m.get("prerequisites") or []
+            if prereqs:
+                prereq_parts = []
+                for prereq in prereqs[:4]:
+                    pdata = mastery_by_name.get(prereq, {})
+                    ppct = pdata.get("mastery_pct")
+                    if ppct is None:
+                        prereq_parts.append(f"{prereq} (untested)")
+                    elif ppct < 0.4:
+                        prereq_parts.append(f"{prereq} ({int(ppct*100)}% — very weak)")
+                    elif ppct < 0.7:
+                        prereq_parts.append(f"{prereq} ({int(ppct*100)}% — weak)")
+                    else:
+                        prereq_parts.append(f"{prereq} ({int(ppct*100)}% — strong)")
+                line += f"\n    ↑ requires: {', '.join(prereq_parts)}"
+            lines.append(line)
+
         instruction = (
             "The learner's per-concept mastery (weight questions/cards toward "
             "weak/very-weak concepts; only briefly review strong ones"
@@ -100,6 +122,11 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
                 "scheduled for spaced-repetition review — prioritize them "
                 "to prevent forgetting"
             )
+        instruction += (
+            ". For concepts with prerequisites (↑ requires), test the "
+            "prerequisite first if it's weak/untested — the learner needs "
+            "the foundation before the advanced concept"
+        )
         instruction += "):\n" + "\n".join(lines)
         hints.append(instruction)
     elif memory.get("weak_topics") and task_type in ("quiz", "flashcards"):
@@ -126,9 +153,8 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
 
 
 async def analyze_document(document_text: str) -> dict[str, Any]:
-    """Extract topic, concepts, structure, difficulty from a document.
-
-    Cached per-document in agent memory so it only runs once.
+    """Extract topic, concepts, structure, difficulty, and concept relationships
+    from a document. Cached per-document in agent memory so it only runs once.
     """
     messages = [
         {
@@ -141,7 +167,14 @@ async def analyze_document(document_text: str) -> dict[str, Any]:
                 "difficulty (one of: easy, medium, hard), "
                 "summary (2-3 sentence string), "
                 "concepts (array of short strings, the key learnable concepts), "
-                "sections (array of {title, summary} covering the document's structure)."
+                "sections (array of {title, summary} covering the document's structure), "
+                "concept_relationships (array of {source, target, type} where source "
+                "and target are concept names from the concepts array, and type is "
+                "'prerequisite' (source requires understanding target first), "
+                "'related' (source and target are connected but neither requires the other), "
+                "or 'part_of' (source is a subtopic of target)). "
+                "Identify prerequisite relationships carefully — they are the most "
+                "important for sequencing study material."
             ),
         },
         {
@@ -149,7 +182,7 @@ async def analyze_document(document_text: str) -> dict[str, Any]:
             "content": f"Analyze this document:\n\n{_truncate(document_text)}",
         },
     ]
-    return await chat_json(messages, temperature=0.1, max_tokens=1500)
+    return await chat_json(messages, temperature=0.1, max_tokens=2500)
 
 
 # --- Planning ---
@@ -197,7 +230,11 @@ async def plan_task(
                 "concepts; for advanced learners, include harder application questions.\n\n"
                 "If concept_mastery entries have due=true, prioritize those concepts in the "
                 "plan. These are due for spaced-repetition review — the learner is at risk "
-                "of forgetting them."
+                "of forgetting them.\n\n"
+                "CONCEPT GRAPH: concept_mastery entries may show prerequisites (↑ requires). "
+                "Sequence your material along the prerequisite chain: test/cover foundational "
+                "concepts before advanced ones that depend on them. If a prerequisite has low "
+                "mastery, include it in the plan — the learner needs the foundation first."
             ),
         },
         {

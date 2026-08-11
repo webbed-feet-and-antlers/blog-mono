@@ -11,6 +11,7 @@ import {
   FileUp,
   Wand2,
   ArrowRight,
+  Network,
 } from "lucide-react";
 import * as api from "../api/client";
 import type { ContentItem, TaskType, TabId } from "../types";
@@ -18,6 +19,7 @@ import { NotesView } from "./NotesView";
 import { QuizView } from "./QuizView";
 import { FlashcardView } from "./FlashcardView";
 import { DocumentView } from "./DocumentView";
+import { ConceptListView } from "./ConceptListView";
 
 // Module-level flag set by the recommendation panel to signal that generation
 // should auto-trigger when DocTabView mounts. Cleaner than a URL search param.
@@ -28,6 +30,7 @@ const TABS: { id: TabId; label: string; icon: typeof FileText }[] = [
   { id: "notes", label: "Notes", icon: FileText },
   { id: "quiz", label: "Quiz", icon: CircleHelp },
   { id: "flashcards", label: "Flashcards", icon: Layers },
+  { id: "concepts", label: "Concepts", icon: Network },
 ];
 
 export function DocTabView() {
@@ -60,7 +63,7 @@ export function DocTabView() {
   const content = useQuery({
     queryKey: ["content", docId, tab],
     queryFn: () => api.listContent(docId, tab as TaskType),
-    enabled: tab !== "document",
+    enabled: tab !== "document" && tab !== "concepts",
   });
 
   const proactiveDecks = useQuery({
@@ -73,7 +76,7 @@ export function DocTabView() {
   );
 
   async function handleGenerate() {
-    if (!docId || tab === "document") return;
+    if (!docId || tab === "document" || tab === "concepts") return;
     setGenerating(true);
     setGenStatus("Reading the document…");
     setGenError(null);
@@ -156,8 +159,11 @@ export function DocTabView() {
       {/* Document tab: show source text */}
       {tab === "document" && doc.data && <DocumentView doc={doc.data} />}
 
+      {/* Concepts tab: knowledge graph + mastery */}
+      {tab === "concepts" && <ConceptListView />}
+
       {/* AI-generation tabs */}
-      {tab !== "document" && (
+      {tab !== "document" && tab !== "concepts" && (
         <>
           <div className="generate-bar">
             <input

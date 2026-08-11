@@ -64,6 +64,14 @@ async def upload_document(
     session.add(doc)
     await session.commit()
     await session.refresh(doc)
+
+    # Trigger background concept analysis — the agent silently builds the
+    # knowledge graph (concepts + relationships) while the user moves on.
+    import asyncio
+    from ..agent.concept_graph import analyze_concepts_background
+
+    asyncio.create_task(analyze_concepts_background(doc.id))
+
     return doc
 
 
