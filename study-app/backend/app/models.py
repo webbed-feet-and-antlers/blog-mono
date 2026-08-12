@@ -130,3 +130,26 @@ class AgentMemory(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow
     )
+
+
+class RecommendationEvent(Base):
+    """Telemetry events for the recommendation engine.
+
+    Tracks impressions (when a recommendation is shown) and interactions
+    (clicks, dismissals, completions). Feeds the LinUCB bandit for weight
+    optimization.
+    """
+
+    __tablename__ = "recommendation_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    impression_id: Mapped[str] = mapped_column(String, index=True)
+    strategy_name: Mapped[str] = mapped_column(String, nullable=False)
+    action: Mapped[str] = mapped_column(String, default="")
+    document_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    score: Mapped[float] = mapped_column(default=0.0)
+    rank: Mapped[int] = mapped_column(default=0)
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    reward: Mapped[float | None] = mapped_column(nullable=True)
+    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

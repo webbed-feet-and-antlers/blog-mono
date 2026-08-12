@@ -57,5 +57,10 @@ async def submit_flashcard_review(
             ],
         )
 
+    # Record session action for recommendation chaining + fatigue.
+    from ..recommend.session import record_action
+
+    await record_action(session, "flashcards", item.document_id)
+
     await session.commit()
     return FlashcardReviewResponse(recorded=recorded)

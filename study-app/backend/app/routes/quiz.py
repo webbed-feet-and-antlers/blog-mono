@@ -113,6 +113,11 @@ async def submit_quiz_attempt(
         session, quiz_score=score, doc_difficulty=doc_difficulty
     )
 
+    # Record session action for recommendation chaining + fatigue.
+    from ..recommend.session import record_action
+
+    await record_action(session, "quiz", doc_id)
+
     await session.commit()
     await session.refresh(attempt)
     return attempt

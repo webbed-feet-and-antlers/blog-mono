@@ -135,6 +135,14 @@ async def proactive_loop() -> None:
             await run_proactive_review()
         except Exception:
             logger.exception("[agent] proactive loop: run failed")
+        # Periodically update recommendation strategy weights from telemetry
+        # (the LinUCB bandit). Runs less frequently than proactive review.
+        try:
+            from .recommend.bandit import run_bandit_update
+
+            await run_bandit_update()
+        except Exception:
+            logger.debug("[agent] bandit update skipped (may lack telemetry)")
 
 
 async def get_proactive_decks(session) -> list[ContentItem]:

@@ -1160,6 +1160,22 @@ button.small {
   position: relative;
   z-index: 1;
 }
+.rec-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+}
+.rec-dismiss-btn {
+  padding: 8px;
+  color: var(--text-faint);
+}
+.rec-dismiss-btn:hover {
+  color: var(--text-dim);
+  background: var(--panel-hover);
+}
 
 .rec-alternatives {
   display: flex;

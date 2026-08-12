@@ -225,6 +225,9 @@ export interface Recommendation {
   ready: boolean;
   deck?: { title: string; cards: any[] } | null;
   content_id?: string;
+  strategy_name?: string;
+  dismissible?: boolean;
+  score?: number;
 }
 
 export interface RecommendationResponse {
@@ -238,10 +241,29 @@ export interface RecommendationResponse {
     welcome_back: string | null;
     total_quizzes: number;
   };
+  impression_id: string;
 }
 
 export async function getRecommendation(): Promise<RecommendationResponse> {
   return request<RecommendationResponse>("/api/recommend");
+}
+
+export async function submitRecommendationFeedback(
+  impressionId: string,
+  strategyName: string,
+  action: string,
+  durationSecs?: number,
+): Promise<void> {
+  await request<{ status: string }>("/api/recommend/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      impression_id: impressionId,
+      strategy_name: strategyName,
+      action,
+      duration_secs: durationSecs,
+    }),
+  });
 }
 
 // --- Flashcard reviews ---

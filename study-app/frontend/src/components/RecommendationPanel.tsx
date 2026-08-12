@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Zap,
   FileText,
@@ -8,6 +8,7 @@ import {
   ArrowRight,
   BookOpen,
   Upload,
+  X,
 } from "lucide-react";
 import * as api from "../api/client";
 import type { Recommendation } from "../api/client";
@@ -27,6 +28,7 @@ const ACTION_ICONS: Record<string, typeof Zap> = {
 };
 
 export function RecommendationPanel({ onNavigate, onGenerate }: Props) {
+  const queryClient = useQueryClient();
   const rec = useQuery({
     queryKey: ["recommend"],
     queryFn: api.getRecommendation,
@@ -45,9 +47,17 @@ export function RecommendationPanel({ onNavigate, onGenerate }: Props) {
     );
   }
 
-  const { primary, alternatives, context } = rec.data;
+  const { primary, alternatives, context, impression_id } = rec.data;
 
   function handleAction(r: Recommendation) {
+    // Fire telemetry: user clicked this recommendation.
+    if (impression_id && r.strategy_name) {
+      api.submitRecommendationFeedback(
+        impression_id,
+        r.strategy_name,
+        "clicked",
+      );
+    }
     if (!r.document_id) return;
     if (r.ready) {
       onNavigate(r.document_id, r.tab ?? undefined);
@@ -57,6 +67,31 @@ export function RecommendationPanel({ onNavigate, onGenerate }: Props) {
     } else {
       onNavigate(r.document_id, r.tab ?? undefined);
     }
+  }
+
+  function handleDismiss(r: Recommendation) {
+    // Fire telemetry: user dismissed this recommendation.
+    if (impression_id && r.strategy_name) {
+      api.submitRecommendationFeedback(
+        impression_id,
+        r.strategy_name,
+        "dismissed",
+      );
+    }
+    // Refresh recommendations so the next-best-action appears.
+    queryClient.invalidateQueries({ queryKey: ["recommend"] });
+  }
+
+  if (!primary) {
+    return (
+      <div className="empty-hero">
+        <div className="empty-icon">
+          <BookOpen size={34} strokeWidth={1.8} />
+        </div>
+        <h2>All caught up</h2>
+        <p>No recommendations right now. Upload a document to get started.</p>
+      </div>
+    );
   }
 
   const PrimaryIcon = ACTION_ICONS[primary.action] || Sparkles;
@@ -98,22 +133,33 @@ export function RecommendationPanel({ onNavigate, onGenerate }: Props) {
           <h2>{primary.title}</h2>
           <p>{primary.rationale}</p>
         </div>
-        <button
-          className="primary rec-action-btn"
-          onClick={() => handleAction(primary)}
-        >
-          {primary.ready ? (
-            <>
-              Start now
-              <ArrowRight size={16} />
-            </>
-          ) : (
-            <>
-              <Sparkles size={16} />
-              Generate
-            </>
+        <div className="rec-primary-actions">
+          {primary.dismissible && (
+            <button
+              className="ghost icon-btn rec-dismiss-btn"
+              title="Not now"
+              onClick={() => handleDismiss(primary)}
+            >
+              <X size={16} />
+            </button>
           )}
-        </button>
+          <button
+            className="primary rec-action-btn"
+            onClick={() => handleAction(primary)}
+          >
+            {primary.ready ? (
+              <>
+                Start now
+                <ArrowRight size={16} />
+              </>
+            ) : (
+              <>
+                <Sparkles size={16} />
+                Generate
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Alternatives */}
