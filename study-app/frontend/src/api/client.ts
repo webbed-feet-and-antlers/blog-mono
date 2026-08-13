@@ -87,6 +87,11 @@ export function getDocumentFileUrl(id: string): string {
   return `/api/documents/${id}/file`;
 }
 
+export function getDocumentSlideImageUrl(docId: string, page: number): string {
+  return `/api/documents/${docId}/slides/${page}`;
+}
+
+
 export async function listDocuments(): Promise<Document[]> {
   return request<Document[]>("/api/documents");
 }

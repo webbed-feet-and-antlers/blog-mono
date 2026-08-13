@@ -11,7 +11,8 @@ from __future__ import annotations
 import mimetypes
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+import fitz  # PyMuPDF
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -191,3 +192,45 @@ async def delete_document(
     await storage.delete_upload(doc.file_path)
     await session.delete(doc)
     await session.commit()
+
+
+@router.get("/{document_id}/slides/{page}")
+async def get_document_slide_image(
+    document_id: str,
+    page: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Render a specific page (slide) of an uploaded PDF document as a PNG image.
+
+    page is 1-indexed (page=1 is the first slide).
+    """
+    doc_obj = await session.get(Document, document_id)
+    if doc_obj is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = Path(doc_obj.file_path)
+    if not file_path.exists() or file_path.suffix.lower() != ".pdf":
+        raise HTTPException(status_code=400, detail="Document is not a valid PDF")
+
+    try:
+        doc = fitz.open(str(file_path))
+        if page < 1 or page > doc.page_count:
+            doc.close()
+            raise HTTPException(
+                status_code=404,
+                detail=f"Page {page} out of range (1-{doc.page_count})",
+            )
+        fitz_page = doc[page - 1]
+        mat = fitz.Matrix(2, 2)  # 2x zoom for clarity
+        pix = fitz_page.get_pixmap(matrix=mat)
+        png_bytes = pix.tobytes("png")
+        doc.close()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to render slide: {exc}"
+        )
+
+    return Response(content=png_bytes, media_type="image/png")
+
