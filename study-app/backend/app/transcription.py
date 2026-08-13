@@ -1,12 +1,15 @@
-"""Audio transcription via OpenAI Whisper API.
+"""Audio transcription via OpenRouter's /audio/transcriptions endpoint.
+
+Uses qwen3-asr-1.7b (~$0.000008/sec, ~$0.03 for a 1-hour lecture) through the
+same OpenRouter API key and base URL as the LLM. No separate API key needed.
 
 Transcribes lecture recordings and writes the transcript to Document.text,
 then triggers the concept analysis agent. The agent pipeline is transparent
 to the text source — once the transcript is in doc.text, everything downstream
 (concept graph, notes, quizzes, flashcards, mastery) works unchanged.
 
-For files >25MB (Whisper's per-request limit), the audio is chunked via pydub
-(requires ffmpeg) and each chunk is transcribed separately.
+For files >25MB (OpenRouter's per-request limit), the audio is chunked via
+pydub (requires ffmpeg) and each chunk is transcribed separately.
 """
 
 from __future__ import annotations
@@ -22,23 +25,30 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
-# Whisper API limit per request.
-WHISPER_MAX_BYTES = 25 * 1024 * 1024  # 25 MB
+# OpenRouter's per-request limit for audio transcription.
+MAX_BYTES_PER_REQUEST = 25 * 1024 * 1024  # 25 MB
 # Target chunk size (slightly under the limit for safety).
 CHUNK_TARGET_BYTES = 24 * 1024 * 1024
 
 _client: AsyncOpenAI | None = None
 
 
-def _get_whisper_client() -> AsyncOpenAI:
-    """Lazy singleton for the OpenAI client (pointed at OpenAI, not OpenRouter)."""
+def _get_transcription_client() -> AsyncOpenAI:
+    """Lazy singleton — reuses the OpenRouter client (same key + base URL).
+
+    OpenRouter's /audio/transcriptions endpoint is OpenAI-compatible, so the
+    openai SDK's client.audio.transcriptions.create() works with no changes.
+    """
     global _client
     if _client is None:
-        if not settings.openai_api_key:
+        if not settings.openrouter_api_key:
             raise RuntimeError(
-                "OPENAI_API_KEY is not set. Add it to .env for audio transcription."
+                "OPENROUTER_API_KEY is not set. Add it to .env for LLM + transcription."
             )
-        _client = AsyncOpenAI(api_key=settings.openai_api_key)
+        _client = AsyncOpenAI(
+            base_url=settings.openrouter_base_url,
+            api_key=settings.openrouter_api_key,
+        )
     return _client
 
 
@@ -54,7 +64,7 @@ async def transcribe_audio(path: Path) -> str:
     """
     file_size = path.stat().st_size
 
-    if file_size <= WHISPER_MAX_BYTES:
+    if file_size <= MAX_BYTES_PER_REQUEST:
         return await _transcribe_single(path)
 
     logger.info(
@@ -64,11 +74,11 @@ async def transcribe_audio(path: Path) -> str:
 
 
 async def _transcribe_single(path: Path) -> str:
-    """Transcribe a single file (≤25MB) via Whisper."""
-    client = _get_whisper_client()
+    """Transcribe a single file (≤25MB) via OpenRouter's ASR endpoint."""
+    client = _get_transcription_client()
     with open(path, "rb") as f:
         result = await client.audio.transcriptions.create(
-            model=settings.whisper_model,
+            model=settings.transcription_model,
             file=f,
         )
     return result.text
@@ -104,7 +114,7 @@ async def _transcribe_chunked(path: Path) -> str:
     )
 
     # Transcribe each chunk.
-    client = _get_whisper_client()
+    client = _get_transcription_client()
     transcript_parts = []
     for i, chunk in enumerate(chunks):
         # Export chunk to a temp file.
@@ -115,7 +125,7 @@ async def _transcribe_chunked(path: Path) -> str:
         try:
             with open(tmp_path, "rb") as f:
                 result = await client.audio.transcriptions.create(
-                    model=settings.whisper_model,
+                    model=settings.transcription_model,
                     file=f,
                 )
             transcript_parts.append(result.text)
