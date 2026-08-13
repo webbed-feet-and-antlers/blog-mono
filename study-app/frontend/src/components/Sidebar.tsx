@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -12,7 +12,6 @@ import {
   Folder,
   FolderInput,
   Mic,
-  Square,
 } from "lucide-react";
 import * as api from "../api/client";
 import type { ModuleTree } from "../types";
@@ -41,13 +40,7 @@ export function Sidebar({ selectedId, onNavigate, onHome, onRecord }: Props) {
   const [addingToModule, setAddingToModule] = useState<string | null>(null);
   const [newModuleName, setNewModuleName] = useState("");
   const [showNewModule, setShowNewModule] = useState(false);
-  // Recording state
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordTime, setRecordTime] = useState(0);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const tree = useQuery({
     queryKey: ["module-tree"],
@@ -120,68 +113,6 @@ export function Sidebar({ selectedId, onNavigate, onHome, onRecord }: Props) {
     if (!files || files.length === 0) return;
     await upload.mutateAsync(files[0]);
     if (fileInput.current) fileInput.current.value = "";
-  }
-
-  // --- In-browser audio recording (MediaRecorder API) ---
-  async function toggleRecording() {
-    if (isRecording) {
-      stopRecording();
-      return;
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/mp4";
-      const recorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorderRef.current = recorder;
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        const ext = mimeType.includes("webm") ? "webm" : "m4a";
-        const file = new File([blob], `recording-${Date.now()}.${ext}`, {
-          type: mimeType,
-        });
-        await upload.mutateAsync(file);
-      };
-
-      recorder.start();
-      setIsRecording(true);
-      setRecordTime(0);
-      recordTimerRef.current = setInterval(() => {
-        setRecordTime((t) => t + 1);
-      }, 1000);
-    } catch (err) {
-      console.error("Recording failed:", err);
-    }
-  }
-
-  function stopRecording() {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
-    }
-  }
-
-  // Cleanup on unmount.
-  useEffect(() => {
-    return () => {
-      if (recordTimerRef.current) clearInterval(recordTimerRef.current);
-    };
-  }, []);
-
-  function formatTime(secs: number): string {
-    const m = Math.floor(secs / 60);
-    const s = secs % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
   const allDocs = [
@@ -434,13 +365,6 @@ export function Sidebar({ selectedId, onNavigate, onHome, onRecord }: Props) {
                 ? `Uploading… ${uploadProgress}%`
                 : "Uploading…"}
             </>
-          ) : isRecording ? (
-            <>
-              <div className="recording-indicator" />
-              <span style={{ color: "var(--danger)", fontWeight: 600 }}>
-                Recording… {formatTime(recordTime)}
-              </span>
-            </>
           ) : (
             <>
               <UploadCloud size={24} className="dz-icon" />
@@ -456,21 +380,12 @@ export function Sidebar({ selectedId, onNavigate, onHome, onRecord }: Props) {
 
         {/* Record button */}
         <button
-          className={`record-btn ${isRecording ? "recording" : ""}`}
-          onClick={toggleRecording}
+          className="record-btn"
+          onClick={onRecord}
           disabled={upload.isPending}
         >
-          {isRecording ? (
-            <>
-              <Square size={14} />
-              Stop & upload
-            </>
-          ) : (
-            <>
-              <Mic size={16} />
-              Record lecture
-            </>
-          )}
+          <Mic size={16} />
+          Record lecture
         </button>
 
         {upload.isError && (
