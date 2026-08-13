@@ -124,7 +124,12 @@ export function DocTabView() {
         <div className="doc-title-icon">
           <FileText size={20} strokeWidth={1.8} />
         </div>
-        <h2>{doc.data?.filename ?? "Loading…"}</h2>
+        <div>
+          <h2>{doc.data?.filename ?? "Loading…"}</h2>
+          {doc.data?.topic && (
+            <p className="doc-topic-subtitle">{doc.data.topic}</p>
+          )}
+        </div>
       </div>
 
       {/* Proactive banner */}

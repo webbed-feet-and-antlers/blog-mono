@@ -22,6 +22,7 @@ class DocumentOut(BaseModel):
     kind: str = "text"
     duration_seconds: int | None = None
     transcription_status: str | None = None
+    topic: str | None = None
 
     model_config = {"from_attributes": True}
 

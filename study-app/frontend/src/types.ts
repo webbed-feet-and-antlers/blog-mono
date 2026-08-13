@@ -15,6 +15,7 @@ export interface Document {
   duration_seconds?: number | null;
   transcription_status?: string | null;
   transcription_error?: string | null;
+  topic?: string | null;
 }
 
 export interface DocumentDetail extends Document {

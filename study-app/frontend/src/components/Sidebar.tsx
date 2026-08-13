@@ -483,7 +483,7 @@ function DocItem({
   tree,
   onMove,
 }: {
-  doc: { id: string; filename: string; page_count: number; char_count: number };
+  doc: { id: string; filename: string; page_count: number; char_count: number; topic?: string | null };
   active: boolean;
   onClick: () => void;
   onDelete: () => void;
@@ -504,9 +504,11 @@ function DocItem({
       <div className="meta">
         <span className="filename">{doc.filename}</span>
         <span className="sub">
-          {doc.page_count > 1
-            ? `${doc.page_count} pages`
-            : `${(doc.char_count / 1000).toFixed(1)}k chars`}
+          {doc.topic
+            ? doc.topic
+            : doc.page_count > 1
+              ? `${doc.page_count} pages`
+              : `${(doc.char_count / 1000).toFixed(1)}k chars`}
         </span>
       </div>
       <div className="doc-item-actions">

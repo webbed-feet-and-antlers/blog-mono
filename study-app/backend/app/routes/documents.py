@@ -139,6 +139,17 @@ async def get_document(document_id: str, session: AsyncSession = Depends(get_ses
     doc = await session.get(Document, document_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    # Attach the topic from the cached analysis (if available) so the
+    # frontend can display it as a subtitle.
+    from ..agent.memory import read_memory
+
+    analysis = await read_memory(session, "doc", document_id, "analysis")
+    if analysis and isinstance(analysis, dict) and analysis.get("topic"):
+        # Build a dict from the ORM object + add the topic field.
+        data = {c.name: getattr(doc, c.name) for c in doc.__table__.columns}
+        data["topic"] = analysis["topic"]
+        return data
     return doc
 
 
