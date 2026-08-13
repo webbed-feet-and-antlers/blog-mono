@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     proactive_score_threshold: float = 0.7  # below this counts as "struggled"
     proactive_cooldown_hours: int = 24  # don't regenerate a deck within this
 
+    # Auto-generation: when a document is uploaded and analyzed, automatically
+    # generate flashcards in the background. The student never needs to click
+    # "Generate" — content is ready when they are.
+    auto_generate_flashcards: bool = False
+
     # SQLite URL is derived from db_path.
     @property
     def db_url(self) -> str:

@@ -13,6 +13,7 @@ import { RecommendationPanel } from "./components/RecommendationPanel";
 import { DocTabView, pendingGenerate } from "./components/DocTabView";
 import { RecordPage } from "./components/RecordPage";
 import { LectureView } from "./components/LectureView";
+import { StudySessionLoader } from "./components/StudySessionView";
 import type { TabId } from "./types";
 
 // Shared query client — created once, used by all routes.
@@ -76,6 +77,7 @@ const indexRoute = createRoute({
             params: { docId, tab: taskType },
           });
         }}
+        onStudySession={() => navigate({ to: "/study" })}
       />
     );
   },
@@ -122,12 +124,27 @@ const lectureRoute = createRoute({
   ),
 });
 
+// /study → study session (no sidebar — focused study mode)
+const studyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/study",
+  component: () => {
+    const navigate = useNavigate();
+    return (
+      <QueryClientProvider client={queryClient}>
+        <StudySessionLoader onExit={() => navigate({ to: "/" })} />
+      </QueryClientProvider>
+    );
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   docRoute,
   docTabRoute,
   recordRoute,
   lectureRoute,
+  studyRoute,
 ]);
 
 export const router = createRouter({

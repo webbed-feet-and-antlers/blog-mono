@@ -134,3 +134,40 @@ def due_in_days(
         return round(delta / 86400, 2)  # days
     except (ValueError, TypeError):
         return None
+
+
+def retrievability(
+    fsrs_state: dict[str, Any] | None, now: datetime | None = None
+) -> float | None:
+    """The probability of recalling this concept right now: R(t) = exp(-elapsed/S).
+
+    Uses the FSRS stability (memory strength in days) and the time since last
+    review. Returns None for new/untested concepts (no stability or last_review).
+
+    R = 1.0 means perfect recall (just reviewed).
+    R = 0.5 means 50/50 chance of recall.
+    R ≈ 0.9 is the FSRS target review point (90% recall probability).
+
+    The session composer uses this as a continuous urgency signal to rank
+    which due concepts need review most urgently — a concept at R=0.5 is
+    more urgent than one at R=0.85, even though both are "due."
+    """
+    import math
+
+    if not fsrs_state:
+        return None  # new concept
+
+    stability = fsrs_state.get("stability")
+    last_review_str = fsrs_state.get("last_review")
+    if not stability or not last_review_str:
+        return None
+
+    now = now or datetime.now(timezone.utc)
+    try:
+        last_review = datetime.fromisoformat(last_review_str)
+        if last_review.tzinfo is None:
+            last_review = last_review.replace(tzinfo=timezone.utc)
+        elapsed_days = (now - last_review).total_seconds() / 86400
+        return round(math.exp(-elapsed_days / stability), 4)
+    except (ValueError, TypeError):
+        return None

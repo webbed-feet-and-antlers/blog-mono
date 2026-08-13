@@ -423,3 +423,49 @@ export async function updateLectureNotes(
 export function getSlideImageUrl(lectureId: string, page: number): string {
   return `/api/lectures/${lectureId}/slides/${page}`;
 }
+
+// --- Study sessions ---
+
+export interface SessionCard {
+  id: string;
+  front: string;
+  back: string;
+  concept: string;
+  source: string; // "review" | "new"
+  content_id?: string | null;
+}
+
+export interface StudySession {
+  id: string;
+  type: string;
+  cards: SessionCard[];
+  mix: { review: number; new: number };
+  rationale: string;
+}
+
+export async function startStudySession(
+  type: string = "flashcards",
+  count: number = 20,
+  scope: string = "global",
+  documentId?: string,
+): Promise<StudySession> {
+  return request<StudySession>("/api/study-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, count, scope, document_id: documentId }),
+  });
+}
+
+export async function submitSessionReview(
+  sessionId: string,
+  results: { card_id: string; known: boolean; concept: string; content_id?: string | null }[],
+): Promise<{ recorded: number }> {
+  return request<{ recorded: number }>(
+    `/api/study-session/${sessionId}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ results }),
+    },
+  );
+}

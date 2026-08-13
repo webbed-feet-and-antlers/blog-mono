@@ -20,15 +20,16 @@ from sqlalchemy import select
 
 from . import memory as memory_store
 from . import tools
+from ..config import settings
 from ..db import SessionLocal
-from ..models import Document, Lesson, Module
+from ..models import Document, Lesson, Module, LectureSession, ContentItem
 
 logger = logging.getLogger(__name__)
 
 
 async def analyze_concepts_background(doc_id: str) -> None:
     """Background task: analyze a document's concepts + relationships and merge
-    them into the global concept_mastery store.
+    them into the global concept_mastery store. Auto-names generic lectures.
 
     Called via asyncio.create_task from the upload route. Creates its own
     session (the request session is closed by then). Fails silently — a
@@ -52,6 +53,29 @@ async def analyze_concepts_background(doc_id: str) -> None:
             # Merge concept relationships into the global graph.
             await merge_concept_graph(session, doc_id, analysis)
 
+            # Auto-name generic/unnamed LectureSessions associated with this document
+            topic_title = (analysis.get("topic") or "").strip()
+            if topic_title:
+                stmt = select(LectureSession).where(
+                    (LectureSession.audio_doc_id == doc_id)
+                    | (LectureSession.slides_doc_id == doc_id)
+                )
+                res = await session.execute(stmt)
+                lectures = res.scalars().all()
+                for lecture in lectures:
+                    if (
+                        not lecture.title
+                        or lecture.title.startswith("Lecture ")
+                        or lecture.title.lower().startswith("untitled")
+                    ):
+                        logger.info(
+                            "[concept-graph] Auto-naming lecture %s from '%s' to '%s'",
+                            lecture.id,
+                            lecture.title,
+                            topic_title,
+                        )
+                        lecture.title = topic_title
+
             await session.commit()
             concepts = analysis.get("concepts") or []
             rels = analysis.get("concept_relationships") or []
@@ -61,8 +85,64 @@ async def analyze_concepts_background(doc_id: str) -> None:
                 len(concepts),
                 len(rels),
             )
+
+            # Auto-generate flashcards if enabled — the student never needs to
+            # click "Generate." Content is ready when they open the app.
+            if settings.auto_generate_flashcards:
+                try:
+                    await _auto_generate_flashcards(session, doc_id, doc.text)
+                except Exception:
+                    logger.exception(
+                        "[concept-graph] auto-generation failed for doc %s (analysis OK)",
+                        doc_id,
+                    )
     except Exception:
         logger.exception("[concept-graph] background analysis failed for doc %s", doc_id)
+
+
+async def _auto_generate_flashcards(session, doc_id: str, doc_text: str) -> None:
+    """Auto-generate a flashcard deck for a document after analysis completes.
+
+    Skips if the doc already has an auto-generated deck (dedup). Tags the
+    deck with origin="auto" so the session composer can distinguish it.
+    """
+    # Check for existing auto-generated deck (dedup).
+    existing = await session.execute(
+        select(ContentItem).where(
+            ContentItem.document_id == doc_id,
+            ContentItem.type == "flashcards",
+        )
+    )
+    for item in existing.scalars().all():
+        if isinstance(item.content, dict) and item.content.get("origin") == "auto":
+            logger.info("[concept-graph] doc %s already has auto-flashcards, skipping", doc_id)
+            return
+
+    # Run the agent pipeline to generate flashcards.
+    from .graph import run_generation
+
+    logger.info("[concept-graph] auto-generating flashcards for doc %s", doc_id)
+    final_state = await run_generation(
+        document_id=doc_id,
+        document_text=doc_text,
+        task_type="flashcards",
+        session=session,
+    )
+
+    if final_state.get("error"):
+        logger.warning("[concept-graph] auto-gen failed for doc %s: %s", doc_id, final_state["error"])
+        return
+
+    item = final_state.get("content_item")
+    if not item:
+        return
+
+    # Tag the deck as auto-generated.
+    saved = await session.get(ContentItem, item["id"])
+    if saved is not None:
+        saved.content = {**saved.content, "origin": "auto"}
+    await session.commit()
+    logger.info("[concept-graph] auto-generated flashcards for doc %s (content_id=%s)", doc_id, item["id"])
 
 
 async def merge_concept_graph(

@@ -16,6 +16,7 @@ import type { Recommendation } from "../api/client";
 interface Props {
   onNavigate: (docId: string, tab?: string) => void;
   onGenerate: (docId: string, taskType: string) => void;
+  onStudySession: () => void;
 }
 
 const ACTION_ICONS: Record<string, typeof Zap> = {
@@ -27,7 +28,7 @@ const ACTION_ICONS: Record<string, typeof Zap> = {
   view_document: BookOpen,
 };
 
-export function RecommendationPanel({ onNavigate, onGenerate }: Props) {
+export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: Props) {
   const queryClient = useQueryClient();
   const rec = useQuery({
     queryKey: ["recommend"],
@@ -58,14 +59,19 @@ export function RecommendationPanel({ onNavigate, onGenerate }: Props) {
         "clicked",
       );
     }
-    if (!r.document_id) return;
+    if (!r.document_id && r.action !== "review_flashcards") return;
+    // Study session: compose a review+new mix instead of navigating to a doc tab.
+    if (r.action === "review_flashcards") {
+      onStudySession();
+      return;
+    }
     if (r.ready) {
-      onNavigate(r.document_id, r.tab ?? undefined);
+      onNavigate(r.document_id!, r.tab ?? undefined);
     } else if (r.action.startsWith("generate_")) {
       const taskType = r.action.replace("generate_", "");
-      onGenerate(r.document_id, taskType);
+      onGenerate(r.document_id!, taskType);
     } else {
-      onNavigate(r.document_id, r.tab ?? undefined);
+      onNavigate(r.document_id!, r.tab ?? undefined);
     }
   }
 

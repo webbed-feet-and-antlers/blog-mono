@@ -345,10 +345,15 @@ async def generate_flashcards(
                 "atomic — one idea per card. Be accurate to the source. "
                 "Every card MUST include a 'concept' field naming the single "
                 "concept it covers (from the plan's concepts_to_cover). "
+                "IMPORTANT: For each concept, generate 2 card variants with "
+                "DIFFERENT phrasings — test the same concept from different "
+                "angles so the student can't memorize the card wording instead "
+                "of learning the underlying concept. Store variants as an array. "
                 "Return ONLY JSON: "
                 '{"title": string, "cards": ['
-                '{"id": "c1", "front": string, "back": string, '
-                '"concept": string}]}.'
+                '{"id": "c1", "concept": string, '
+                '"variants": [{"front": string, "back": string}, '
+                '{"front": string, "back": string}]}]}.'
             ),
         },
         {
@@ -394,6 +399,26 @@ def _normalize_flashcard_ids(result: dict[str, Any]) -> None:
         c.setdefault("concept", "")
         if not isinstance(c["concept"], str):
             c["concept"] = str(c["concept"])
+
+        # Handle card variants (new format) vs flat front/back (old format).
+        if "variants" not in c:
+            # Old format: flat front/back → wrap in a single variant.
+            c["variants"] = [{"front": c.get("front", ""), "back": c.get("back", "")}]
+        else:
+            # Ensure variants is a list of {front, back} dicts.
+            if not isinstance(c["variants"], list):
+                c["variants"] = [{"front": c.get("front", ""), "back": c.get("back", "")}]
+            else:
+                for v in c["variants"]:
+                    if not isinstance(v, dict):
+                        continue
+                    v.setdefault("front", "")
+                    v.setdefault("back", "")
+
+        # Also keep flat front/back (first variant) for backward compat.
+        if c["variants"]:
+            c["front"] = c["variants"][0].get("front", "")
+            c["back"] = c["variants"][0].get("back", "")
 
 
 def new_content_id() -> str:
