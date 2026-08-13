@@ -179,3 +179,47 @@ class ModuleTreeResponse(BaseModel):
 
 class DocumentMove(BaseModel):
     lesson_id: str | None = None
+
+
+# --- Lecture sessions ---
+
+
+class SlideTimestamp(BaseModel):
+    slide_number: int
+    audio_seconds: float
+
+
+class LectureSessionCreate(BaseModel):
+    title: str
+    lesson_id: str | None = None
+    audio_doc_id: str | None = None
+    slides_doc_id: str | None = None
+    notes: str = ""
+    duration_seconds: int = 0
+    slide_timestamps: list[SlideTimestamp] = []
+    slide_count: int = 0
+
+
+class LectureSessionNotesUpdate(BaseModel):
+    notes: str
+
+
+class LectureSessionOut(BaseModel):
+    id: str
+    lesson_id: str | None = None
+    title: str
+    audio_doc_id: str | None = None
+    slides_doc_id: str | None = None
+    notes: str = ""
+    duration_seconds: int = 0
+    slide_timestamps: list[dict] = []
+    slide_count: int = 0
+    status: str = "completed"
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LectureSessionDetail(LectureSessionOut):
+    audio_doc: DocumentOut | None = None
+    slides_doc: DocumentOut | None = None

@@ -163,3 +163,32 @@ class RecommendationEvent(Base):
     reward: Mapped[float | None] = mapped_column(nullable=True)
     context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class LectureSession(Base):
+    """A lecture recording session — groups audio + slides + notes + timestamps.
+
+    Belongs to a Lesson (optional). References the audio Document (recording)
+    and slides Document (PDF). Owns the slide↔audio timestamp mapping and
+    user-authored notes.
+    """
+
+    __tablename__ = "lecture_sessions"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    lesson_id: Mapped[str | None] = mapped_column(
+        ForeignKey("lessons.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    audio_doc_id: Mapped[str | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    slides_doc_id: Mapped[str | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    notes: Mapped[str] = mapped_column(Text, default="")
+    duration_seconds: Mapped[int] = mapped_column(default=0)
+    slide_timestamps: Mapped[list] = mapped_column(JSON, default=list)
+    slide_count: Mapped[int] = mapped_column(default=0)
+    status: Mapped[str] = mapped_column(String, default="completed")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

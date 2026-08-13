@@ -22,9 +22,10 @@ interface Props {
   selectedId: string | null;
   onNavigate: (id: string) => void;
   onHome: () => void;
+  onRecord: () => void;
 }
 
-export function Sidebar({ selectedId, onNavigate, onHome }: Props) {
+export function Sidebar({ selectedId, onNavigate, onHome, onRecord }: Props) {
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -206,13 +207,22 @@ export function Sidebar({ selectedId, onNavigate, onHome }: Props) {
             <p>AI-powered notes, quizzes & flashcards</p>
           </div>
         </div>
-        <button
-          className="ghost icon-btn"
-          title="New module"
-          onClick={() => setShowNewModule((v) => !v)}
-        >
-          <Plus size={18} />
-        </button>
+        <div className="sidebar-header-actions">
+          <button
+            className="ghost icon-btn"
+            title="Record lecture"
+            onClick={onRecord}
+          >
+            <Mic size={18} />
+          </button>
+          <button
+            className="ghost icon-btn"
+            title="New module"
+            onClick={() => setShowNewModule((v) => !v)}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
       </div>
 
       <div className="doc-list">

@@ -9,6 +9,8 @@ import type {
   DocumentDetail,
   GenerateRequest,
   Lesson,
+  LectureSession,
+  LectureSessionDetail,
   Module,
   ModuleTree,
   QuizAttempt,
@@ -377,4 +379,42 @@ export async function moveDocument(
 
 export async function listConcepts(): Promise<ConceptWithGraph[]> {
   return request<ConceptWithGraph[]>("/api/concepts");
+}
+
+// --- Lecture sessions ---
+
+export async function createLecture(data: {
+  title: string;
+  lesson_id?: string;
+  audio_doc_id?: string;
+  slides_doc_id?: string;
+  notes?: string;
+  duration_seconds?: number;
+  slide_timestamps?: { slide_number: number; audio_seconds: number }[];
+  slide_count?: number;
+}): Promise<LectureSession> {
+  return request<LectureSession>("/api/lectures", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getLecture(id: string): Promise<LectureSessionDetail> {
+  return request<LectureSessionDetail>(`/api/lectures/${id}`);
+}
+
+export async function updateLectureNotes(
+  id: string,
+  notes: string,
+): Promise<LectureSession> {
+  return request<LectureSession>(`/api/lectures/${id}/notes`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notes }),
+  });
+}
+
+export function getSlideImageUrl(lectureId: string, page: number): string {
+  return `/api/lectures/${lectureId}/slides/${page}`;
 }

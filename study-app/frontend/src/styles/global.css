@@ -169,6 +169,11 @@ button.small {
 .brand-clickable:hover {
   opacity: 0.8;
 }
+.sidebar-header-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
 .brand-mark {
   width: 38px;
   height: 38px;
@@ -1018,6 +1023,302 @@ button.small {
   padding: 6px 10px;
   font-size: 0.78rem;
   color: var(--text-faint);
+}
+
+/* --- Record page (dedicated recording UI) -------------------------------- */
+
+.record-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 32px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.record-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.record-title-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.record-title-input:focus {
+  outline: none;
+}
+.record-title-input::placeholder {
+  color: var(--text-faint);
+}
+
+.record-timer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.recording-pulse {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.timer-text {
+  font-size: 2.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--text-dim);
+}
+.timer-text.recording {
+  color: var(--danger);
+}
+
+.record-controls {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+.record-big-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 32px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-accent);
+  transition: background 0.15s, transform 0.05s;
+}
+.record-big-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.record-big-btn.recording {
+  background: var(--danger);
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.28);
+}
+.record-big-btn.recording:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.record-body {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 24px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Slides section */
+.record-slides {
+  display: flex;
+  flex-direction: column;
+}
+.slide-upload-zone {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  padding: 40px;
+  text-align: center;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  min-height: 300px;
+}
+.slide-upload-zone:hover {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.slide-display {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.slide-image-container {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  position: relative;
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.slide-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.slide-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-faint);
+  font-size: 0.85rem;
+  position: absolute;
+}
+.slide-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.slide-counter {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  min-width: 60px;
+  text-align: center;
+}
+.slide-ts-hint {
+  font-size: 0.74rem;
+  color: var(--text-faint);
+}
+.slide-timestamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.slide-ts-badge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* Notes section */
+.record-notes {
+  display: flex;
+  flex-direction: column;
+}
+.notes-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+.notes-textarea {
+  flex: 1;
+  width: 100%;
+  resize: none;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  box-shadow: var(--shadow-xs);
+}
+.notes-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+/* --- Lecture view (playback) --------------------------------------------- */
+
+.lecture-view {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 32px;
+}
+.lecture-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 80px;
+  color: var(--text-dim);
+}
+.lecture-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.lecture-header h2 {
+  flex: 1;
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+.lecture-duration {
+  font-size: 0.85rem;
+  color: var(--text-faint);
+  font-weight: 500;
+}
+.lecture-audio {
+  width: 100%;
+  margin-bottom: 24px;
+  border-radius: var(--r-sm);
+}
+.lecture-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.lecture-slides-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lecture-content-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.lecture-transcript-section,
+.lecture-notes-section {
+  display: flex;
+  flex-direction: column;
+}
+.section-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin: 0 0 8px;
+}
+.lecture-transcript {
+  max-height: 400px;
+  font-size: 0.82rem;
+}
+.lecture-notes-editor {
+  min-height: 400px;
+}
+
+@media (max-width: 768px) {
+  .record-body,
+  .lecture-content-split {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* --- Audio recording (sidebar) ------------------------------------------- */

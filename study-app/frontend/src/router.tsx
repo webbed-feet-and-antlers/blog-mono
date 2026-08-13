@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Sidebar } from "./components/Sidebar";
 import { RecommendationPanel } from "./components/RecommendationPanel";
 import { DocTabView, pendingGenerate } from "./components/DocTabView";
+import { RecordPage } from "./components/RecordPage";
+import { LectureView } from "./components/LectureView";
 import type { TabId } from "./types";
 
 // Shared query client — created once, used by all routes.
@@ -37,6 +39,7 @@ function Layout() {
             navigate({ to: "/documents/$docId", params: { docId: id } })
           }
           onHome={() => navigate({ to: "/" })}
+          onRecord={() => navigate({ to: "/record" })}
         />
         <main className="main">
           <Outlet />
@@ -97,7 +100,35 @@ const docTabRoute = createRoute({
   component: DocTabView,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, docRoute, docTabRoute]);
+// /record → dedicated recording page (no sidebar — focused mode)
+const recordRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/record",
+  component: () => (
+    <QueryClientProvider client={queryClient}>
+      <RecordPage />
+    </QueryClientProvider>
+  ),
+});
+
+// /lecture/$lectureId → lecture playback view (no sidebar — immersive)
+const lectureRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/lecture/$lectureId",
+  component: () => (
+    <QueryClientProvider client={queryClient}>
+      <LectureView />
+    </QueryClientProvider>
+  ),
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  docRoute,
+  docTabRoute,
+  recordRoute,
+  lectureRoute,
+]);
 
 export const router = createRouter({
   routeTree,

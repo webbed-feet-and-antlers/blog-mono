@@ -108,6 +108,32 @@ export interface ModuleTree {
   unfiled: Document[];
 }
 
+// --- Lecture sessions ---
+
+export interface SlideTimestamp {
+  slide_number: number;
+  audio_seconds: number;
+}
+
+export interface LectureSession {
+  id: string;
+  lesson_id: string | null;
+  title: string;
+  audio_doc_id: string | null;
+  slides_doc_id: string | null;
+  notes: string;
+  duration_seconds: number;
+  slide_timestamps: SlideTimestamp[];
+  slide_count: number;
+  status: string;
+  created_at: string;
+}
+
+export interface LectureSessionDetail extends LectureSession {
+  audio_doc?: Document | null;
+  slides_doc?: Document | null;
+}
+
 // --- Concepts (knowledge graph + mastery) ---
 
 export interface PrerequisiteMastery {
