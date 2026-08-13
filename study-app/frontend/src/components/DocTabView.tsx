@@ -77,6 +77,11 @@ export function DocTabView() {
 
   async function handleGenerate() {
     if (!docId || tab === "document" || tab === "concepts") return;
+    // Guard: don't generate from an audio doc that hasn't been transcribed yet.
+    if (doc.data?.transcription_status === "pending" || doc.data?.transcription_status === "transcribing") {
+      setGenError("Transcription still in progress — please wait for it to complete.");
+      return;
+    }
     setGenerating(true);
     setGenStatus("Reading the document…");
     setGenError(null);

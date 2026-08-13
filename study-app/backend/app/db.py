@@ -55,3 +55,20 @@ async def init_db() -> None:
                 )
             )
             logger.info("Migrated documents table: added lesson_id column")
+        # Audio recording support columns.
+        if "kind" not in columns:
+            await conn.execute(
+                text("ALTER TABLE documents ADD COLUMN kind VARCHAR DEFAULT 'text'")
+            )
+        if "duration_seconds" not in columns:
+            await conn.execute(
+                text("ALTER TABLE documents ADD COLUMN duration_seconds INTEGER")
+            )
+        if "transcription_status" not in columns:
+            await conn.execute(
+                text("ALTER TABLE documents ADD COLUMN transcription_status VARCHAR")
+            )
+        if "transcription_error" not in columns:
+            await conn.execute(
+                text("ALTER TABLE documents ADD COLUMN transcription_error TEXT")
+            )

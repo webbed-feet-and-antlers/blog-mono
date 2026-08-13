@@ -1013,6 +1013,68 @@ button.small {
   color: var(--text-faint);
 }
 
+/* --- Audio recording (sidebar) ------------------------------------------- */
+
+.record-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.record-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.record-btn.recording {
+  background: var(--danger-tint);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.recording-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+/* --- Audio player + transcript (DocumentView) ---------------------------- */
+
+.audio-player-container {
+  margin-bottom: 20px;
+}
+.audio-player {
+  width: 100%;
+  border-radius: var(--r-sm);
+}
+.transcription-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-tint-strong);
+  border-radius: var(--r-sm);
+  font-size: 0.88rem;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
 /* --- Learner profile card (sidebar) -------------------------------------- */
 
 .profile-card {

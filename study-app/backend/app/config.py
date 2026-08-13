@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     openrouter_model: str = "deepseek/deepseek-v4-flash"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
+    # Transcription — separate from OpenRouter because OpenRouter doesn't expose
+    # the /audio/transcriptions endpoint. Uses the OpenAI Whisper API directly.
+    openai_api_key: str | None = None
+    whisper_model: str = "whisper-1"
+    audio_max_bytes: int = 500 * 1024 * 1024  # 500 MB
+
     # Paths
     base_dir: Path = Path(__file__).resolve().parent.parent
     storage_dir: Path = base_dir / "storage"

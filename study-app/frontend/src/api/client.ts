@@ -47,14 +47,42 @@ async function request<T>(
 export async function uploadDocument(
   file: File,
   lessonId?: string,
+  onProgress?: (pct: number) => void,
 ): Promise<Document> {
   const form = new FormData();
   form.append("file", file);
   const qs = lessonId ? `?lesson_id=${lessonId}` : "";
-  return request<Document>(`/api/documents${qs}`, {
-    method: "POST",
-    body: form,
+
+  // Use XMLHttpRequest for upload progress support (essential for large audio).
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/documents${qs}`);
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText));
+      } else {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          reject(new ApiError(xhr.status, body.detail || xhr.statusText));
+        } catch {
+          reject(new ApiError(xhr.status, xhr.statusText));
+        }
+      }
+    };
+    xhr.onerror = () => reject(new ApiError(0, "Network error"));
+    xhr.send(form);
   });
+}
+
+export function getDocumentFileUrl(id: string): string {
+  return `/api/documents/${id}/file`;
 }
 
 export async function listDocuments(): Promise<Document[]> {

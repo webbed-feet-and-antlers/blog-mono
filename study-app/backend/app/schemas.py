@@ -19,6 +19,9 @@ class DocumentOut(BaseModel):
     char_count: int
     uploaded_at: datetime
     lesson_id: str | None = None
+    kind: str = "text"
+    duration_seconds: int | None = None
+    transcription_status: str | None = None
 
     model_config = {"from_attributes": True}
 

@@ -57,6 +57,16 @@ class Document(Base):
     page_count: Mapped[int] = mapped_column(default=0)
     char_count: Mapped[int] = mapped_column(default=0)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    # Document kind: "text" (PDF/TXT/MD) or "audio" (lecture recording).
+    kind: Mapped[str] = mapped_column(String, default="text")
+    # Audio-specific fields (nullable, only set when kind == "audio").
+    duration_seconds: Mapped[int | None] = mapped_column(nullable=True, default=None)
+    transcription_status: Mapped[str | None] = mapped_column(
+        String, nullable=True, default=None
+    )  # None | "pending" | "transcribing" | "done" | "failed"
+    transcription_error: Mapped[str | None] = mapped_column(
+        Text, nullable=True, default=None
+    )
     # Optional: which lesson this document belongs to. Nullable so existing
     # flat documents keep working (NULL = unfiled).
     lesson_id: Mapped[str | None] = mapped_column(

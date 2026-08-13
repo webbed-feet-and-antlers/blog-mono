@@ -11,6 +11,10 @@ export interface Document {
   char_count: number;
   uploaded_at: string;
   lesson_id?: string | null;
+  kind?: string;
+  duration_seconds?: number | null;
+  transcription_status?: string | null;
+  transcription_error?: string | null;
 }
 
 export interface DocumentDetail extends Document {
