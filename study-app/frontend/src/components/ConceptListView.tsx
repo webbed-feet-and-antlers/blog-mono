@@ -43,7 +43,7 @@ export function ConceptListView() {
   );
 }
 
-function ConceptRow({ concept: c }: { concept: ConceptWithGraph }) {
+export function ConceptRow({ concept: c }: { concept: ConceptWithGraph }) {
   const pct = c.mastery_pct;
   const dotClass =
     pct === null

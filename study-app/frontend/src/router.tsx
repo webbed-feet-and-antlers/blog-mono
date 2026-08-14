@@ -4,7 +4,6 @@ import {
   createRouter,
   Outlet,
   redirect,
-  useRouterState,
   useNavigate,
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -14,6 +13,10 @@ import { DocTabView, pendingGenerate } from "./components/DocTabView";
 import { RecordPage } from "./components/RecordPage";
 import { LectureView } from "./components/LectureView";
 import { StudySessionLoader } from "./components/StudySessionView";
+import { ConceptsPage } from "./components/ConceptsPage";
+import { DrivePage } from "./components/DrivePage";
+import { QuizzesPage } from "./components/QuizzesPage";
+import { FlashcardsPage } from "./components/FlashcardsPage";
 import type { TabId } from "./types";
 
 // Shared query client — created once, used by all routes.
@@ -27,20 +30,20 @@ const queryClient = new QueryClient({
 
 function Layout() {
   const navigate = useNavigate();
-  const docId = useRouterState({
-    select: (s) => s.location.pathname.split("/")[2],
-  });
 
   return (
     <QueryClientProvider client={queryClient}>
       <div className="app">
         <Sidebar
-          selectedId={docId ?? null}
           onNavigate={(id: string) =>
             navigate({ to: "/documents/$docId", params: { docId: id } })
           }
           onHome={() => navigate({ to: "/" })}
           onRecord={() => navigate({ to: "/record" })}
+          onConcepts={() => navigate({ to: "/concepts" })}
+          onDrive={() => navigate({ to: "/drive" })}
+          onQuizzes={() => navigate({ to: "/quizzes" })}
+          onFlashcards={() => navigate({ to: "/flashcards" })}
         />
         <main className="main">
           <Outlet />
@@ -138,6 +141,37 @@ const studyRoute = createRoute({
   },
 });
 
+// /concepts → global concepts overview (inside Layout shell, sidebar visible)
+const conceptsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/concepts",
+  component: () => {
+    const navigate = useNavigate();
+    return <ConceptsPage onStudySession={() => navigate({ to: "/study" })} />;
+  },
+});
+
+// /drive → Drive-style content browser (inside Layout shell, sidebar visible)
+const driveRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/drive",
+  component: DrivePage,
+});
+
+// /quizzes → all quizzes across all documents
+const quizzesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/quizzes",
+  component: QuizzesPage,
+});
+
+// /flashcards → all flashcard decks across all documents
+const flashcardsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/flashcards",
+  component: FlashcardsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   docRoute,
@@ -145,6 +179,10 @@ const routeTree = rootRoute.addChildren([
   recordRoute,
   lectureRoute,
   studyRoute,
+  conceptsRoute,
+  driveRoute,
+  quizzesRoute,
+  flashcardsRoute,
 ]);
 
 export const router = createRouter({

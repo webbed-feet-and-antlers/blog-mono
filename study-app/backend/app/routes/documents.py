@@ -9,6 +9,7 @@ Slides (PDF) use the existing text flow unchanged.
 from __future__ import annotations
 
 import mimetypes
+import shutil
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -21,14 +22,18 @@ from .. import storage
 from ..config import settings
 from ..db import get_session
 from ..models import Document
-from ..parsers import extract_text
+from ..parsers import OFFICE_SUFFIXES, convert_office_to_pdf, extract_text
 from ..schemas import DocumentDetail, DocumentOut
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
-MAX_BYTES = 25 * 1024 * 1024
+MAX_BYTES = 50 * 1024 * 1024  # 50 MB for text/PDF/office docs
 AUDIO_MAX_BYTES = settings.audio_max_bytes
-ALLOWED_SUFFIXES = {".pdf", ".txt", ".md", ".webm", ".mp3", ".m4a", ".wav", ".ogg", ".flac"}
+ALLOWED_SUFFIXES = {
+    ".pdf", ".txt", ".md",
+    ".pptx", ".docx", ".xlsx", ".doc", ".ppt", ".xls",
+    ".webm", ".mp3", ".m4a", ".wav", ".ogg", ".flac",
+}
 AUDIO_SUFFIXES = {".webm", ".mp3", ".m4a", ".wav", ".ogg", ".flac"}
 
 # MIME types for serving audio files.
@@ -46,6 +51,7 @@ AUDIO_MIME = {
 async def upload_document(
     file: UploadFile,
     lesson_id: str | None = None,
+    module_id: str | None = None,
     session: AsyncSession = Depends(get_session),
 ):
     filename = file.filename or "upload"
@@ -83,6 +89,7 @@ async def upload_document(
             page_count=0,
             char_count=0,
             lesson_id=lesson_id,
+            module_id=module_id,
             kind="audio",
             transcription_status="pending",
         )
@@ -97,9 +104,23 @@ async def upload_document(
         asyncio.create_task(transcribe_then_analyze(doc.id))
         return doc
 
-    # Text/PDF: existing flow — extract text immediately.
+    # Text/PDF/office: extract text immediately.
+    # Office docs (.pptx/.docx/.xlsx/.doc/.ppt/.xls) are converted to PDF
+    # first — the converted PDF becomes the stored file (renderable in the
+    # in-app viewer) and the source for text extraction.
     try:
-        text, page_count = extract_text(dest, mime)
+        stored_path = dest
+        stored_mime = mime
+        if suffix in OFFICE_SUFFIXES:
+            converted_pdf = convert_office_to_pdf(dest)
+            # Replace the stored file: move the converted PDF into storage
+            # under the same id, delete the original office file.
+            pdf_dest = dest.with_suffix(".pdf")
+            shutil.move(str(converted_pdf), str(pdf_dest))
+            storage.delete_upload(str(dest))
+            stored_path = pdf_dest
+            stored_mime = "application/pdf"
+        text, page_count = extract_text(stored_path, stored_mime)
     except Exception as exc:
         await storage.delete_upload(str(dest))
         raise HTTPException(status_code=422, detail=f"Failed to parse file: {exc}")
@@ -107,12 +128,13 @@ async def upload_document(
     doc = Document(
         id=file_id,
         filename=filename,
-        mime=mime,
-        file_path=str(dest),
+        mime=stored_mime,
+        file_path=str(stored_path),
         text=text,
         page_count=page_count,
         char_count=len(text),
         lesson_id=lesson_id,
+        module_id=module_id,
         kind="text",
     )
     session.add(doc)
@@ -161,6 +183,8 @@ async def get_document_file(
     """Serve the raw file (audio, PDF) with correct Content-Type + Range support.
 
     Essential for audio seeking — the <audio> element needs Accept-Ranges.
+    PDFs are served inline so the browser can render them in an <iframe>
+    rather than forcing a download.
     """
     doc = await session.get(Document, document_id)
     if doc is None:
@@ -175,11 +199,12 @@ async def get_document_file(
         "application/pdf" if suffix == ".pdf" else "application/octet-stream"
     )
 
-    return FileResponse(
-        path=str(file_path),
-        media_type=media_type,
-        filename=doc.filename,
-    )
+    # Inline disposition for browser-viewable types (PDF in an iframe, audio
+    # in a player). Omit the filename so FileResponse doesn't default to
+    # attachment (which would trigger a download instead of inline display).
+    response = FileResponse(path=str(file_path), media_type=media_type)
+    response.headers["Content-Disposition"] = f'inline; filename="{doc.filename}"'
+    return response
 
 
 @router.delete("/{document_id}", status_code=204)

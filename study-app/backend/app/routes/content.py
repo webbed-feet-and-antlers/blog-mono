@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..db import get_session
 from ..models import ContentItem
@@ -19,7 +20,13 @@ async def list_content(
     type: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ):
-    stmt = select(ContentItem).order_by(ContentItem.created_at.desc())
+    # Eager-load the parent document so callers can show which doc each item
+    # belongs to without a second round-trip.
+    stmt = (
+        select(ContentItem)
+        .options(selectinload(ContentItem.document))
+        .order_by(ContentItem.created_at.desc())
+    )
     if document_id is not None:
         stmt = stmt.where(ContentItem.document_id == document_id)
     if type is not None:

@@ -1,22 +1,29 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Mic, AlertCircle } from "lucide-react";
+import { Loader2, Mic, AlertCircle, FileText, FileType } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import * as api from "../api/client";
 import type { DocumentDetail } from "../types";
+import { PdfViewer } from "./PdfViewer";
 
 interface Props {
   doc: DocumentDetail;
 }
 
 /**
- * Renders the document content — audio player for recordings, text for
- * PDFs/TXT/MD. For audio documents, polls for transcription status and
- * shows the transcript once available.
+ * Renders the document content:
+ *  - audio: player + transcript (polled while transcribing)
+ *  - PDF: the rendered PDF in an iframe (native viewer), with a toggle to
+ *    the extracted text if the user wants it
+ *  - TXT/MD: rendered as markdown prose
  */
 export function DocumentView({ doc }: Props) {
   const queryClient = useQueryClient();
   const isAudio = doc.kind === "audio";
   const status = doc.transcription_status;
+  const isPdf = doc.mime === "application/pdf";
+  const [view, setView] = useState<"pdf" | "text">("pdf");
 
   // Poll for transcription updates if pending/transcribing.
   useEffect(() => {
@@ -79,9 +86,50 @@ export function DocumentView({ doc }: Props) {
         </div>
       )}
 
-      {/* Transcript / extracted text */}
-      {(!isAudio || status === "done") && doc.text && (
-        <pre className="doc-text">{doc.text}</pre>
+      {/* PDF: render the original file in an iframe (native viewer), with a
+          toggle to the extracted text. */}
+      {isPdf && doc.text !== undefined && (
+        <>
+          <div className="doc-view-toggle">
+            <button
+              type="button"
+              className={view === "pdf" ? "active" : ""}
+              onClick={() => setView("pdf")}
+            >
+              <FileType size={14} />
+              Document
+            </button>
+            <button
+              type="button"
+              className={view === "text" ? "active" : ""}
+              onClick={() => setView("text")}
+            >
+              <FileText size={14} />
+              Extracted text
+            </button>
+          </div>
+          {view === "pdf" ? (
+            <PdfViewer
+              url={api.getDocumentFileUrl(doc.id)}
+              filename={doc.filename}
+            />
+          ) : (
+            doc.text && (
+              <div className="doc-prose">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {doc.text}
+                </ReactMarkdown>
+              </div>
+            )
+          )}
+        </>
+      )}
+
+      {/* TXT/MD: rendered as markdown prose */}
+      {!isAudio && !isPdf && doc.text && (
+        <div className="doc-prose">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{doc.text}</ReactMarkdown>
+        </div>
       )}
 
       {/* Empty state for audio that hasn't been transcribed yet */}

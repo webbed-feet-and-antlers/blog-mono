@@ -19,6 +19,7 @@ class DocumentOut(BaseModel):
     char_count: int
     uploaded_at: datetime
     lesson_id: str | None = None
+    module_id: str | None = None
     kind: str = "text"
     duration_seconds: int | None = None
     transcription_status: str | None = None
@@ -40,6 +41,7 @@ class QuizQuestion(TypedDict):
     options: list[str]
     answer_idx: int
     explanation: str
+    concept: str
 
 
 class QuizContent(BaseModel):
@@ -51,6 +53,8 @@ class Flashcard(TypedDict):
     id: str
     front: str
     back: str
+    concept: str
+    variants: list[dict]
 
 
 class FlashcardContent(BaseModel):
@@ -68,6 +72,8 @@ class ContentItemOut(BaseModel):
     type: Literal["notes", "quiz", "flashcards"]
     content: dict
     created_at: datetime
+    # Parent document (eager-loaded). Present on list/detail responses.
+    document: DocumentOut | None = None
 
     model_config = {"from_attributes": True}
 
@@ -170,6 +176,8 @@ class LessonWithDocs(LessonOut):
 
 class ModuleWithTree(ModuleOut):
     lessons: list[LessonWithDocs] = []
+    # Documents filed directly under the module (not inside a lesson).
+    documents: list[DocumentOut] = []
 
 
 class ModuleTreeResponse(BaseModel):
@@ -179,6 +187,7 @@ class ModuleTreeResponse(BaseModel):
 
 class DocumentMove(BaseModel):
     lesson_id: str | None = None
+    module_id: str | None = None
 
 
 # --- Lecture sessions ---

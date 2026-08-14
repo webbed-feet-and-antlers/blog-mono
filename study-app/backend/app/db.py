@@ -55,6 +55,16 @@ async def init_db() -> None:
                 )
             )
             logger.info("Migrated documents table: added lesson_id column")
+        # Guarded migration: add module_id so documents can be filed directly
+        # under a module (not just a lesson).
+        if "module_id" not in columns:
+            await conn.execute(
+                text(
+                    "ALTER TABLE documents ADD COLUMN module_id VARCHAR "
+                    "REFERENCES modules(id)"
+                )
+            )
+            logger.info("Migrated documents table: added module_id column")
         # Audio recording support columns.
         if "kind" not in columns:
             await conn.execute(

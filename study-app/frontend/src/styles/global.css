@@ -1994,6 +1994,612 @@ button.small {
 
 /* --- Concept list (knowledge graph + mastery) ---------------------------- */
 
+/* --- Content list pages (quizzes / flashcards) --------------------------- */
+
+.content-list-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.content-list-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.content-list-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+}
+.content-list-summary {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.content-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+/* Content card reuses .drive-card base but adds document context. */
+.content-card .content-card-doc {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.content-card .content-card-doc svg {
+  flex-shrink: 0;
+}
+.content-card .content-card-doc span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.content-card .content-card-topic {
+  font-size: 0.68rem;
+  color: var(--accent);
+  font-weight: 500;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.danger-btn {
+  background: var(--danger) !important;
+  color: white !important;
+}
+.danger-btn:hover {
+  opacity: 0.9;
+}
+
+/* --- Drive (content browser) --------------------------------------------- */
+
+.drive-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.drive-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Toolbar: breadcrumb (left) + actions (right) */
+.drive-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.drive-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.drive-breadcrumb .crumb {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.drive-breadcrumb .crumb:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+.drive-breadcrumb .crumb.current {
+  color: var(--text);
+  font-weight: 600;
+  cursor: default;
+}
+.drive-breadcrumb .crumb.current:hover {
+  background: none;
+}
+.drive-breadcrumb .crumb-sep {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.drive-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.drive-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.drive-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.drive-search {
+  padding: 6px 12px 6px 30px;
+  font-size: 0.82rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  width: 200px;
+  transition: all 0.15s ease;
+}
+.drive-search:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+.drive-new-folder-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* Section heading */
+.drive-section-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin: 8px 0 4px;
+}
+
+/* Card grid */
+.drive-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+.drive-card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px 12px 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  user-select: none;
+}
+.drive-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+.drive-card.folder {
+  border-color: var(--accent-tint-strong);
+}
+.drive-card.folder:hover {
+  background: var(--accent-tint);
+}
+.drive-card.drag-over {
+  border: 2px dashed var(--accent);
+  background: var(--accent-tint);
+  transform: scale(1.02);
+}
+.drive-card[draggable="true"] {
+  cursor: grab;
+}
+.drive-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* Card icon */
+.drive-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+.drive-card-icon.folder-icon {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.drive-card-icon.doc-icon {
+  background: var(--sidebar-bg);
+  color: var(--text-dim);
+}
+.drive-card-icon.audio-icon {
+  background: var(--ok-tint, #e8f5e9);
+  color: var(--ok);
+}
+
+/* Card title + subtitle */
+.drive-card-title {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+.drive-card-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Context menu button (the ... ) */
+.drive-card-menu {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 2;
+}
+.drive-card:hover .drive-card-menu {
+  opacity: 1;
+}
+.drive-card-menu:hover {
+  color: var(--text);
+  background: var(--panel-hover);
+}
+
+/* Context menu dropdown */
+.drive-card-menu-dropdown {
+  position: absolute;
+  top: 32px;
+  right: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-md);
+  padding: 4px;
+  z-index: 10;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.drive-card-menu-dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+}
+.drive-card-menu-dropdown button:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+.drive-card-menu-dropdown button.danger:hover {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+/* Inline rename input */
+.drive-rename-input {
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-align: center;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  padding: 2px 6px;
+  width: 100%;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+
+/* Empty state */
+.drive-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+/* Move-to modal */
+.move-to-modal {
+  max-width: 380px;
+  width: 90%;
+}
+.move-to-modal h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  word-break: break-word;
+}
+.move-to-list {
+  max-height: 360px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.move-to-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all 0.12s ease;
+}
+.move-to-option:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+.move-to-option.sub {
+  padding-left: 32px;
+}
+.move-to-option.module-root {
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 8px;
+}
+.move-to-module-label {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  background: var(--sidebar-bg);
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+}
+.move-to-group {
+  margin-top: 8px;
+}
+.move-to-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.move-to-empty {
+  padding: 4px 32px 4px;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+/* New folder modal */
+.new-folder-modal {
+  max-width: 400px;
+}
+.new-folder-modal .modal-header {
+  color: var(--accent);
+}
+.new-folder-context {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.new-folder-input {
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  outline: none;
+  transition: all 0.15s ease;
+  margin-bottom: 20px;
+}
+.new-folder-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+.new-folder-modal .modal-actions .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+
+.concepts-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.concepts-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.concepts-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+}
+.concepts-summary {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.concepts-study-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+}
+.concepts-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.concepts-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.concepts-filter-btn:hover {
+  color: var(--text);
+  border-color: var(--accent-tint-strong);
+}
+.concepts-filter-btn.active {
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-color: var(--accent-tint-strong);
+}
+.concepts-filter-btn .count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  background: var(--sidebar-bg);
+  border-radius: 9px;
+}
+.concepts-filter-btn.active .count {
+  color: var(--accent);
+  background: var(--panel);
+}
+.concepts-empty-filter {
+  padding: 32px;
+  text-align: center;
+}
+.concepts-module-select {
+  margin-left: auto;
+  padding: 6px 28px 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+.concepts-module-select:hover {
+  color: var(--text);
+  border-color: var(--accent-tint-strong);
+}
+.concepts-module-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* --- Sidebar nav (Concepts button) ---------------------------------------- */
+
+.sidebar-nav {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+.sidebar-nav-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel);
+  border-color: var(--border);
+}
+.sidebar-nav-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+/* Spacer pushes the profile card to the bottom of the sidebar. */
+.sidebar-spacer {
+  flex: 1;
+}
+.sidebar-upload-error {
+  margin-top: 6px;
+  padding: 8px 10px;
+  font-size: 0.75rem;
+  color: var(--danger);
+  background: var(--danger-tint);
+  border-radius: var(--r-sm);
+}
+
 .concept-list {
   display: flex;
   flex-direction: column;
@@ -2139,17 +2745,228 @@ button.small {
   color: var(--text-faint);
   font-size: 0.78rem;
 }
-.doc-text {
-  margin: 0;
-  padding: 28px 32px;
-  font-family: ui-monospace, "SF Mono", "Cascadia Code", "Menlo", monospace;
-  font-size: 0.85rem;
-  line-height: 1.7;
+/* Toggle between rendered PDF and extracted text. */
+.doc-view-toggle {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+}
+.doc-view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.doc-view-toggle button:hover {
   color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 70vh;
-  overflow-y: auto;
+  background: var(--panel);
+}
+.doc-view-toggle button.active {
+  color: var(--accent);
+  background: var(--panel);
+  border-color: var(--border);
+}
+/* In-app PDF viewer (react-pdf). Custom toolbar + canvas — no browser chrome. */
+.pdf-viewer {
+  display: flex;
+  flex-direction: column;
+}
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.pdf-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.pdf-icon-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--panel);
+  border-color: var(--border);
+}
+.pdf-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.pdf-zoom-level {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pdf-filename {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pdf-canvas {
+  overflow: auto;
+  padding: 24px;
+  background: var(--sidebar-bg);
+  max-height: 78vh;
+}
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+/* react-pdf renders the page on a canvas; give it a paper look. */
+.pdf-canvas .react-pdf__Page {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  background: white;
+  border-radius: 2px;
+}
+.pdf-canvas .react-pdf__Page__canvas {
+  display: block;
+}
+.pdf-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  padding: 48px 0;
+}
+.pdf-error {
+  margin: 24px auto;
+}
+/* Rendered document prose (markdown via react-markdown). Mirrors .notes
+   typography but tuned for long-form reading: comfortable line length,
+   looser leading, and no inner scroll box — the document flows in the
+   page like any other content. */
+.doc-prose {
+  padding: 36px 40px;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--text);
+}
+.doc-prose > :first-child {
+  margin-top: 0;
+}
+.doc-prose > :last-child {
+  margin-bottom: 0;
+}
+/* Constrain text blocks to a comfortable measure, centered in the panel.
+   Code blocks and images keep the full width. */
+.doc-prose h1,
+.doc-prose h2,
+.doc-prose h3,
+.doc-prose h4,
+.doc-prose p,
+.doc-prose ul,
+.doc-prose ol,
+.doc-prose blockquote,
+.doc-prose hr {
+  max-width: 70ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+.doc-prose h1,
+.doc-prose h2,
+.doc-prose h3 {
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.doc-prose h1 {
+  font-size: 1.6rem;
+  margin: 1.6em auto 0.6em;
+}
+.doc-prose h2 {
+  font-size: 1.25rem;
+  margin: 1.5em auto 0.5em;
+}
+.doc-prose h3 {
+  font-size: 1.08rem;
+  margin: 1.3em auto 0.4em;
+}
+.doc-prose p {
+  margin: 0.9em auto;
+}
+.doc-prose a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.doc-prose a:hover {
+  text-decoration: underline;
+}
+.doc-prose strong {
+  font-weight: 600;
+}
+.doc-prose code {
+  background: var(--sidebar-bg);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 0.85em;
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+  border: 1px solid var(--border);
+}
+.doc-prose pre {
+  background: var(--sidebar-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 16px;
+  overflow-x: auto;
+}
+.doc-prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+.doc-prose ul,
+.doc-prose ol {
+  padding-left: 1.5em;
+  margin: 0.9em auto;
+}
+.doc-prose li {
+  margin: 0.35em 0;
+}
+.doc-prose blockquote {
+  border-left: 3px solid var(--accent-tint-strong);
+  margin: 1em auto;
+  padding: 0.2em 0 0.2em 1em;
+  color: var(--text-dim);
+}
+.doc-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.6em auto;
+}
+.doc-prose img {
+  max-width: 100%;
+  height: auto;
 }
 
 

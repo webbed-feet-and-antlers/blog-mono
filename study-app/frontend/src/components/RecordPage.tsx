@@ -390,21 +390,21 @@ export function RecordPage() {
               <input
                 ref={slidesInputRef}
                 type="file"
-                accept=".pdf"
+                accept=".pdf,.pptx,.ppt"
                 style={{ display: "none" }}
                 onChange={(e) => handleSlidesUpload(e.target.files)}
               />
               {uploadingSlides ? (
                 <>
                   <Loader2 size={28} className="spinner" />
-                  <span>Uploading PDF slides…</span>
+                  <span>Uploading slides…</span>
                 </>
               ) : (
                 <>
                   <UploadCloud size={32} />
-                  <span className="upload-title">Upload slides (PDF)</span>
+                  <span className="upload-title">Upload slides</span>
                   <span className="upload-hint">
-                    PDF slides will render live during recording
+                    PDF or PowerPoint slides will render live during recording
                   </span>
                 </>
               )}

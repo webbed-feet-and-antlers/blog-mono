@@ -50,10 +50,14 @@ export async function uploadDocument(
   file: File,
   lessonId?: string,
   onProgress?: (pct: number) => void,
+  moduleId?: string,
 ): Promise<Document> {
   const form = new FormData();
   form.append("file", file);
-  const qs = lessonId ? `?lesson_id=${lessonId}` : "";
+  const params = new URLSearchParams();
+  if (lessonId) params.set("lesson_id", lessonId);
+  if (moduleId) params.set("module_id", moduleId);
+  const qs = params.toString() ? `?${params.toString()}` : "";
 
   // Use XMLHttpRequest for upload progress support (essential for large audio).
   return new Promise((resolve, reject) => {
@@ -371,12 +375,15 @@ export async function deleteLesson(id: string): Promise<void> {
 
 export async function moveDocument(
   docId: string,
-  lessonId: string | null,
+  target: { lessonId?: string | null; moduleId?: string | null },
 ): Promise<Document> {
   return request<Document>(`/api/documents/${docId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ lesson_id: lessonId }),
+    body: JSON.stringify({
+      lesson_id: target.lessonId ?? null,
+      module_id: target.moduleId ?? null,
+    }),
   });
 }
 

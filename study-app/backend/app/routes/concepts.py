@@ -55,6 +55,11 @@ async def list_concepts(session: AsyncSession = Depends(get_session)):
             "wrong": data.get("wrong", 0),
             "due": fsrs_scheduler.is_due(fsrs),
             "due_in_days": fsrs_scheduler.due_in_days(fsrs),
+            # Continuous recall probability right now: R(t)=exp(-elapsed/stability).
+            # None for untested concepts. Better "how well do I know this today"
+            # signal than cumulative accuracy for spaced repetition.
+            "retrievability": fsrs_scheduler.retrievability(fsrs),
+            "stability": (fsrs or {}).get("stability"),
             "prerequisites": prereqs,
             "related": related,
             "documents": data.get("documents") or [],

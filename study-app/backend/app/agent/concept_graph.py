@@ -221,17 +221,29 @@ async def merge_concept_graph(
 
 
 async def _get_doc_module_names(session, doc_id: str) -> list[str]:
-    """Derive the module title(s) for a document via its lesson hierarchy."""
+    """Derive the module title(s) for a document.
+
+    Resolves via the lesson hierarchy (doc → lesson → module) or, if the doc
+    is filed directly under a module, via doc.module_id.
+    """
     doc = await session.get(Document, doc_id)
-    if doc is None or doc.lesson_id is None:
+    if doc is None:
         return []
 
-    lesson = await session.get(Lesson, doc.lesson_id)
-    if lesson is None:
-        return []
+    # Filed directly under a module (e.g. a textbook).
+    if doc.module_id is not None:
+        module = await session.get(Module, doc.module_id)
+        if module is not None:
+            return [module.title]
 
-    module = await session.get(Module, lesson.module_id)
-    if module is None:
-        return []
+    # Filed under a lesson — resolve through the lesson's module.
+    if doc.lesson_id is not None:
+        lesson = await session.get(Lesson, doc.lesson_id)
+        if lesson is None:
+            return []
+        module = await session.get(Module, lesson.module_id)
+        if module is None:
+            return []
+        return [module.title]
 
-    return [module.title]
+    return []

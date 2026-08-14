@@ -47,18 +47,24 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
             if topic:
                 topics[m.ref_id] = str(topic)
 
-    # Load modules with their lessons eager-loaded.
+    # Load modules with their lessons + documents eager-loaded.
     result = await session.execute(
         select(Module)
-        .options(selectinload(Module.lessons).selectinload(Lesson.documents))
+        .options(
+            selectinload(Module.lessons).selectinload(Lesson.documents),
+            selectinload(Module.documents),
+        )
         .order_by(Module.created_at)
     )
     modules = result.scalars().unique().all()
 
-    # Load unfiled documents (lesson_id is NULL).
+    # Load unfiled documents (neither lesson_id nor module_id set).
     unfiled_result = await session.execute(
         select(Document)
-        .where(Document.lesson_id.is_(None))
+        .where(
+            Document.lesson_id.is_(None),
+            Document.module_id.is_(None),
+        )
         .order_by(Document.uploaded_at.desc())
     )
     unfiled = unfiled_result.scalars().all()
@@ -84,6 +90,10 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
                                 char_count=d.char_count,
                                 uploaded_at=d.uploaded_at,
                                 lesson_id=d.lesson_id,
+                                module_id=d.module_id,
+                                kind=d.kind,
+                                duration_seconds=d.duration_seconds,
+                                transcription_status=d.transcription_status,
                                 topic=topics.get(d.id),
                             )
                             for d in sorted(
@@ -92,6 +102,23 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
                         ],
                     )
                     for les in sorted(m.lessons, key=lambda x: x.created_at)
+                ],
+                documents=[
+                    DocumentOut(
+                        id=d.id,
+                        filename=d.filename,
+                        mime=d.mime,
+                        page_count=d.page_count,
+                        char_count=d.char_count,
+                        uploaded_at=d.uploaded_at,
+                        lesson_id=d.lesson_id,
+                        module_id=d.module_id,
+                        kind=d.kind,
+                        duration_seconds=d.duration_seconds,
+                        transcription_status=d.transcription_status,
+                        topic=topics.get(d.id),
+                    )
+                    for d in sorted(m.documents, key=lambda x: x.uploaded_at)
                 ],
             )
             for m in modules
@@ -105,6 +132,10 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
                 char_count=d.char_count,
                 uploaded_at=d.uploaded_at,
                 lesson_id=d.lesson_id,
+                module_id=d.module_id,
+                kind=d.kind,
+                duration_seconds=d.duration_seconds,
+                transcription_status=d.transcription_status,
                 topic=topics.get(d.id),
             )
             for d in unfiled
@@ -210,7 +241,11 @@ async def move_document(
     req: DocumentMove,
     session: AsyncSession = Depends(get_session),
 ):
-    """Move a document into a lesson (or unfile it with lesson_id=null)."""
+    """Move a document into a lesson, a module, or unfile it.
+
+    Mutual exclusivity: setting lesson_id clears module_id and vice versa.
+    Both null = unfiled.
+    """
     from ..models import Document as Doc
 
     doc = await session.get(Doc, document_id)
@@ -221,8 +256,19 @@ async def move_document(
         lesson = await session.get(Lesson, req.lesson_id)
         if lesson is None:
             raise HTTPException(status_code=404, detail="Lesson not found")
+        doc.lesson_id = req.lesson_id
+        doc.module_id = None  # mutual exclusivity
+    elif req.module_id is not None:
+        module = await session.get(Module, req.module_id)
+        if module is None:
+            raise HTTPException(status_code=404, detail="Module not found")
+        doc.module_id = req.module_id
+        doc.lesson_id = None  # mutual exclusivity
+    else:
+        # Both null → unfile.
+        doc.lesson_id = None
+        doc.module_id = None
 
-    doc.lesson_id = req.lesson_id
     await session.commit()
     await session.refresh(doc)
     return doc

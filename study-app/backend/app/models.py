@@ -28,6 +28,11 @@ class Module(Base):
     lessons: Mapped[list["Lesson"]] = relationship(
         back_populates="module", cascade="all, delete-orphan"
     )
+    # Documents filed directly under the module (not inside a lesson) — e.g.
+    # a textbook or reading list item. Distinct from lesson-scoped docs.
+    documents: Mapped[list["Document"]] = relationship(
+        back_populates="module"
+    )
 
 
 class Lesson(Base):
@@ -72,11 +77,18 @@ class Document(Base):
     lesson_id: Mapped[str | None] = mapped_column(
         ForeignKey("lessons.id", ondelete="SET NULL"), nullable=True, default=None
     )
+    # Optional: which module this document is filed under directly (not via
+    # a lesson). A doc is unfiled when BOTH lesson_id and module_id are NULL.
+    # Mutual exclusivity is enforced at the app layer.
+    module_id: Mapped[str | None] = mapped_column(
+        ForeignKey("modules.id", ondelete="SET NULL"), nullable=True, default=None
+    )
 
     content_items: Mapped[list[ContentItem]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
     lesson: Mapped["Lesson | None"] = relationship(back_populates="documents")
+    module: Mapped["Module | None"] = relationship(back_populates="documents")
 
 
 class ContentItem(Base):
@@ -91,8 +103,12 @@ class ContentItem(Base):
     type: Mapped[str] = mapped_column(String, nullable=False)  # notes|quiz|flashcards
     # Structured payload whose shape depends on `type`:
     #   notes      -> {markdown: str}
-    #   quiz       -> {title, questions: [{id, prompt, options[], answer_idx, explanation}]}
-    #   flashcards -> {title, cards: [{id, front, back}]}
+    #   quiz       -> {title, questions: [{id, prompt, options[], answer_idx,
+    #                 explanation, concept}]}
+    #   flashcards -> {title, cards: [{id, front, back, concept,
+    #                 variants: [{front, back}]}]}
+    # The `concept` field on each question/card links it to a per-concept FSRS
+    # mastery entry, so quiz + flashcard outcomes share one mastery store.
     content: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 

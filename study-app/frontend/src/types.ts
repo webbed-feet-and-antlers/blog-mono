@@ -11,6 +11,7 @@ export interface Document {
   char_count: number;
   uploaded_at: string;
   lesson_id?: string | null;
+  module_id?: string | null;
   kind?: string;
   duration_seconds?: number | null;
   transcription_status?: string | null;
@@ -59,6 +60,7 @@ export interface ContentItem {
   type: TaskType;
   content: QuizContent | FlashcardContent | NotesContent;
   created_at: string;
+  document?: Document | null;
 }
 
 export interface QuizAttempt {
@@ -101,6 +103,7 @@ export interface Module {
   title: string;
   created_at: string;
   lessons: Lesson[];
+  documents: Document[];
 }
 
 export interface ModuleTree {
@@ -150,6 +153,8 @@ export interface ConceptWithGraph {
   wrong: number;
   due: boolean;
   due_in_days: number | null;
+  retrievability: number | null;
+  stability: number | null;
   prerequisites: string[];
   related: string[];
   documents: string[];
