@@ -142,6 +142,21 @@ class AgentMemoryOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# --- Event log (debug) ---
+
+
+class AgentEventOut(BaseModel):
+    id: str
+    created_at: datetime
+    event_type: str
+    handler: str | None
+    status: str
+    payload: Any
+    error: str | None
+
+    model_config = {"from_attributes": True}
+
+
 # --- Modules & Lessons (organization hierarchy) ---
 
 

@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..agent.graph import run_generation, run_generation_streamed
 from ..db import get_session
+from ..events import bus
+from ..events.domain import GenerationCompleted
 from ..models import ContentItem, Document
 from ..schemas import ContentItemOut, GenerateRequest
 
@@ -51,6 +53,15 @@ async def generate(
     # Re-fetch the persisted ContentItem so the response includes server-set
     # fields (created_at) the agent's in-memory dict doesn't carry.
     saved = await session.get(ContentItem, item["id"])
+
+    # Post-commit reactions (recommendation session tracking) run on the bus.
+    await bus.publish(
+        GenerationCompleted(
+            document_id=doc.id,
+            content_id=item["id"],
+            task_type=req.task_type,
+        )
+    )
     return saved
 
 
@@ -115,6 +126,15 @@ async def generate_stream(req: GenerateRequest):
                 # Commit the agent's writes.
                 await session.commit()
                 saved = await session.get(ContentItem, item["id"])
+
+                # Post-commit reactions (session tracking) run on the bus.
+                await bus.publish(
+                    GenerationCompleted(
+                        document_id=doc.id,
+                        content_id=item["id"],
+                        task_type=req.task_type,
+                    )
+                )
                 yield _sse("done", {
                     "status": "done",
                     "item": _content_item_dict(saved),

@@ -1,200 +1,29 @@
-"""Concept knowledge graph — background analysis and graph merging.
+"""Concept knowledge graph — merging document analyses into mastery entries.
 
-When a document is uploaded, a background task silently analyzes it and
-extracts not just concepts but their relationships (prerequisites, related,
-part_of). These relationships are merged into the global concept_mastery
-entries, creating a unified view: each concept knows its mastery level AND
-its structural position in the knowledge graph.
+When a document is analyzed (see the DocumentIngested/DocumentAnalyzed
+handlers in app/events/handlers/ingestion.py), the extracted concepts and
+their relationships (prerequisites, related, part_of) are merged into the
+global concept_mastery entries, creating a unified view: each concept knows
+its mastery level AND its structural position in the knowledge graph.
 
 The merge is additive — new concepts get entries, existing entries gain
-prerequisites/related/documents/modules fields. This runs silently in the
-background so the user experiences the "ambient intelligence" pattern: upload
-a doc, walk away, come back to a concept graph already built.
+prerequisites/related/documents/modules fields.
 """
 
 from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import memory as memory_store
-from . import tools
-from ..config import settings
-from ..db import SessionLocal
-from ..models import Document, Lesson, Module, LectureSession, ContentItem
+from ..models import Document, Lesson, Module
 
 logger = logging.getLogger(__name__)
 
 
-async def analyze_concepts_background(doc_id: str) -> None:
-    """Background task: analyze a document's concepts + relationships and merge
-    them into the global concept_mastery store. Auto-names generic lectures.
-
-    Called via asyncio.create_task from the upload route. Creates its own
-    session (the request session is closed by then). Fails silently — a
-    background task must not crash the server.
-    """
-    try:
-        async with SessionLocal() as session:
-            doc = await session.get(Document, doc_id)
-            if doc is None:
-                logger.warning("[concept-graph] doc %s not found", doc_id)
-                return
-
-            logger.info("[concept-graph] analyzing doc %s (%s)", doc_id, doc.filename)
-
-            # Auto-rename machine-generated filenames (hex hashes, IMG_1234,
-            # recording-<ts>, …) to a clean descriptive title. Good names are
-            # left untouched — the heuristic gate costs no LLM call. Runs
-            # BEFORE the analysis so a flaky analysis call can't block it.
-            if settings.auto_rename_files:
-                try:
-                    await _maybe_rename_document(session, doc)
-                    await session.commit()
-                except Exception:
-                    logger.exception(
-                        "[concept-graph] auto-rename failed for doc %s", doc_id
-                    )
-
-            analysis = await tools.analyze_document(doc.text)
-
-            # Cache the analysis so the first Generate call is instant.
-            await memory_store.write_memory(
-                session, "doc", doc_id, "analysis", analysis
-            )
-
-            # Merge concept relationships into the global graph.
-            await merge_concept_graph(session, doc_id, analysis)
-
-            # Auto-name generic/unnamed LectureSessions associated with this document
-            topic_title = (analysis.get("topic") or "").strip()
-            if topic_title:
-                stmt = select(LectureSession).where(
-                    (LectureSession.audio_doc_id == doc_id)
-                    | (LectureSession.slides_doc_id == doc_id)
-                )
-                res = await session.execute(stmt)
-                lectures = res.scalars().all()
-                for lecture in lectures:
-                    if (
-                        not lecture.title
-                        or lecture.title.startswith("Lecture ")
-                        or lecture.title.lower().startswith("untitled")
-                    ):
-                        logger.info(
-                            "[concept-graph] Auto-naming lecture %s from '%s' to '%s'",
-                            lecture.id,
-                            lecture.title,
-                            topic_title,
-                        )
-                        lecture.title = topic_title
-
-            await session.commit()
-            concepts = analysis.get("concepts") or []
-            rels = analysis.get("concept_relationships") or []
-            logger.info(
-                "[concept-graph] doc %s: %d concepts, %d relationships merged",
-                doc_id,
-                len(concepts),
-                len(rels),
-            )
-
-            # Auto-generate flashcards if enabled — the student never needs to
-            # click "Generate." Content is ready when they open the app.
-            if settings.auto_generate_flashcards:
-                try:
-                    await _auto_generate_flashcards(session, doc_id, doc.text)
-                except Exception:
-                    logger.exception(
-                        "[concept-graph] auto-generation failed for doc %s (analysis OK)",
-                        doc_id,
-                    )
-    except Exception:
-        logger.exception("[concept-graph] background analysis failed for doc %s", doc_id)
-
-
-async def _maybe_rename_document(session, doc: Document) -> None:
-    """Rename a document whose filename looks like machine-generated noise.
-
-    The new name comes from the LLM (based on content); the original file
-    extension is preserved. Called from the background analysis task for
-    every document — text docs right after upload, audio recordings after
-    their transcript is available.
-    """
-    if not tools._filename_needs_rename(doc.filename):
-        return
-
-    new_stem = await tools.suggest_filename(doc.filename, doc.text)
-    if not new_stem:
-        logger.info(
-            "[concept-graph] keeping filename '%s' for doc %s (LLM says it's fine)",
-            doc.filename,
-            doc.id,
-        )
-        return
-
-    # Preserve the original extension (webm, pdf, pptx, …).
-    suffix = ""
-    if "." in doc.filename:
-        suffix = "." + doc.filename.rsplit(".", 1)[1]
-    old_name = doc.filename
-    doc.filename = f"{new_stem}{suffix}"
-    logger.info(
-        "[concept-graph] renamed doc %s: '%s' -> '%s'",
-        doc.id,
-        old_name,
-        doc.filename,
-    )
-
-
-async def _auto_generate_flashcards(session, doc_id: str, doc_text: str) -> None:
-    """Auto-generate a flashcard deck for a document after analysis completes.
-
-    Skips if the doc already has an auto-generated deck (dedup). Tags the
-    deck with origin="auto" so the session composer can distinguish it.
-    """
-    # Check for existing auto-generated deck (dedup).
-    existing = await session.execute(
-        select(ContentItem).where(
-            ContentItem.document_id == doc_id,
-            ContentItem.type == "flashcards",
-        )
-    )
-    for item in existing.scalars().all():
-        if isinstance(item.content, dict) and item.content.get("origin") == "auto":
-            logger.info("[concept-graph] doc %s already has auto-flashcards, skipping", doc_id)
-            return
-
-    # Run the agent pipeline to generate flashcards.
-    from .graph import run_generation
-
-    logger.info("[concept-graph] auto-generating flashcards for doc %s", doc_id)
-    final_state = await run_generation(
-        document_id=doc_id,
-        document_text=doc_text,
-        task_type="flashcards",
-        session=session,
-    )
-
-    if final_state.get("error"):
-        logger.warning("[concept-graph] auto-gen failed for doc %s: %s", doc_id, final_state["error"])
-        return
-
-    item = final_state.get("content_item")
-    if not item:
-        return
-
-    # Tag the deck as auto-generated.
-    saved = await session.get(ContentItem, item["id"])
-    if saved is not None:
-        saved.content = {**saved.content, "origin": "auto"}
-    await session.commit()
-    logger.info("[concept-graph] auto-generated flashcards for doc %s (content_id=%s)", doc_id, item["id"])
-
-
 async def merge_concept_graph(
-    session, doc_id: str, analysis: dict
+    session: AsyncSession, doc_id: str, analysis: dict
 ) -> None:
     """Merge per-doc concept relationships into the global concept_mastery store.
 
@@ -203,72 +32,79 @@ async def merge_concept_graph(
     - Derives module/lesson name from the doc's hierarchy chain.
     - Adds prerequisite/related edges from concept_relationships.
     All additive and deduped.
+
+    The whole read-modify-write runs under the memory blob lock so a
+    concurrent quiz/flashcard review can't be clobbered by the merge (the
+    store is one JSON row rewritten wholesale).
     """
-    mastery = await memory_store.get_concept_mastery(session)
-    concepts = analysis.get("concepts") or []
-    relationships = analysis.get("concept_relationships") or []
+    async with memory_store.blob_lock:
+        mastery = await memory_store.get_concept_mastery(session)
+        concepts = analysis.get("concepts") or []
+        relationships = analysis.get("concept_relationships") or []
 
-    # Derive the module/lesson name for this document (if filed in hierarchy).
-    module_names = await _get_doc_module_names(session, doc_id)
+        # Derive the module/lesson name for this document (if filed in hierarchy).
+        module_names = await _get_doc_module_names(session, doc_id)
 
-    # Ensure every concept has an entry and record the doc + module context.
-    for concept_name in concepts:
-        concept_name = str(concept_name).strip()
-        if not concept_name:
-            continue
-        entry = mastery.get(concept_name)
-        if entry is None:
-            # New concept — create a zero-mastery entry.
-            entry = {"correct": 0, "wrong": 0, "seen": 0, "mastery_pct": None}
-            mastery[concept_name] = entry
+        # Ensure every concept has an entry and record the doc + module context.
+        for concept_name in concepts:
+            concept_name = str(concept_name).strip()
+            if not concept_name:
+                continue
+            entry = mastery.get(concept_name)
+            if entry is None:
+                # New concept — create a zero-mastery entry.
+                entry = {"correct": 0, "wrong": 0, "seen": 0, "mastery_pct": None}
+                mastery[concept_name] = entry
 
-        # Add this doc to the concept's document list.
-        docs = entry.setdefault("documents", [])
-        if doc_id not in docs:
-            docs.append(doc_id)
+            # Add this doc to the concept's document list.
+            docs = entry.setdefault("documents", [])
+            if doc_id not in docs:
+                docs.append(doc_id)
 
-        # Add module context.
-        if module_names:
-            mods = entry.setdefault("modules", [])
-            for mn in module_names:
-                if mn not in mods:
-                    mods.append(mn)
+            # Add module context.
+            if module_names:
+                mods = entry.setdefault("modules", [])
+                for mn in module_names:
+                    if mn not in mods:
+                        mods.append(mn)
 
-    # Merge relationship edges.
-    for rel in relationships:
-        if not isinstance(rel, dict):
-            continue
-        source = str(rel.get("source", "")).strip()
-        target = str(rel.get("target", "")).strip()
-        rel_type = str(rel.get("type", "related")).strip()
+        # Merge relationship edges.
+        for rel in relationships:
+            if not isinstance(rel, dict):
+                continue
+            source = str(rel.get("source", "")).strip()
+            target = str(rel.get("target", "")).strip()
+            rel_type = str(rel.get("type", "related")).strip()
 
-        if not source or not target:
-            continue
+            if not source or not target:
+                continue
 
-        # Ensure both concepts exist.
-        for name in (source, target):
-            if name not in mastery:
-                mastery[name] = {
-                    "correct": 0,
-                    "wrong": 0,
-                    "seen": 0,
-                    "mastery_pct": None,
-                }
+            # Ensure both concepts exist.
+            for name in (source, target):
+                if name not in mastery:
+                    mastery[name] = {
+                        "correct": 0,
+                        "wrong": 0,
+                        "seen": 0,
+                        "mastery_pct": None,
+                    }
 
-        entry = mastery[source]
-        if rel_type == "prerequisite":
-            prereqs = entry.setdefault("prerequisites", [])
-            if target not in prereqs:
-                prereqs.append(target)
-        elif rel_type in ("related", "part_of"):
-            related = entry.setdefault("related", [])
-            if target not in related:
-                related.append(target)
+            entry = mastery[source]
+            if rel_type == "prerequisite":
+                prereqs = entry.setdefault("prerequisites", [])
+                if target not in prereqs:
+                    prereqs.append(target)
+            elif rel_type in ("related", "part_of"):
+                related = entry.setdefault("related", [])
+                if target not in related:
+                    related.append(target)
 
-    await memory_store.write_memory(session, "user", "", "concept_mastery", mastery)
+        await memory_store.write_memory(
+            session, "user", "", "concept_mastery", mastery
+        )
 
 
-async def _get_doc_module_names(session, doc_id: str) -> list[str]:
+async def _get_doc_module_names(session: AsyncSession, doc_id: str) -> list[str]:
     """Derive the module title(s) for a document.
 
     Resolves via the lesson hierarchy (doc → lesson → module) or, if the doc

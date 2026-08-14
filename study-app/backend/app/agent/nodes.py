@@ -1,6 +1,9 @@
 """LangGraph nodes — each step in the agent pipeline.
 
-Flow: analyze_document → plan → retrieve_memory → generate → validate → finalize
+Flow: analyze_document → retrieve_memory → plan → generate → validate → finalize
+
+Memory is retrieved before planning so the planner can weight toward weak
+topics and due concepts.
 """
 
 from __future__ import annotations
@@ -46,7 +49,11 @@ async def analyze_document(state: AgentState) -> dict[str, Any]:
 
 
 async def plan(state: AgentState) -> dict[str, Any]:
-    """Decide how to generate the requested content type."""
+    """Decide how to generate the requested content type.
+
+    Runs after retrieve_memory, so the memory dict (weak topics, concept
+    mastery, learner profile) is populated and the plan can be personalized.
+    """
     plan_result = await tools.plan_task(
         task_type=state["task_type"],
         analysis=state.get("analysis", {}),
@@ -60,7 +67,7 @@ async def plan(state: AgentState) -> dict[str, Any]:
     return {"plan": plan_result}
 
 
-# --- Node 3: retrieve_memory ---
+# --- Node 3: retrieve_memory (runs second in the graph; defined here) ---
 
 
 async def retrieve_memory(state: AgentState) -> dict[str, Any]:

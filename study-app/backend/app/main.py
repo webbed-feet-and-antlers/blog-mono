@@ -16,8 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
+from .events import handlers as event_handlers  # noqa: F401 — registers bus handlers
 from .proactive import proactive_loop
-from .routes import content, documents, flashcards, generate, lectures, memory, modules, quiz, recommend, concepts, study_session
+from .routes import content, documents, events, flashcards, generate, lectures, memory, modules, quiz, recommend, concepts, study_session
 
 logger = logging.getLogger(__name__)
 
@@ -80,3 +81,4 @@ app.include_router(recommend.router)
 app.include_router(concepts.router)
 app.include_router(lectures.router)
 app.include_router(study_session.router)
+app.include_router(events.router)

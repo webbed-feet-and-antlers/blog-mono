@@ -21,6 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .. import storage
 from ..config import settings
 from ..db import get_session
+from ..events import bus
+from ..events.domain import DocumentIngested
 from ..models import Document
 from ..parsers import OFFICE_SUFFIXES, convert_office_to_pdf, extract_text
 from ..schemas import DocumentDetail, DocumentOut
@@ -97,11 +99,9 @@ async def upload_document(
         await session.commit()
         await session.refresh(doc)
 
-        # Trigger background transcription → concept analysis.
-        import asyncio
-        from ..transcription import transcribe_then_analyze
-
-        asyncio.create_task(transcribe_then_analyze(doc.id))
+        # Kick off the ingestion chain (transcribe → rename → analyze → …)
+        # as a background event handler. publish() returns immediately.
+        await bus.publish(DocumentIngested(document_id=doc.id, source="audio"))
         return doc
 
     # Text/PDF/office: extract text immediately.
@@ -141,11 +141,9 @@ async def upload_document(
     await session.commit()
     await session.refresh(doc)
 
-    # Trigger background concept analysis.
-    import asyncio
-    from ..agent.concept_graph import analyze_concepts_background
-
-    asyncio.create_task(analyze_concepts_background(doc.id))
+    # Kick off the ingestion chain (rename → analyze → graph merge → …)
+    # as a background event handler. publish() returns immediately.
+    await bus.publish(DocumentIngested(document_id=doc.id, source="upload"))
     return doc
 
 

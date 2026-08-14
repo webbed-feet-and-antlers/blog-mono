@@ -236,5 +236,6 @@ site/.syndication-output/
 
 # Study app — local DB + uploaded files (generated at runtime, not source)
 study-app/backend/study_app.db
+study-app/backend/study_app.db-*
 study-app/backend/storage/
 study-app/frontend/dist/

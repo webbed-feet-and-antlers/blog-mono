@@ -119,14 +119,8 @@ async def get_concept_references(
     concept, data = entry
     fsrs = data.get("fsrs")
 
-    # Resolve document topics (same approach as the module-tree endpoint).
-    analyses = await memory_store.list_memory(session, scope="doc")
-    topics: dict[str, str] = {}
-    for m in analyses:
-        if m.key == "analysis" and isinstance(m.value, dict):
-            topic = m.value.get("topic")
-            if topic:
-                topics[m.ref_id] = str(topic)
+    # Resolve document topics (same helper as the module-tree endpoint).
+    topics = await memory_store.get_doc_topics(session)
 
     # Documents the concept appears in.
     documents = []

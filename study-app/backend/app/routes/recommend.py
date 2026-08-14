@@ -52,8 +52,10 @@ async def feedback(
     """Log a user interaction with a recommendation (click/dismiss/complete).
 
     This feeds the telemetry loop that the LinUCB bandit uses to optimize
-    strategy weights over time.
+    strategy weights over time. Dismissals also feed the session store so
+    the engine stops suggesting the dismissed strategy this session.
     """
+    from ..recommend.session import record_dismissal
     from ..recommend.telemetry import log_interaction
 
     await log_interaction(
@@ -63,4 +65,9 @@ async def feedback(
         action_type=req.action,
         duration_secs=req.duration_secs,
     )
+    if req.action == "dismissed":
+        await record_dismissal(session, req.strategy_name)
+
+    # The route owns the transaction (telemetry stages, doesn't commit).
+    await session.commit()
     return {"status": "ok"}

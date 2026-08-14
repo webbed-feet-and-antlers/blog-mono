@@ -1,9 +1,9 @@
-"""Flashcard review routes — persist 'I know this' / 'Still learning' clicks.
+"""Flashcard review route — persist 'I know this' / 'Still learning' clicks.
 
-This closes the loop on flashcard interactions: previously the known/unknown
-state was ephemeral (lost on unmount). Now each review feeds the per-concept
-mastery tally, so the agent learns what the student has mastered from
-flashcards too — not just quizzes.
+The route recovers concept tags from the stored cards (when the client
+doesn't send them), commits nothing itself — the concept-mastery updates,
+learner-profile learning, and recommendation session tracking all run as
+reactions to the FlashcardsReviewed event (app/events/handlers/study.py).
 """
 
 from __future__ import annotations
@@ -11,8 +11,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..agent import memory as memory_store
 from ..db import get_session
+from ..events import bus
+from ..events.domain import CardOutcome, FlashcardsReviewed
 from ..models import ContentItem
 from ..schemas import FlashcardReviewRequest, FlashcardReviewResponse
 
@@ -31,36 +32,31 @@ async def submit_flashcard_review(
     if item is None or item.type != "flashcards":
         raise HTTPException(status_code=404, detail="Flashcard deck not found")
 
-    recorded = 0
+    # Build the outcome list — recovering the concept from the card itself
+    # (tagged at generation time) when the client didn't send it.
+    outcomes: list[CardOutcome] = []
     for result in req.results:
         concept = result.concept.strip()
         if not concept:
-            # Try to recover the concept from the card itself (tagged at
-            # generation time) if the client didn't send it.
             card = next(
                 (c for c in item.content.get("cards", []) if c.get("id") == result.card_id),
                 None,
             )
             concept = (card or {}).get("concept", "")
         if concept:
-            await memory_store.update_concept_mastery(
-                session, concept, correct=result.known
+            outcomes.append(
+                CardOutcome(
+                    card_id=result.card_id,
+                    concept=concept,
+                    known=result.known,
+                )
             )
-            recorded += 1
 
-    # Feed the flashcard review results into the learner profile.
-    if req.results:
-        await memory_store.update_learner_profile(
-            session,
-            flashcard_results=[
-                {"known": r.known, "concept": r.concept} for r in req.results
-            ],
+    await bus.publish(
+        FlashcardsReviewed(
+            content_id=content_id,
+            document_id=item.document_id,
+            results=outcomes,
         )
-
-    # Record session action for recommendation chaining + fatigue.
-    from ..recommend.session import record_action
-
-    await record_action(session, "flashcards", item.document_id)
-
-    await session.commit()
-    return FlashcardReviewResponse(recorded=recorded)
+    )
+    return FlashcardReviewResponse(recorded=len(outcomes))

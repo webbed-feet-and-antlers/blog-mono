@@ -3,10 +3,11 @@
 Uses qwen3-asr-1.7b (~$0.000008/sec, ~$0.03 for a 1-hour lecture) through the
 same OpenRouter API key and base URL as the LLM. No separate API key needed.
 
-Transcribes lecture recordings and writes the transcript to Document.text,
-then triggers the concept analysis agent. The agent pipeline is transparent
-to the text source — once the transcript is in doc.text, everything downstream
-(concept graph, notes, quizzes, flashcards, mastery) works unchanged.
+Transcribes lecture recordings and writes the transcript to Document.text.
+The DocumentIngested event handler then continues the pipeline (concept
+analysis, graph merge, …). The agent pipeline is transparent to the text
+source — once the transcript is in doc.text, everything downstream (concept
+graph, notes, quizzes, flashcards, mastery) works unchanged.
 
 For files >25MB (OpenRouter's per-request limit), the audio is chunked via
 pydub (requires ffmpeg) and each chunk is transcribed separately.
@@ -141,73 +142,57 @@ async def _transcribe_chunked(path: Path) -> str:
     return "\n\n".join(transcript_parts)
 
 
-async def transcribe_then_analyze(doc_id: str) -> None:
-    """Background task: transcribe an audio document, then run concept analysis.
+async def transcribe_document(session, doc) -> bool:
+    """Transcribe an audio document onto doc.text, committing status milestones.
 
-    1. Load the document and its audio file.
-    2. Set transcription_status to "transcribing".
-    3. Transcribe via Whisper (chunking if needed).
-    4. Write the transcript to doc.text.
-    5. Set transcription_status to "done".
-    6. Call analyze_concepts_background (builds the concept graph from the transcript).
+    Called by the DocumentIngested event handler (see app/events/handlers/
+    ingestion.py) — analysis is no longer triggered from here.
 
-    On failure: set transcription_status to "failed" with the error message.
+    1. Set transcription_status to "transcribing" (committed — visible to
+       the UI while the ASR call runs).
+    2. Transcribe via Whisper (chunking if needed).
+    3. Write the transcript to doc.text and mark "done".
+
+    Returns True when a transcript is available (freshly transcribed or
+    already done); False if transcription failed (status/error recorded on
+    the document).
     """
-    from .db import SessionLocal
-    from .models import Document
-    from .agent.concept_graph import analyze_concepts_background
+    if doc.transcription_status == "done" and doc.text:
+        return True
+
+    audio_path = Path(doc.file_path)
+    if not audio_path.exists():
+        logger.error("[transcription] audio file missing: %s", doc.file_path)
+        doc.transcription_status = "failed"
+        doc.transcription_error = "Audio file not found"
+        await session.commit()
+        return False
+
+    # Set transcribing status.
+    doc.transcription_status = "transcribing"
+    await session.commit()
+
+    logger.info("[transcription] transcribing doc %s (%s)", doc.id, audio_path.name)
 
     try:
-        async with SessionLocal() as session:
-            doc = await session.get(Document, doc_id)
-            if doc is None:
-                logger.warning("[transcription] doc %s not found", doc_id)
-                return
-
-            audio_path = Path(doc.file_path)
-            if not audio_path.exists():
-                logger.error("[transcription] audio file missing: %s", doc.file_path)
-                doc.transcription_status = "failed"
-                doc.transcription_error = "Audio file not found"
-                await session.commit()
-                return
-
-            # Set transcribing status.
-            doc.transcription_status = "transcribing"
-            await session.commit()
-
-            logger.info(
-                "[transcription] transcribing doc %s (%s)", doc_id, audio_path.name
-            )
-
-            # Transcribe.
-            transcript = await transcribe_audio(audio_path)
-
-            # Write transcript + mark done.
-            doc.text = transcript
-            doc.char_count = len(transcript)
-            doc.page_count = 1
-            doc.transcription_status = "done"
-            doc.transcription_error = None
-            await session.commit()
-
-            logger.info(
-                "[transcription] doc %s transcribed: %d chars", doc_id, len(transcript)
-            )
-
-        # Run concept analysis on the transcript (separate session since
-        # analyze_concepts_background creates its own).
-        await analyze_concepts_background(doc_id)
-
+        transcript = await transcribe_audio(audio_path)
     except Exception as exc:
-        logger.exception("[transcription] failed for doc %s", doc_id)
-        # Try to mark as failed.
-        try:
-            async with SessionLocal() as session:
-                doc = await session.get(Document, doc_id)
-                if doc is not None:
-                    doc.transcription_status = "failed"
-                    doc.transcription_error = str(exc)[:500]
-                    await session.commit()
-        except Exception:
-            pass  # best-effort
+        logger.exception("[transcription] failed for doc %s", doc.id)
+        await session.rollback()
+        doc.transcription_status = "failed"
+        doc.transcription_error = str(exc)[:500]
+        await session.commit()
+        return False
+
+    # Write transcript + mark done.
+    doc.text = transcript
+    doc.char_count = len(transcript)
+    doc.page_count = 1
+    doc.transcription_status = "done"
+    doc.transcription_error = None
+    await session.commit()
+
+    logger.info(
+        "[transcription] doc %s transcribed: %d chars", doc.id, len(transcript)
+    )
+    return True

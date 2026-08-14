@@ -188,7 +188,7 @@ async def analyze_document(document_text: str) -> dict[str, Any]:
 # --- Filename auto-naming ---------------------------------------------------
 
 
-def _filename_needs_rename(filename: str) -> bool:
+def filename_needs_rename(filename: str) -> bool:
     """Heuristic gate: does this filename look like machine-generated noise?
 
     Catches the common cases: random hex/uuid prefixes from LMS downloads,

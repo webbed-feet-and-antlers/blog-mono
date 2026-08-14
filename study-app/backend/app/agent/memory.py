@@ -7,6 +7,7 @@ Scope:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -17,6 +18,13 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import AgentMemory
+
+# Serializes read-modify-write cycles on the user-scope JSON blobs
+# (concept_mastery, weak_topics, learner_profile, session). Each blob is one
+# row rewritten wholesale, so two concurrent requests (e.g. overlapping quiz
+# submits) would otherwise clobber each other's writes. Single-process app —
+# an asyncio.Lock is sufficient.
+blob_lock = asyncio.Lock()
 
 
 async def read_memory(
@@ -86,6 +94,22 @@ async def list_memory(
     return list(result.scalars().all())
 
 
+async def get_doc_topics(session: AsyncSession) -> dict[str, str]:
+    """Return {document_id: topic} from every cached doc analysis.
+
+    One query for all docs — used by the module-tree and concept-reference
+    endpoints to subtitle documents with their analysis topic.
+    """
+    rows = await list_memory(session, scope="doc")
+    topics: dict[str, str] = {}
+    for m in rows:
+        if m.key == "analysis" and isinstance(m.value, dict):
+            topic = m.value.get("topic")
+            if topic:
+                topics[m.ref_id] = str(topic)
+    return topics
+
+
 # --- Weak-topic tracking (the proactive agent's signal source) -------------
 #
 # weak_topics lives at scope="user", ref_id="", key="weak_topics" and is a
@@ -108,23 +132,24 @@ async def add_weak_topics(session: AsyncSession, topics: list[str]) -> None:
         return
 
     now = datetime.now(timezone.utc).isoformat()
-    existing = await read_memory(session, "user", "", "weak_topics")
-    by_topic: dict[str, dict[str, Any]] = {}
-    if isinstance(existing, list):
-        for entry in existing:
-            t = entry.get("topic")
-            if t:
-                by_topic[t] = dict(entry)
+    async with blob_lock:
+        existing = await read_memory(session, "user", "", "weak_topics")
+        by_topic: dict[str, dict[str, Any]] = {}
+        if isinstance(existing, list):
+            for entry in existing:
+                t = entry.get("topic")
+                if t:
+                    by_topic[t] = dict(entry)
 
-    for topic in topics:
-        if topic in by_topic:
-            by_topic[topic]["missed_count"] = int(by_topic[topic].get("missed_count", 0)) + 1
-            by_topic[topic]["last_seen"] = now
-        else:
-            by_topic[topic] = {"topic": topic, "missed_count": 1, "last_seen": now}
+        for topic in topics:
+            if topic in by_topic:
+                by_topic[topic]["missed_count"] = int(by_topic[topic].get("missed_count", 0)) + 1
+                by_topic[topic]["last_seen"] = now
+            else:
+                by_topic[topic] = {"topic": topic, "missed_count": 1, "last_seen": now}
 
-    merged = sorted(by_topic.values(), key=lambda e: e.get("missed_count", 0), reverse=True)
-    await write_memory(session, "user", "", "weak_topics", merged[:MAX_WEAK_TOPICS])
+        merged = sorted(by_topic.values(), key=lambda e: e.get("missed_count", 0), reverse=True)
+        await write_memory(session, "user", "", "weak_topics", merged[:MAX_WEAK_TOPICS])
 
 
 async def get_weak_topics(session: AsyncSession) -> list[dict[str, Any]]:
@@ -255,21 +280,22 @@ async def update_concept_mastery(
 
     from . import fsrs_scheduler
 
-    mastery = await get_concept_mastery(session)
-    entry = mastery.get(concept) or {"correct": 0, "wrong": 0, "seen": 0}
-    entry["seen"] = entry["seen"] + 1
-    if correct:
-        entry["correct"] = entry["correct"] + 1
-    else:
-        entry["wrong"] = entry["wrong"] + 1
-    entry["mastery_pct"] = round(entry["correct"] / entry["seen"], 3)
+    async with blob_lock:
+        mastery = await get_concept_mastery(session)
+        entry = mastery.get(concept) or {"correct": 0, "wrong": 0, "seen": 0}
+        entry["seen"] = entry["seen"] + 1
+        if correct:
+            entry["correct"] = entry["correct"] + 1
+        else:
+            entry["wrong"] = entry["wrong"] + 1
+        entry["mastery_pct"] = round(entry["correct"] / entry["seen"], 3)
 
-    # Update FSRS spaced-repetition scheduling.
-    existing_fsrs = entry.get("fsrs")
-    entry["fsrs"] = fsrs_scheduler.schedule_review(existing_fsrs, rating)
+        # Update FSRS spaced-repetition scheduling.
+        existing_fsrs = entry.get("fsrs")
+        entry["fsrs"] = fsrs_scheduler.schedule_review(existing_fsrs, rating)
 
-    mastery[concept] = entry
-    await write_memory(session, "user", "", "concept_mastery", mastery)
+        mastery[concept] = entry
+        await write_memory(session, "user", "", "concept_mastery", mastery)
 
 
 async def get_concept_mastery(session: AsyncSession) -> dict[str, dict]:
@@ -522,86 +548,87 @@ async def update_learner_profile(
     All arguments are optional — only the signals present in this interaction
     are used. Returns the updated profile.
     """
-    profile = await get_learner_profile(session)
-    stats = profile["stats"]
-    now = datetime.now(timezone.utc).isoformat()
+    async with blob_lock:
+        profile = await get_learner_profile(session)
+        stats = profile["stats"]
+        now = datetime.now(timezone.utc).isoformat()
 
-    if stats["first_interaction"] is None:
-        stats["first_interaction"] = now
-    stats["last_interaction"] = now
+        if stats["first_interaction"] is None:
+            stats["first_interaction"] = now
+        stats["last_interaction"] = now
 
-    # --- Quiz signal ---
-    if quiz_score is not None:
-        stats["total_quizzes"] = stats.get("total_quizzes", 0) + 1
-        history = stats.get("score_history") or []
-        history.append({
-            "score": quiz_score,
-            "difficulty": doc_difficulty or "medium",
-            "ts": now,
-        })
-        stats["score_history"] = history[-MAX_SCORE_HISTORY:]
-        # Rolling average
-        all_scores = [h["score"] for h in stats["score_history"]]
-        stats["avg_score"] = round(sum(all_scores) / len(all_scores), 3)
+        # --- Quiz signal ---
+        if quiz_score is not None:
+            stats["total_quizzes"] = stats.get("total_quizzes", 0) + 1
+            history = stats.get("score_history") or []
+            history.append({
+                "score": quiz_score,
+                "difficulty": doc_difficulty or "medium",
+                "ts": now,
+            })
+            stats["score_history"] = history[-MAX_SCORE_HISTORY:]
+            # Rolling average
+            all_scores = [h["score"] for h in stats["score_history"]]
+            stats["avg_score"] = round(sum(all_scores) / len(all_scores), 3)
 
-        # Recompute level from the full history
-        profile["learner_level"] = _derive_level(stats["score_history"])
+            # Recompute level from the full history
+            profile["learner_level"] = _derive_level(stats["score_history"])
 
-        # Drift preferred difficulty based on recent trend
-        recent_scores = [h["score"] for h in stats["score_history"]]
-        profile["preferred_difficulty"] = _adjust_difficulty(
-            profile["preferred_difficulty"], recent_scores
-        )
+            # Drift preferred difficulty based on recent trend
+            recent_scores = [h["score"] for h in stats["score_history"]]
+            profile["preferred_difficulty"] = _adjust_difficulty(
+                profile["preferred_difficulty"], recent_scores
+            )
 
-    # --- Flashcard signal ---
-    if flashcard_results:
-        stats["total_flashcard_reviews"] = (
-            stats.get("total_flashcard_reviews", 0) + len(flashcard_results)
-        )
-        known = sum(1 for r in flashcard_results if r.get("known"))
-        total = len(flashcard_results)
-        if total > 0:
-            # Rolling known ratio (simple average of current + new batch).
-            prev = stats.get("flashcard_known_ratio")
-            batch_ratio = known / total
-            if prev is not None:
-                stats["flashcard_known_ratio"] = round((prev + batch_ratio) / 2, 3)
-            else:
-                stats["flashcard_known_ratio"] = round(batch_ratio, 3)
+        # --- Flashcard signal ---
+        if flashcard_results:
+            stats["total_flashcard_reviews"] = (
+                stats.get("total_flashcard_reviews", 0) + len(flashcard_results)
+            )
+            known = sum(1 for r in flashcard_results if r.get("known"))
+            total = len(flashcard_results)
+            if total > 0:
+                # Rolling known ratio (simple average of current + new batch).
+                prev = stats.get("flashcard_known_ratio")
+                batch_ratio = known / total
+                if prev is not None:
+                    stats["flashcard_known_ratio"] = round((prev + batch_ratio) / 2, 3)
+                else:
+                    stats["flashcard_known_ratio"] = round(batch_ratio, 3)
 
-    # --- Hint signal (explicit preferences from the user) ---
-    if hint and hint.strip():
-        hint = hint.strip()
-        goal = _infer_goal_from_hint(hint)
-        if goal:
-            profile["study_goal"] = goal
-        formats = _infer_formats_from_hint(hint)
-        if formats:
-            pf = profile["preferred_formats"]
-            for k, v in formats.items():
-                pf[k] = v  # explicit hint overrides inferred
+        # --- Hint signal (explicit preferences from the user) ---
+        if hint and hint.strip():
+            hint = hint.strip()
+            goal = _infer_goal_from_hint(hint)
+            if goal:
+                profile["study_goal"] = goal
+            formats = _infer_formats_from_hint(hint)
+            if formats:
+                pf = profile["preferred_formats"]
+                for k, v in formats.items():
+                    pf[k] = v  # explicit hint overrides inferred
 
-    # --- Infer study goal from cadence (if still unknown) ---
-    if profile["study_goal"] == "unknown" and stats["total_quizzes"] >= 3:
-        # High recent quiz frequency → likely exam prep
-        history = stats.get("score_history") or []
-        if len(history) >= 3:
-            # Check if quizzes are clustered in time (within a few hours)
-            from datetime import datetime as _dt
+        # --- Infer study goal from cadence (if still unknown) ---
+        if profile["study_goal"] == "unknown" and stats["total_quizzes"] >= 3:
+            # High recent quiz frequency → likely exam prep
+            history = stats.get("score_history") or []
+            if len(history) >= 3:
+                # Check if quizzes are clustered in time (within a few hours)
+                from datetime import datetime as _dt
 
-            timestamps = []
-            for h in history[-5:]:
-                try:
-                    timestamps.append(_dt.fromisoformat(h["ts"]))
-                except (KeyError, ValueError):
-                    pass
-            if len(timestamps) >= 3:
-                span = (max(timestamps) - min(timestamps)).total_seconds()
-                # 3+ quizzes within 6 hours suggests cramming / exam prep
-                if span < 6 * 3600:
-                    profile["study_goal"] = "exam_prep"
+                timestamps = []
+                for h in history[-5:]:
+                    try:
+                        timestamps.append(_dt.fromisoformat(h["ts"]))
+                    except (KeyError, ValueError):
+                        pass
+                if len(timestamps) >= 3:
+                    span = (max(timestamps) - min(timestamps)).total_seconds()
+                    # 3+ quizzes within 6 hours suggests cramming / exam prep
+                    if span < 6 * 3600:
+                        profile["study_goal"] = "exam_prep"
 
-    profile["stats"] = stats
-    profile["updated_at"] = now
-    await write_memory(session, "user", "", PROFILE_KEY, profile)
-    return profile
+        profile["stats"] = stats
+        profile["updated_at"] = now
+        await write_memory(session, "user", "", PROFILE_KEY, profile)
+        return profile

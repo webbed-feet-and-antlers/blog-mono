@@ -24,6 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..agent import memory as memory_store
 from ..agent import fsrs_scheduler
 from ..db import get_session
+from ..events import bus
+from ..events.domain import CardOutcome, StudySessionReviewed
 from ..models import ContentItem
 
 logger = logging.getLogger(__name__)
@@ -216,32 +218,18 @@ async def submit_session_review(
     req: SessionReviewRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Submit study session results — updates concept mastery + FSRS per card.
+    """Submit study session results — publishes the StudySessionReviewed event.
 
     Unlike the single-deck flashcard review endpoint, this handles cards
-    from multiple source decks (a composed session spans documents).
+    from multiple source decks (a composed session spans documents). Mastery
+    updates, profile learning, and session tracking run as event reactions
+    (app/events/handlers/study.py).
     """
-    from ..recommend.session import record_action
+    outcomes = [
+        CardOutcome(card_id=r.card_id, concept=(r.concept or "").strip(), known=r.known)
+        for r in req.results
+        if (r.concept or "").strip()
+    ]
 
-    recorded = 0
-    for result in req.results:
-        concept = (result.concept or "").strip()
-        if not concept:
-            continue
-        await memory_store.update_concept_mastery(
-            session, concept, correct=result.known
-        )
-        recorded += 1
-
-    if req.results:
-        await memory_store.update_learner_profile(
-            session,
-            flashcard_results=[
-                {"known": r.known, "concept": r.concept}
-                for r in req.results
-            ],
-        )
-        await record_action(session, "flashcards")
-
-    await session.commit()
-    return {"recorded": recorded, "session_id": session_id}
+    await bus.publish(StudySessionReviewed(session_id=session_id, results=outcomes))
+    return {"recorded": len(outcomes), "session_id": session_id}

@@ -181,6 +181,27 @@ class RecommendationEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
+class AgentEvent(Base):
+    """Append-only log of every domain event published on the event bus.
+
+    One "dispatch" row per publish (handler=NULL), plus one row per handler
+    run with its outcome — so every automatic action the agent takes is
+    visible and debuggable via GET /api/events.
+    """
+
+    __tablename__ = "agent_events"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    # Event class name, e.g. "QuizAttempted", "DocumentIngested".
+    event_type: Mapped[str] = mapped_column(String, nullable=False)
+    # "module.function" of the handler; NULL for dispatch rows.
+    handler: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="ok")  # ok | failed
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class LectureSession(Base):
     """A lecture recording session — groups audio + slides + notes + timestamps.
 

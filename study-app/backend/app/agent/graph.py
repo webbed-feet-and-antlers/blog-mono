@@ -19,16 +19,20 @@ logger = logging.getLogger(__name__)
 # Build the graph once. It's stateless — per-run state is passed in.
 _graph_builder = StateGraph(AgentState)
 _graph_builder.add_node("analyze_document", nodes.analyze_document)
-_graph_builder.add_node("plan", nodes.plan)
 _graph_builder.add_node("retrieve_memory", nodes.retrieve_memory)
+_graph_builder.add_node("plan", nodes.plan)
 _graph_builder.add_node("generate", nodes.generate)
 _graph_builder.add_node("validate", nodes.validate)
 _graph_builder.add_node("finalize", nodes.finalize)
 
+# retrieve_memory runs BEFORE plan so the planner can actually see the
+# learner's memory (weak topics, concept mastery, profile). The old order
+# (plan → retrieve_memory) meant plan always received empty memory — its
+# personalization instructions could never fire.
 _graph_builder.add_edge(START, "analyze_document")
-_graph_builder.add_edge("analyze_document", "plan")
-_graph_builder.add_edge("plan", "retrieve_memory")
-_graph_builder.add_edge("retrieve_memory", "generate")
+_graph_builder.add_edge("analyze_document", "retrieve_memory")
+_graph_builder.add_edge("retrieve_memory", "plan")
+_graph_builder.add_edge("plan", "generate")
 _graph_builder.add_edge("generate", "validate")
 # On validation failure we stop (don't persist bad output). A future iteration
 # could route back to `generate` for a retry with feedback.
@@ -80,8 +84,8 @@ async def run_generation(
 # without exposing implementation details or trace logs.
 NODE_STATUSES: dict[str, str] = {
     "analyze_document": "Reading the document…",
-    "plan": "Planning what to create…",
     "retrieve_memory": "Recalling what you know…",
+    "plan": "Planning what to create…",
     "generate": "Creating your {task_type}…",
     "validate": "Checking the quality…",
     "finalize": "Saving the results…",

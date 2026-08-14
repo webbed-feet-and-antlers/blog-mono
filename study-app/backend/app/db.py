@@ -20,6 +20,9 @@ engine = create_async_engine(
     settings.db_url,
     echo=False,
     future=True,
+    # SQLite busy timeout (seconds): concurrent event-bus handler sessions
+    # retry on a locked database instead of raising immediately.
+    connect_args={"timeout": 30},
 )
 
 SessionLocal = async_sessionmaker(
@@ -38,6 +41,20 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 async def init_db() -> None:
     """Create all tables and run lightweight migrations. Called from lifespan."""
     from .models import Base
+
+    # Enable WAL once, up front: readers don't block writers, which matters
+    # now that the event bus runs handler sessions alongside request sessions.
+    # Must happen outside any transaction and before pooled connections exist
+    # — journal_mode cannot change mid-transaction (a switch attempted inside
+    # one leaves the WAL index in a state where writers deadlock until an
+    # external connection recovers it).
+    import sqlite3
+
+    raw = sqlite3.connect(settings.db_path)
+    try:
+        raw.execute("PRAGMA journal_mode=WAL")
+    finally:
+        raw.close()
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

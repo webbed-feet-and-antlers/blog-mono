@@ -130,6 +130,7 @@ async def log_interaction(
             context_snapshot={"duration_secs": duration_secs} if duration_secs else {},
         )
         session.add(event)
-        await session.commit()
+        # The caller owns the transaction — no commit here (same convention
+        # as every other staging helper).
     except Exception:
         logger.debug("[telemetry] log_interaction failed")

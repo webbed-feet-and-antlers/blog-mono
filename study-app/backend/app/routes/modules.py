@@ -36,16 +36,10 @@ router = APIRouter(prefix="/api", tags=["modules"])
 @router.get("/modules", response_model=ModuleTreeResponse)
 async def get_module_tree(session: AsyncSession = Depends(get_session)):
     """Return the full hierarchy: modules → lessons → documents, plus unfiled docs."""
-    from ..agent.memory import list_memory
+    from ..agent.memory import get_doc_topics
 
     # Load document topics from cached analyses (one query for all docs).
-    analyses = await list_memory(session, scope="doc")
-    topics: dict[str, str] = {}
-    for m in analyses:
-        if m.key == "analysis" and isinstance(m.value, dict):
-            topic = m.value.get("topic")
-            if topic:
-                topics[m.ref_id] = str(topic)
+    topics = await get_doc_topics(session)
 
     # Load modules with their lessons + documents eager-loaded.
     result = await session.execute(
