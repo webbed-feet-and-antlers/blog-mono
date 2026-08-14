@@ -185,6 +185,79 @@ async def analyze_document(document_text: str) -> dict[str, Any]:
     return await chat_json(messages, temperature=0.1, max_tokens=2500)
 
 
+# --- Filename auto-naming ---------------------------------------------------
+
+
+def _filename_needs_rename(filename: str) -> bool:
+    """Heuristic gate: does this filename look like machine-generated noise?
+
+    Catches the common cases: random hex/uuid prefixes from LMS downloads,
+    camera/recorder defaults (IMG_1234, recording-<ts>), generic names
+    (document, untitled, scan), and pure numbers. Cheap — no LLM call needed
+    for names that pass.
+    """
+    import re
+
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+    stem = stem.strip()
+    lower = stem.lower()
+
+    if not lower:
+        return True
+    bad_patterns = [
+        r"[0-9a-f]{10,}",                                # hex/uuid chunks
+        r"^\d+$",                                        # pure numbers
+        r"^(img|dsc|vid|pict?|screen[\s_-]?shot)[\s_-]?\d*$",  # camera/screen
+        r"^(untitled|document|doc|file|scan|new|download|upload)[\s_-]?\d*$",
+        r"^(recording|audio|voice[\s_-]?memo|memo|lecture|notes?|slides?|pages?|"
+        r"week|session)[\s_-]?\d*$",                     # generic study names
+        r"^\d{4}[-_]\d{2}[-_]\d{2}",                     # date-prefixed
+        r"copy[\s_-]?\d*$",                              # duplicate suffixes
+    ]
+    return any(re.search(p, lower) for p in bad_patterns)
+
+
+async def suggest_filename(current_filename: str, text: str) -> str | None:
+    """Ask the LLM for a clean, descriptive name for a document.
+
+    Returns the new stem (no extension), or None if the current name should
+    be kept. Only called when the heuristic flags the filename as noise —
+    good names never cost an LLM call.
+    """
+    excerpt = text[:2000]
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You rename study documents. Given the current filename and an "
+                "excerpt of the document's content, return ONLY JSON: "
+                '{"new_name": string | null}. '
+                "new_name is a concise descriptive title (3-8 words, Title Case, "
+                "no file extension, no quotes) that identifies what this "
+                "document is about — e.g. 'Photosynthesis Lecture Notes', "
+                "'Cell Biology Chapter 4', 'MIT Science Writing Seminar 20'. "
+                "Return null if the current filename (ignoring its extension) "
+                "is already clear and descriptive."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Current filename: {current_filename}\n\n"
+                f"Document excerpt:\n{excerpt}"
+            ),
+        },
+    ]
+    result = await chat_json(messages, temperature=0.2, max_tokens=200)
+    name = (result.get("new_name") or "").strip()
+    if not name or len(name) > 80:
+        return None
+    # Strip a file extension if the model added one anyway.
+    if "." in name:
+        name = name.rsplit(".", 1)[0].strip()
+    return name or None
+
+
 # --- Planning ---
 
 

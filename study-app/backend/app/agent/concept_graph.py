@@ -43,6 +43,20 @@ async def analyze_concepts_background(doc_id: str) -> None:
                 return
 
             logger.info("[concept-graph] analyzing doc %s (%s)", doc_id, doc.filename)
+
+            # Auto-rename machine-generated filenames (hex hashes, IMG_1234,
+            # recording-<ts>, …) to a clean descriptive title. Good names are
+            # left untouched — the heuristic gate costs no LLM call. Runs
+            # BEFORE the analysis so a flaky analysis call can't block it.
+            if settings.auto_rename_files:
+                try:
+                    await _maybe_rename_document(session, doc)
+                    await session.commit()
+                except Exception:
+                    logger.exception(
+                        "[concept-graph] auto-rename failed for doc %s", doc_id
+                    )
+
             analysis = await tools.analyze_document(doc.text)
 
             # Cache the analysis so the first Generate call is instant.
@@ -98,6 +112,40 @@ async def analyze_concepts_background(doc_id: str) -> None:
                     )
     except Exception:
         logger.exception("[concept-graph] background analysis failed for doc %s", doc_id)
+
+
+async def _maybe_rename_document(session, doc: Document) -> None:
+    """Rename a document whose filename looks like machine-generated noise.
+
+    The new name comes from the LLM (based on content); the original file
+    extension is preserved. Called from the background analysis task for
+    every document — text docs right after upload, audio recordings after
+    their transcript is available.
+    """
+    if not tools._filename_needs_rename(doc.filename):
+        return
+
+    new_stem = await tools.suggest_filename(doc.filename, doc.text)
+    if not new_stem:
+        logger.info(
+            "[concept-graph] keeping filename '%s' for doc %s (LLM says it's fine)",
+            doc.filename,
+            doc.id,
+        )
+        return
+
+    # Preserve the original extension (webm, pdf, pptx, …).
+    suffix = ""
+    if "." in doc.filename:
+        suffix = "." + doc.filename.rsplit(".", 1)[1]
+    old_name = doc.filename
+    doc.filename = f"{new_stem}{suffix}"
+    logger.info(
+        "[concept-graph] renamed doc %s: '%s' -> '%s'",
+        doc.id,
+        old_name,
+        doc.filename,
+    )
 
 
 async def _auto_generate_flashcards(session, doc_id: str, doc_text: str) -> None:

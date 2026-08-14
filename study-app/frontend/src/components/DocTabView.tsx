@@ -61,6 +61,9 @@ export function DocTabView() {
   const doc = useQuery({
     queryKey: ["document", docId],
     queryFn: () => api.getDocument(docId),
+    // Light polling so background changes surface without a manual refresh
+    // (e.g. the agent auto-renaming a machine-generated filename).
+    refetchInterval: 15000,
   });
 
   const content = useQuery({

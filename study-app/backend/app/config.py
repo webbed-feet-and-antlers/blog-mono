@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # "Generate" — content is ready when they are.
     auto_generate_flashcards: bool = False
 
+    # Auto-rename: when a document's filename looks machine-generated (hex
+    # hashes, IMG_1234, recording-<timestamp>, …), replace it with a clean
+    # descriptive title derived from the content. Descriptive names are kept.
+    auto_rename_files: bool = True
+
     # SQLite URL is derived from db_path.
     @property
     def db_url(self) -> str:
