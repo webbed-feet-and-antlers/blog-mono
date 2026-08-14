@@ -43,7 +43,13 @@ export function ConceptListView() {
   );
 }
 
-export function ConceptRow({ concept: c }: { concept: ConceptWithGraph }) {
+export function ConceptRow({
+  concept: c,
+  onSelect,
+}: {
+  concept: ConceptWithGraph;
+  onSelect?: (concept: string) => void;
+}) {
   const pct = c.mastery_pct;
   const dotClass =
     pct === null
@@ -64,7 +70,10 @@ export function ConceptRow({ concept: c }: { concept: ConceptWithGraph }) {
           : "mastered";
 
   return (
-    <div className="concept-row">
+    <div
+      className={`concept-row ${onSelect ? "clickable" : ""}`}
+      onClick={onSelect ? () => onSelect(c.concept) : undefined}
+    >
       <div className="concept-main">
         <span className={dotClass} />
         <span className="concept-name">{c.concept}</span>

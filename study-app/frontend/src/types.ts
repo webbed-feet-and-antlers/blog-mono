@@ -162,3 +162,31 @@ export interface ConceptWithGraph {
   prerequisite_mastery: PrerequisiteMastery[];
   prerequisite_blocked: boolean;
 }
+
+/** Everything that references a concept (GET /api/concepts/{name}/references). */
+export interface ConceptReferences {
+  concept: string;
+  mastery_pct: number | null;
+  seen: number;
+  correct: number;
+  wrong: number;
+  retrievability: number | null;
+  due: boolean;
+  modules: string[];
+  documents: { id: string; filename: string; topic: string | null }[];
+  quiz_questions: {
+    content_id: string;
+    document_id: string;
+    doc_filename: string | null;
+    question_id: string | null;
+    prompt: string;
+  }[];
+  flashcards: {
+    content_id: string;
+    document_id: string;
+    doc_filename: string | null;
+    card_id: string | null;
+    front: string;
+    back: string;
+  }[];
+}

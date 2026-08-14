@@ -1994,6 +1994,178 @@ button.small {
 
 /* --- Concept list (knowledge graph + mastery) ---------------------------- */
 
+/* --- Concept detail modal -------------------------------------------------- */
+
+.concept-row.clickable {
+  cursor: pointer;
+}
+.concept-row.clickable:hover {
+  border-color: var(--accent-tint-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.concept-detail-modal {
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+.concept-detail-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 0;
+}
+.concept-detail-header {
+  margin-bottom: 16px;
+}
+.concept-detail-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.concept-detail-title-row h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.015em;
+}
+.concept-detail-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-weight: 500;
+  margin-top: 4px;
+}
+.concept-detail-due {
+  margin-left: 6px;
+}
+.concept-detail-section {
+  margin-bottom: 18px;
+}
+.concept-detail-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin: 0 0 8px;
+}
+.concept-detail-none {
+  font-size: 0.82rem;
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 4px 0 4px 20px;
+}
+.concept-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+  color: var(--text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+}
+.concept-detail-item:hover {
+  background: var(--panel-hover);
+  border-color: var(--border);
+}
+.concept-detail-item .cdi-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.concept-detail-item .cdi-main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.concept-detail-item .cdi-prompt {
+  white-space: normal;
+  display: block;
+  line-height: 1.4;
+  font-weight: 400;
+}
+.concept-detail-item .cdi-answer {
+  color: var(--text-dim);
+}
+.concept-detail-item .cdi-sub {
+  flex-shrink: 0;
+  max-width: 140px;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.concept-detail-item .cdi-arrow {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* --- Deck/version picker (multiple generated items per tab) --------------- */
+
+.deck-picker {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 10px;
+  margin-bottom: 4px;
+}
+.deck-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 14px;
+  min-width: 150px;
+  flex-shrink: 0;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.deck-chip:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-xs);
+}
+.deck-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.deck-chip-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.deck-chip.active .deck-chip-title {
+  color: var(--accent);
+}
+.deck-chip-meta {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
 /* --- Content list pages (quizzes / flashcards) --------------------------- */
 
 .content-list-page {

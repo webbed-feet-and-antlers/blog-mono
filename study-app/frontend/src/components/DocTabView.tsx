@@ -46,6 +46,9 @@ export function DocTabView() {
   const [generating, setGenerating] = useState(false);
   const [genStatus, setGenStatus] = useState<string | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
+  // Which generated item is selected (null = latest). Only relevant when a
+  // document has multiple decks/quizzes/notes versions.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Auto-trigger generation when navigated from a recommendation.
   useEffect(() => {
@@ -95,6 +98,7 @@ export function DocTabView() {
       {
         onStatus: (status) => setGenStatus(status),
         onDone: () => {
+          setSelectedId(null); // show the newly generated (latest) item
           queryClient.invalidateQueries({ queryKey: ["content", docId, tab] });
           queryClient.invalidateQueries({ queryKey: ["memory"] });
           queryClient.invalidateQueries({ queryKey: ["learner-profile"] });
@@ -117,6 +121,11 @@ export function DocTabView() {
 
   const items: ContentItem[] = content.data ?? [];
   const latest = items[0];
+  // Fall back to latest when nothing is selected (or the selection was
+  // deleted / belongs to another tab).
+  const selected =
+    (selectedId ? items.find((i) => i.id === selectedId) : undefined) ??
+    latest;
 
   return (
     <>
@@ -206,10 +215,11 @@ export function DocTabView() {
                 </>
               )}
             </button>{" "}
-            {latest && !generating && (
+            {selected && !generating && (
               <button
                 className="danger"
-                onClick={() => removeContent.mutate(latest.id)}
+                title="Delete selected"
+                onClick={() => removeContent.mutate(selected.id)}
               >
                 <Trash2 size={15} />
               </button>
@@ -227,7 +237,31 @@ export function DocTabView() {
             </div>
           )}
 
-          {!generating && latest && <ContentRender item={latest} />}
+          {/* Version picker — shown when the document has multiple versions
+              of this content type (e.g. several flashcard decks). */}
+          {!generating && items.length > 1 && (
+            <div className="deck-picker">
+              {items.map((item) => {
+                const meta = itemMeta(item);
+                const active = selected?.id === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`deck-chip ${active ? "active" : ""}`}
+                    onClick={() => setSelectedId(item.id)}
+                  >
+                    <span className="deck-chip-title">{meta.title}</span>
+                    <span className="deck-chip-meta">
+                      {meta.count} · {timeAgo(item.created_at)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {!generating && selected && <ContentRender item={selected} />}
 
           {!generating && !latest && !content.isLoading && (
             <div className="empty">
@@ -305,4 +339,37 @@ function ContentRender({ item }: { item: ContentItem }) {
     return <QuizView contentId={item.id} content={item.content as any} />;
   }
   return <FlashcardView contentId={item.id} content={item.content as any} />;
+}
+
+/** Short label + count for a content item, used by the version picker. */
+function itemMeta(item: ContentItem): { title: string; count: string } {
+  const c = item.content as { title?: string; questions?: unknown[]; cards?: unknown[] };
+  if (item.type === "quiz") {
+    return {
+      title: c.title ?? "Quiz",
+      count: `${c.questions?.length ?? 0} questions`,
+    };
+  }
+  if (item.type === "flashcards") {
+    return {
+      title: c.title ?? "Deck",
+      count: `${c.cards?.length ?? 0} cards`,
+    };
+  }
+  // Notes have no title — distinguish by date.
+  return { title: `Notes (${timeAgo(item.created_at)})`, count: "notes" };
+}
+
+/** Compact relative time: "5m ago", "3h ago", "2d ago", or a date. */
+function timeAgo(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const mins = Math.floor((Date.now() - then) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
 }

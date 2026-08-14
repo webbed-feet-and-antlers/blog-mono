@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Zap, Loader2 } from "lucide-react";
 import * as api from "../api/client";
 import { ConceptRow } from "./ConceptListView";
+import { ConceptDetailModal } from "./ConceptDetailModal";
 
 interface Props {
   onStudySession: () => void;
@@ -13,11 +14,13 @@ type FilterKey = "all" | "due" | "weak" | "mastered" | "untested";
 /**
  * Global concepts overview: every concept across every document, with mastery,
  * FSRS due status, and recall probability. Filterable. Includes a one-click
- * study CTA for due concepts.
+ * study CTA for due concepts. Clicking a concept opens a detail modal showing
+ * its documents, quiz questions, and flashcards.
  */
 export function ConceptsPage({ onStudySession }: Props) {
   const [filter, setFilter] = useState<FilterKey>("all");
   const [moduleFilter, setModuleFilter] = useState<string | null>(null);
+  const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
 
   const concepts = useQuery({
     queryKey: ["concepts"],
@@ -151,9 +154,23 @@ export function ConceptsPage({ onStudySession }: Props) {
             No {filter} concepts.
           </div>
         ) : (
-          filtered.map((c) => <ConceptRow key={c.concept} concept={c} />)
+          filtered.map((c) => (
+            <ConceptRow
+              key={c.concept}
+              concept={c}
+              onSelect={setSelectedConcept}
+            />
+          ))
         )}
       </div>
+
+      {/* Concept detail modal: documents + questions + cards referencing it */}
+      {selectedConcept && (
+        <ConceptDetailModal
+          concept={selectedConcept}
+          onClose={() => setSelectedConcept(null)}
+        />
+      )}
     </div>
   );
 }

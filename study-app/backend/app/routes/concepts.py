@@ -4,18 +4,25 @@ GET /api/concepts returns all concepts with their mastery level, FSRS due
 status, prerequisites (and the mastery of each prerequisite), related
 concepts, and module context. This is the unified view that powers the
 Concepts tab and lets the user see what the agent knows about their learning.
+
+GET /api/concepts/{name}/references returns everywhere a concept appears:
+the documents it was extracted from, the quiz questions tagged with it, and
+the flashcards that test it.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ..agent import memory as memory_store
 from ..agent import fsrs_scheduler
 from ..db import get_session
+from ..models import ContentItem, Document
 
 router = APIRouter(prefix="/api/concepts", tags=["concepts"])
 
@@ -81,3 +88,114 @@ async def list_concepts(session: AsyncSession = Depends(get_session)):
 
     result.sort(key=sort_key)
     return result
+
+
+@router.get("/{concept_name}/references")
+async def get_concept_references(
+    concept_name: str, session: AsyncSession = Depends(get_session)
+):
+    """Return everything that references a concept.
+
+    - documents: the docs the concept was extracted from (from the mastery
+      store's documents list), resolved to filenames + topics
+    - quiz_questions: questions tagged with this concept (each question
+      carries a `concept` from generation time)
+    - flashcards: cards tagged with this concept
+    """
+    mastery = await memory_store.get_concept_mastery(session)
+
+    # Case-insensitive exact-name lookup against the mastery store.
+    target = concept_name.strip().lower()
+    entry = next(
+        (
+            (name, data)
+            for name, data in mastery.items()
+            if name.strip().lower() == target
+        ),
+        None,
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Concept not found")
+    concept, data = entry
+    fsrs = data.get("fsrs")
+
+    # Resolve document topics (same approach as the module-tree endpoint).
+    analyses = await memory_store.list_memory(session, scope="doc")
+    topics: dict[str, str] = {}
+    for m in analyses:
+        if m.key == "analysis" and isinstance(m.value, dict):
+            topic = m.value.get("topic")
+            if topic:
+                topics[m.ref_id] = str(topic)
+
+    # Documents the concept appears in.
+    documents = []
+    for doc_id in data.get("documents") or []:
+        d = await session.get(Document, doc_id)
+        if d is not None:
+            documents.append(
+                {"id": d.id, "filename": d.filename, "topic": topics.get(d.id)}
+            )
+
+    # Scan quizzes + flashcard decks for items tagged with this concept.
+    content_result = await session.execute(
+        select(ContentItem)
+        .options(selectinload(ContentItem.document))
+        .where(ContentItem.type.in_(["quiz", "flashcards"]))
+    )
+    items = content_result.scalars().all()
+
+    quiz_questions: list[dict[str, Any]] = []
+    flashcards: list[dict[str, Any]] = []
+    for item in items:
+        doc_name = item.document.filename if item.document else None
+        if item.type == "quiz":
+            for q in item.content.get("questions", []):
+                if (q.get("concept") or "").strip().lower() != target:
+                    continue
+                quiz_questions.append(
+                    {
+                        "content_id": item.id,
+                        "document_id": item.document_id,
+                        "doc_filename": doc_name,
+                        "question_id": q.get("id"),
+                        "prompt": q.get("prompt", ""),
+                    }
+                )
+        elif item.type == "flashcards":
+            for c in item.content.get("cards", []):
+                if (c.get("concept") or "").strip().lower() != target:
+                    continue
+                variants = c.get("variants") or []
+                flashcards.append(
+                    {
+                        "content_id": item.id,
+                        "document_id": item.document_id,
+                        "doc_filename": doc_name,
+                        "card_id": c.get("id"),
+                        "front": (
+                            variants[0].get("front")
+                            if variants
+                            else c.get("front", "")
+                        ),
+                        "back": (
+                            variants[0].get("back")
+                            if variants
+                            else c.get("back", "")
+                        ),
+                    }
+                )
+
+    return {
+        "concept": concept,
+        "mastery_pct": data.get("mastery_pct"),
+        "seen": data.get("seen", 0),
+        "correct": data.get("correct", 0),
+        "wrong": data.get("wrong", 0),
+        "retrievability": fsrs_scheduler.retrievability(fsrs),
+        "due": fsrs_scheduler.is_due(fsrs),
+        "modules": data.get("modules") or [],
+        "documents": documents,
+        "quiz_questions": quiz_questions,
+        "flashcards": flashcards,
+    }

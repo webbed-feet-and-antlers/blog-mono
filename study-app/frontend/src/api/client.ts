@@ -3,6 +3,7 @@
 
 import type {
   AgentMemory,
+  ConceptReferences,
   ConceptWithGraph,
   ContentItem,
   Document,
@@ -391,6 +392,14 @@ export async function moveDocument(
 
 export async function listConcepts(): Promise<ConceptWithGraph[]> {
   return request<ConceptWithGraph[]>("/api/concepts");
+}
+
+export async function getConceptReferences(
+  concept: string,
+): Promise<ConceptReferences> {
+  return request<ConceptReferences>(
+    `/api/concepts/${encodeURIComponent(concept)}/references`,
+  );
 }
 
 // --- Lecture sessions ---
