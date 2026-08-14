@@ -9,4 +9,4 @@ with @bus.on(YourEvent), and add it to the imports below.
 
 from __future__ import annotations
 
-from . import generation, ingestion, study  # noqa: F401
+from . import activity, generation, ingestion, study  # noqa: F401

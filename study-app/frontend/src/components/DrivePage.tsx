@@ -18,6 +18,7 @@ import {
   Search,
 } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { Document, Lesson, Module, ModuleTree } from "../types";
 
 /**
@@ -46,6 +47,8 @@ export function DrivePage() {
   const lessonId = search.lesson;
 
   const [searchQuery, setSearchQuery] = useState("");
+  // Debounce search telemetry (1s after the last keystroke).
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Folder being dragged over (for visual highlight + drop logic).
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
   // Context menu open state: { type, id } | null
@@ -200,12 +203,15 @@ export function DrivePage() {
 
   // --- Navigation helpers ---
   function goToRoot() {
+    track("navigation.moved", { to: "drive" });
     navigate({ to: "/drive" });
   }
   function goToModule(id: string) {
+    track("navigation.moved", { to: "drive-module" });
     navigate({ to: "/drive", search: { module: id } });
   }
   function goToLesson(modId: string, lesId: string) {
+    track("navigation.moved", { to: "drive-lesson" });
     navigate({ to: "/drive", search: { module: modId, lesson: lesId } });
   }
 
@@ -339,7 +345,17 @@ export function DrivePage() {
               className="drive-search"
               placeholder="Search drive…"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                const q = e.target.value.trim();
+                if (q) {
+                  if (searchDebounce.current) clearTimeout(searchDebounce.current);
+                  searchDebounce.current = setTimeout(
+                    () => track("drive.searched", { query: q.slice(0, 100) }),
+                    1000,
+                  );
+                }
+              }}
             />
           </div>
           <button

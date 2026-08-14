@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -10,6 +11,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 
 interface Props {
   concept: string;
@@ -27,6 +29,11 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
     queryKey: ["concept-references", concept],
     queryFn: () => api.getConceptReferences(concept),
   });
+
+  // Opening a concept's detail view is a curiosity signal.
+  useEffect(() => {
+    track("concept.viewed", { concept });
+  }, [concept]);
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -93,6 +100,10 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                     type="button"
                     className="concept-detail-item"
                     onClick={() => {
+                      track("concept.reference_clicked", {
+                        concept,
+                        target: "document",
+                      });
                       onClose();
                       navigate({
                         to: "/documents/$docId",
@@ -126,6 +137,10 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                     type="button"
                     className="concept-detail-item"
                     onClick={() => {
+                      track("concept.reference_clicked", {
+                        concept,
+                        target: "quiz",
+                      });
                       onClose();
                       navigate({
                         to: "/documents/$docId/$tab",
@@ -161,6 +176,10 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                     type="button"
                     className="concept-detail-item"
                     onClick={() => {
+                      track("concept.reference_clicked", {
+                        concept,
+                        target: "flashcard",
+                      });
                       onClose();
                       navigate({
                         to: "/documents/$docId/$tab",

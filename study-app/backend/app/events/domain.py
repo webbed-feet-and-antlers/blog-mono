@@ -22,6 +22,8 @@ class QuestionOutcome:
     concept: str
     answered: bool
     is_correct: bool
+    # Seconds from question render to final answer (behavioral signal).
+    latency_secs: float | None = None
 
 
 @dataclass
@@ -31,6 +33,7 @@ class CardOutcome:
     card_id: str
     concept: str
     known: bool
+    latency_secs: float | None = None
 
 
 @dataclass
@@ -62,6 +65,7 @@ class QuizAttempted:
     score: float
     total: int
     correct: int
+    duration_secs: float | None = None
     results: list[QuestionOutcome] = field(default_factory=list)
 
 
@@ -79,6 +83,7 @@ class StudySessionReviewed:
     """A composed study session's results were persisted (cards span decks)."""
 
     session_id: str
+    duration_secs: float | None = None
     results: list[CardOutcome] = field(default_factory=list)
 
 
@@ -90,3 +95,30 @@ class GenerationCompleted:
     content_id: str
     task_type: str
     origin: str | None = None  # None (user-requested) | "auto" | "proactive"
+
+
+# --- Behavioral telemetry (in-app actions as memory) ------------------------
+
+
+@dataclass
+class ActivityEntry:
+    """One user action captured by the frontend tracker.
+
+    ts is an ISO string from the client when available (event time); the
+    handler fills it with server time when missing.
+    """
+
+    type: str  # dot-namespaced, e.g. "document.opened", "quiz.answered"
+    ts: str = ""
+    props: dict = field(default_factory=dict)
+
+
+@dataclass
+class ActivitiesLogged:
+    """A flushed batch of frontend activity events.
+
+    One publish per flush (not per event) keeps the agent_events log quiet —
+    the ledger rows live in user_activities instead.
+    """
+
+    entries: list[ActivityEntry] = field(default_factory=list)

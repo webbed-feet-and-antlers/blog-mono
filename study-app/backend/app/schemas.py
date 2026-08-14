@@ -95,6 +95,14 @@ class QuizAttemptRequest(BaseModel):
     answers: dict[str, int] = Field(
         ..., description="mapping of question_id -> selected option index"
     )
+    # Behavioral timing (optional — from the frontend tracker).
+    duration_secs: float | None = Field(
+        default=None, description="total time spent on the quiz"
+    )
+    question_timings: dict[str, float] | None = Field(
+        default=None,
+        description="per-question seconds from first render to final answer",
+    )
 
 
 # --- Flashcard reviews ---
@@ -104,6 +112,8 @@ class FlashcardReviewItem(BaseModel):
     card_id: str
     known: bool
     concept: str = ""
+    # Seconds the card was studied before the decision (optional).
+    secs: float | None = None
 
 
 class FlashcardReviewRequest(BaseModel):
@@ -155,6 +165,19 @@ class AgentEventOut(BaseModel):
     error: str | None
 
     model_config = {"from_attributes": True}
+
+
+# --- Activity telemetry (in-app actions) ---
+
+
+class ActivityEventIn(BaseModel):
+    type: str = Field(..., description="dot-namespaced action type")
+    ts: str | None = Field(default=None, description="client ISO timestamp")
+    props: dict = Field(default_factory=dict)
+
+
+class ActivityBatchIn(BaseModel):
+    events: list[ActivityEventIn] = Field(default_factory=list)
 
 
 # --- Modules & Lessons (organization hierarchy) ---

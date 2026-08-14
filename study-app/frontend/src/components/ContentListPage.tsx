@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Loader2, FileText, Trash2, ChevronRight } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { ContentItem, TaskType } from "../types";
 
 interface Props {
@@ -143,12 +144,13 @@ function ContentCard({
   return (
     <div
       className="content-card drive-card"
-      onClick={() =>
+      onClick={() => {
+        track("content.opened", { content_id: item.id, type: item.type });
         navigate({
           to: "/documents/$docId/$tab",
           params: { docId: item.document_id, tab: type },
-        })
-      }
+        });
+      }}
     >
       <button
         type="button"

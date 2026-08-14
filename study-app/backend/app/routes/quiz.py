@@ -38,6 +38,7 @@ async def submit_quiz_attempt(
     total = len(questions)
     correct = 0
     results: list[QuestionOutcome] = []
+    timings = req.question_timings or {}
 
     for q in questions:
         qid = q.get("id")
@@ -55,6 +56,7 @@ async def submit_quiz_attempt(
                 concept=q.get("concept", ""),
                 answered=answered,
                 is_correct=is_correct,
+                latency_secs=timings.get(qid) if qid else None,
             )
         )
 
@@ -80,6 +82,7 @@ async def submit_quiz_attempt(
             score=score,
             total=total,
             correct=correct,
+            duration_secs=req.duration_secs,
             results=results,
         )
     )

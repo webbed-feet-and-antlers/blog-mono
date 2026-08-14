@@ -122,6 +122,46 @@ async def retrieve_memory(state: AgentState) -> dict[str, Any]:
     profile = await memory_store.get_learner_profile(session)
     memory["learner_profile"] = profile
 
+    # Behavioral understanding (in-app actions as memory): the LLM
+    # reflection's narrative + the deterministic aggregates from
+    # agent/behavior.py, so generation can adapt to how this learner
+    # actually studies — not just their scores.
+    from . import behavior as behavior_store
+
+    insights = user_memory.get("learner_insights")
+    if isinstance(insights, dict) and insights.get("summary"):
+        memory["learner_insights"] = insights
+    engagement = await behavior_store.get_engagement(session)
+    docs_by_dwell = sorted(
+        (engagement.get("docs") or {}).items(),
+        key=lambda kv: kv[1].get("dwell_secs", 0),
+        reverse=True,
+    )[:5]
+    if engagement.get("actions_count"):
+        memory["engagement"] = {
+            "total_dwell_secs": round(engagement.get("total_dwell_secs", 0)),
+            "top_docs": [
+                {"doc_id": d, "dwell_secs": round(v.get("dwell_secs", 0))}
+                for d, v in docs_by_dwell
+                if v.get("dwell_secs", 0) > 0
+            ],
+            "tab_switches": engagement.get("tab_switches"),
+        }
+    patterns = await behavior_store.get_study_patterns(session)
+    memory["study_patterns"] = {
+        "best_study_hour_utc": patterns.get("best_study_hour"),
+        "avg_quiz_duration_secs": patterns.get("avg_quiz_duration_secs"),
+        "sessions": patterns.get("sessions"),
+    }
+
+    # Fatigue: derived from the recommendation session store — a learner 50
+    # minutes into a session should get gentler content than a fresh one.
+    session_data = user_memory.get("session")
+    if isinstance(session_data, dict):
+        fatigue = _derive_fatigue(session_data)
+        if fatigue:
+            memory["fatigue"] = fatigue
+
     _trace(state, f"memory: doc keys={list(doc_memory)} user keys={list(user_memory)}")
     return {"memory": memory}
 
@@ -235,6 +275,38 @@ async def finalize(state: AgentState) -> dict[str, Any]:
 
 
 # --- Helpers ---
+
+
+def _derive_fatigue(session_data: dict) -> str | None:
+    """Bucket the learner's current session length.
+
+    Mirrors recommend/context.py's buckets: <20 min fresh, <50 focused,
+    beyond that fatigued. Returns None when there's no recent activity
+    (the session store expires after 2h of inactivity).
+    """
+    from datetime import datetime, timezone
+
+    actions = session_data.get("actions") or []
+    started_at = session_data.get("started_at")
+    if not actions or not started_at:
+        return None
+    try:
+        start = datetime.fromisoformat(str(started_at).replace("Z", "+00:00"))
+        last = datetime.fromisoformat(str(actions[-1]["ts"]).replace("Z", "+00:00"))
+    except (KeyError, ValueError):
+        return None
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    mins = (last - start).total_seconds() / 60
+    if mins < 0:
+        return None
+    if mins < 20:
+        return "fresh"
+    if mins < 50:
+        return "focused"
+    return "fatigued"
 
 
 def json_summary(obj: Any) -> str:

@@ -12,6 +12,7 @@ import {
   Layers,
 } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import { ProfileCard } from "./ProfileCard";
 
 interface Props {
@@ -79,30 +80,30 @@ export function Sidebar({
 
       {/* Navigation */}
       <nav className="sidebar-nav">
-        <button type="button" className="sidebar-nav-btn" onClick={onHome}>
+        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "home" }); onHome(); }}>
           <Home size={16} />
           Home
         </button>
-        <button type="button" className="sidebar-nav-btn" onClick={onDrive}>
+        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "drive" }); onDrive(); }}>
           <HardDrive size={16} />
           My Drive
         </button>
-        <button type="button" className="sidebar-nav-btn" onClick={onConcepts}>
+        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "concepts" }); onConcepts(); }}>
           <Network size={16} />
           Concepts
         </button>
-        <button type="button" className="sidebar-nav-btn" onClick={onQuizzes}>
+        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "quizzes" }); onQuizzes(); }}>
           <CircleHelp size={16} />
           Quizzes
         </button>
-        <button type="button" className="sidebar-nav-btn" onClick={onFlashcards}>
+        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "flashcards" }); onFlashcards(); }}>
           <Layers size={16} />
           Flashcards
         </button>
         <button
           type="button"
           className="sidebar-nav-btn"
-          onClick={onRecord}
+          onClick={() => { track("navigation.moved", { to: "record" }); onRecord(); }}
           disabled={uploading}
         >
           <Mic size={16} />

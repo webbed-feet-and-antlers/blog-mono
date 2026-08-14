@@ -57,10 +57,13 @@ class SessionReviewItem(BaseModel):
     known: bool
     concept: str
     content_id: str | None = None
+    # Seconds spent on the card before the decision (optional).
+    secs: float | None = None
 
 
 class SessionReviewRequest(BaseModel):
     results: list[SessionReviewItem] = []
+    duration_secs: float | None = None
 
 
 class StudySessionResponse(BaseModel):
@@ -226,10 +229,21 @@ async def submit_session_review(
     (app/events/handlers/study.py).
     """
     outcomes = [
-        CardOutcome(card_id=r.card_id, concept=(r.concept or "").strip(), known=r.known)
+        CardOutcome(
+            card_id=r.card_id,
+            concept=(r.concept or "").strip(),
+            known=r.known,
+            latency_secs=r.secs,
+        )
         for r in req.results
         if (r.concept or "").strip()
     ]
 
-    await bus.publish(StudySessionReviewed(session_id=session_id, results=outcomes))
+    await bus.publish(
+        StudySessionReviewed(
+            session_id=session_id,
+            duration_secs=req.duration_secs,
+            results=outcomes,
+        )
+    )
     return {"recorded": len(outcomes), "session_id": session_id}

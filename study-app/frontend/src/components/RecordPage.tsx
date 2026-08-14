@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useRecorder, formatTime, blobToFile } from "../hooks/useRecorder";
 import * as api from "../api/client";
+import { track } from "../api/track";
 
 interface SlideTimestampState {
   slide_number: number;
@@ -252,6 +253,7 @@ export function RecordPage() {
 
   function confirmLeave() {
     if (isRecording || isPaused) {
+      track("recording.discarded", { duration_secs: elapsedSec });
       stop();
     }
     localStorage.removeItem(DRAFT_KEY);
@@ -340,7 +342,7 @@ export function RecordPage() {
             {isRecording ? (
               <button
                 className="record-action-btn pause-btn"
-                onClick={pause}
+                onClick={() => { track("recording.paused", { duration_secs: elapsedSec }); pause(); }}
                 title="Pause recording"
               >
                 <Pause size={20} />

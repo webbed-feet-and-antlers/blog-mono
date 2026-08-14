@@ -202,6 +202,25 @@ class AgentEvent(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class UserActivity(Base):
+    """Append-only ledger of in-app user actions — the behavioral raw
+    material the agent distills into engagement stats, study patterns, and
+    (via LLM reflection) learner insights.
+
+    Written by the ActivitiesLogged event handler; read by the reflection
+    job and the profile endpoint.
+    """
+
+    __tablename__ = "user_activities"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    # Dot-namespaced action type, e.g. "document.opened", "quiz.answered".
+    type: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # Type-specific payload, e.g. {document_id, tab, dwell_secs}.
+    props: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class LectureSession(Base):
     """A lecture recording session — groups audio + slides + notes + timestamps.
 

@@ -194,6 +194,117 @@ async def test_study_session_review_reactions(client, db):
     assert rows["study.update_mastery"].status == "ok"
 
 
+async def test_quiz_latency_recorded_per_concept(client, db):
+    """Per-question timings flow through to concept mastery latency."""
+    doc, quiz = make_quiz(doc_id="doc-lat", content_id="quiz-lat")
+    db.add_all([doc, quiz])
+    await db.commit()
+
+    resp = await client.post(
+        "/api/quiz/quiz-lat/attempt",
+        json={
+            "answers": {"q1": 0, "q2": 0},
+            "duration_secs": 45,
+            "question_timings": {"q1": 5, "q2": 30},
+        },
+    )
+    assert resp.status_code == 201
+
+    mastery = await memory_store.get_concept_mastery(db)
+    assert mastery["Photosynthesis"]["latency"] == {"avg_secs": 5.0, "samples": 1}
+    assert mastery["Calvin cycle"]["latency"] == {"avg_secs": 30.0, "samples": 1}
+
+    # Duration feeds the study-pattern history.
+    from app.agent import behavior
+
+    patterns = await behavior.get_study_patterns(db)
+    assert patterns["quiz_duration_history"][-1] == {"secs": 45.0, "score": 0.5}
+    assert patterns["avg_quiz_duration_secs"] == 45.0
+
+    # The slow concept surfaces for prompts + the panel.
+    slow = await behavior.get_slow_concepts(db)
+    names = [c["concept"] for c in slow]
+    assert "Calvin cycle" in names
+    assert "Photosynthesis" not in names
+
+
+async def test_flashcard_latency_recorded(client, db):
+    doc = Document(
+        id="doc-lat2",
+        filename="c.pdf",
+        mime="application/pdf",
+        file_path="/tmp/c.pdf",
+        text="…",
+        kind="text",
+    )
+    deck = ContentItem(
+        id="deck-lat2",
+        document_id="doc-lat2",
+        type="flashcards",
+        content={
+            "title": "D",
+            "cards": [{"id": "c1", "front": "F", "back": "B", "concept": "Osmosis"}],
+        },
+    )
+    db.add_all([doc, deck])
+    await db.commit()
+
+    resp = await client.post(
+        "/api/flashcards/deck-lat2/review",
+        json={
+            "results": [
+                {"card_id": "c1", "concept": "Osmosis", "known": True, "secs": 18},
+            ]
+        },
+    )
+    assert resp.status_code == 201
+    mastery = await memory_store.get_concept_mastery(db)
+    assert mastery["Osmosis"]["latency"] == {"avg_secs": 18.0, "samples": 1}
+
+
+async def test_memory_hint_includes_behavioral_lines(client, db):
+    """_memory_hint surfaces insights, patterns, fatigue, and slow recall."""
+    from app.agent import tools
+
+    memory = {
+        "learner_insights": {
+            "summary": "Prefers short evening sessions.",
+            "traits": ["evening studier"],
+            "habits": "Studies after 8pm.",
+        },
+        "study_patterns": {
+            "best_study_hour_utc": 20,
+            "sessions": {"completed": 3, "abandoned": 1},
+            "avg_quiz_duration_secs": 90,
+        },
+        "fatigue": "fatigued",
+        "learner_profile": {
+            "learner_level": "intermediate",
+            "preferred_difficulty": "medium",
+            "preferred_formats": {},
+            "study_goal": "unknown",
+            "stats": {},
+        },
+        "concept_mastery": [
+            {
+                "concept": "Calvin cycle",
+                "correct": 1,
+                "seen": 2,
+                "mastery_pct": 0.5,
+                "due": True,
+                "latency": {"avg_secs": 14.0, "samples": 2},
+            }
+        ],
+    }
+    hint = tools._memory_hint(memory, "quiz")
+    assert "Prefers short evening sessions." in hint
+    assert "evening studier" in hint
+    assert "20:00" in hint
+    assert "3/4 study sessions completed" in hint
+    assert "gentler material" in hint  # fatigue line
+    assert "slow recall (~14s avg)" in hint
+
+
 async def test_events_endpoint_lists_log(client, db):
     doc, quiz = make_quiz(doc_id="doc-r4", content_id="quiz-r4")
     db.add_all([doc, quiz])

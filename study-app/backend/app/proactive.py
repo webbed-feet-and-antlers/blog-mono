@@ -135,6 +135,17 @@ async def proactive_loop() -> None:
             await run_proactive_review()
         except Exception:
             logger.exception("[agent] proactive loop: run failed")
+        # Reflect on the learner's accumulated behavior (LLM narrative over
+        # the activity ledger; cooldown-gated inside). Also runnable on
+        # demand via POST /api/memory/reflect.
+        try:
+            from .agent.reflection import reflect_on_learner
+
+            async with SessionLocal() as session:
+                await reflect_on_learner(session)
+                await session.commit()
+        except Exception:
+            logger.exception("[agent] reflection failed")
         # Periodically update recommendation strategy weights from telemetry
         # (the LinUCB bandit). Runs less frequently than proactive review.
         try:

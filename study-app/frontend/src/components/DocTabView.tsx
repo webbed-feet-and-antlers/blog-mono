@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -14,6 +14,7 @@ import {
   Network,
 } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { ContentItem, TaskType, TabId } from "../types";
 import { NotesView } from "./NotesView";
 import { QuizView } from "./QuizView";
@@ -50,11 +51,43 @@ export function DocTabView() {
   // document has multiple decks/quizzes/notes versions.
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // --- Dwell tracking (in-app actions as agent memory) ---------------------
+  // Latest-value refs so the unmount/pagehide emitter reads current context.
+  const docIdRef = useRef(docId);
+  const tabRef = useRef(tab);
+  docIdRef.current = docId;
+  tabRef.current = tab;
+  const openedAtRef = useRef(Date.now());
+  const closedRef = useRef(false);
+
+  function emitDocumentClosed() {
+    if (closedRef.current || !docIdRef.current) return;
+    closedRef.current = true;
+    const dwell_secs = Math.round((Date.now() - openedAtRef.current) / 1000);
+    track("document.closed", {
+      document_id: docIdRef.current,
+      tab: tabRef.current,
+      dwell_secs,
+    });
+  }
+
+  useEffect(() => {
+    track("document.opened", { document_id: docId, tab });
+    closedRef.current = false;
+    openedAtRef.current = Date.now();
+    const onPageHide = () => emitDocumentClosed();
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      emitDocumentClosed();
+    };
+  }, [docId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-trigger generation when navigated from a recommendation.
   useEffect(() => {
     if (pendingGenerate.value && !generating && tab !== "document") {
       pendingGenerate.value = false;
-      handleGenerate();
+      handleGenerate("recommendation");
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -81,13 +114,19 @@ export function DocTabView() {
     (d) => d.document_id === docId,
   );
 
-  async function handleGenerate() {
+  async function handleGenerate(trigger: "user" | "recommendation" = "user") {
     if (!docId || tab === "document" || tab === "concepts") return;
     // Guard: don't generate from an audio doc that hasn't been transcribed yet.
     if (doc.data?.transcription_status === "pending" || doc.data?.transcription_status === "transcribing") {
       setGenError("Transcription still in progress — please wait for it to complete.");
       return;
     }
+    track("generation.requested", {
+      document_id: docId,
+      task_type: tab,
+      hint: hint.trim().slice(0, 200) || null,
+      trigger,
+    });
     setGenerating(true);
     setGenStatus("Reading the document…");
     setGenError(null);
@@ -118,6 +157,8 @@ export function DocTabView() {
 
   const removeContent = useMutation({
     mutationFn: (id: string) => api.deleteContent(id),
+    onMutate: (id) =>
+      track("content.deleted", { content_id: id, document_id: docId, type: tab }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ["content", docId, tab] }),
   });
@@ -164,12 +205,15 @@ export function DocTabView() {
             <button
               key={t.id}
               className={`tab ${tab === t.id ? "active" : ""}`}
-              onClick={() =>
+              onClick={() => {
+                if (tab !== t.id) {
+                  track("tab.switched", { document_id: docId, from: tab, to: t.id });
+                }
                 navigate({
                   to: "/documents/$docId/$tab",
                   params: { docId, tab: t.id },
-                })
-              }
+                });
+              }}
             >
               <Icon size={16} />
               {t.label}
@@ -252,7 +296,14 @@ export function DocTabView() {
                     key={item.id}
                     type="button"
                     className={`deck-chip ${active ? "active" : ""}`}
-                    onClick={() => setSelectedId(item.id)}
+                    onClick={() => {
+                      setSelectedId(item.id);
+                      track("deck.version_selected", {
+                        document_id: docId,
+                        content_id: item.id,
+                        type: item.type,
+                      });
+                    }}
                   >
                     <span className="deck-chip-title">{meta.title}</span>
                     <span className="deck-chip-meta">
@@ -324,6 +375,7 @@ function ProactiveBanner({
             /* ignore */
           }
           setSeen(true);
+          track("proactive.accepted", { content_id: deck.id });
           onView();
         }}
       >

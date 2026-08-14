@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Zap,
@@ -11,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { Recommendation } from "../api/client";
 
 interface Props {
@@ -35,6 +37,11 @@ export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: 
     queryFn: api.getRecommendation,
     refetchInterval: 15000,
   });
+  // When this impression appeared — feeds duration_secs on click/dismiss.
+  const [shownAt, setShownAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (rec.data?.impression_id) setShownAt(Date.now());
+  }, [rec.data?.impression_id]);
 
   if (rec.isLoading || !rec.data) {
     return (
@@ -51,13 +58,19 @@ export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: 
   const { primary, alternatives, context, impression_id } = rec.data;
 
   function handleAction(r: Recommendation) {
-    // Fire telemetry: user clicked this recommendation.
+    // Fire telemetry: user clicked this recommendation (with dwell time).
     if (impression_id && r.strategy_name) {
       api.submitRecommendationFeedback(
         impression_id,
         r.strategy_name,
         "clicked",
+        shownAt ? Math.round((Date.now() - shownAt) / 1000) : undefined,
       );
+      track("recommendation.clicked", {
+        strategy: r.strategy_name,
+        action: r.action,
+        document_id: r.document_id,
+      });
     }
     if (!r.document_id && r.action !== "review_flashcards") return;
     // Study session: compose a review+new mix instead of navigating to a doc tab.
@@ -76,13 +89,18 @@ export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: 
   }
 
   function handleDismiss(r: Recommendation) {
-    // Fire telemetry: user dismissed this recommendation.
+    // Fire telemetry: user dismissed this recommendation (with dwell time).
     if (impression_id && r.strategy_name) {
       api.submitRecommendationFeedback(
         impression_id,
         r.strategy_name,
         "dismissed",
+        shownAt ? Math.round((Date.now() - shownAt) / 1000) : undefined,
       );
+      track("recommendation.dismissed", {
+        strategy: r.strategy_name,
+        action: r.action,
+      });
     }
     // Refresh recommendations so the next-best-action appears.
     queryClient.invalidateQueries({ queryKey: ["recommend"] });

@@ -49,6 +49,7 @@ async def submit_flashcard_review(
                     card_id=result.card_id,
                     concept=concept,
                     known=result.known,
+                    latency_secs=result.secs,
                 )
             )
 

@@ -202,11 +202,19 @@ export async function deleteContent(id: string): Promise<void> {
 export async function submitQuiz(
   contentId: string,
   answers: Record<string, number>,
+  timings?: {
+    duration_secs?: number | null;
+    question_timings?: Record<string, number> | null;
+  },
 ): Promise<QuizAttempt> {
   return request<QuizAttempt>(`/api/quiz/${contentId}/attempt`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ answers }),
+    body: JSON.stringify({
+      answers,
+      duration_secs: timings?.duration_secs ?? null,
+      question_timings: timings?.question_timings ?? null,
+    }),
   });
 }
 
@@ -248,6 +256,39 @@ export interface LearnerProfile {
     last_interaction: string | null;
   };
   updated_at: string | null;
+  // --- Behavioral understanding (from the activity ledger) ---
+  insights?: {
+    summary: string;
+    traits: string[];
+    habits: string;
+    updated_at: string;
+    activities_seen: number;
+  } | null;
+  patterns?: {
+    hour_histogram: number[];
+    best_study_hour: number | null;
+    quiz_duration_history: { secs: number; score: number }[];
+    avg_quiz_duration_secs: number | null;
+    sessions: { completed: number; abandoned: number };
+  } | null;
+  engagement?: {
+    total_dwell_secs: number;
+    actions_count: number;
+    tab_switches: Record<string, number> | null;
+    top_docs: {
+      doc_id: string;
+      topic: string | null;
+      views: number;
+      dwell_secs: number;
+    }[];
+  } | null;
+  slow_concepts?: { concept: string; avg_secs: number; samples: number }[];
+}
+
+export async function reflectOnLearner(
+  force = true,
+): Promise<{ status: string; reason?: string; insights?: unknown }> {
+  return request(`/api/memory/reflect?force=${force}`, { method: "POST" });
 }
 
 export async function getLearnerProfile(): Promise<LearnerProfile> {
@@ -310,7 +351,12 @@ export async function submitRecommendationFeedback(
 
 export async function submitFlashcardReview(
   contentId: string,
-  results: { card_id: string; known: boolean; concept: string }[],
+  results: {
+    card_id: string;
+    known: boolean;
+    concept: string;
+    secs?: number | null;
+  }[],
 ): Promise<{ recorded: number }> {
   return request<{ recorded: number }>(
     `/api/flashcards/${contentId}/review`,
@@ -474,14 +520,24 @@ export async function startStudySession(
 
 export async function submitSessionReview(
   sessionId: string,
-  results: { card_id: string; known: boolean; concept: string; content_id?: string | null }[],
+  results: {
+    card_id: string;
+    known: boolean;
+    concept: string;
+    content_id?: string | null;
+    secs?: number | null;
+  }[],
+  durationSecs?: number,
 ): Promise<{ recorded: number }> {
   return request<{ recorded: number }>(
     `/api/study-session/${sessionId}/review`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ results }),
+      body: JSON.stringify({
+        results,
+        duration_secs: durationSecs ?? null,
+      }),
     },
   );
 }

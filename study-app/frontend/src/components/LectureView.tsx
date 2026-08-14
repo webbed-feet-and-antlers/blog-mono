@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { SlideTimestamp } from "../types";
 
 export function LectureView() {
@@ -29,6 +30,19 @@ export function LectureView() {
   const [currentTime, setCurrentTime] = useState(0);
   const [notesValue, setNotesValue] = useState("");
   const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Throttle playback telemetry to one event per 5s.
+  const lastPlaybackTrackRef = useRef(0);
+
+  function emitPlayback(positionSecs: number, event: string) {
+    const now = Date.now();
+    if (now - lastPlaybackTrackRef.current < 5000) return;
+    lastPlaybackTrackRef.current = now;
+    track("lecture.playback", {
+      lecture_id: lectureId,
+      position_secs: Math.round(positionSecs),
+      event,
+    });
+  }
 
   const data = lecture.data;
   const timestamps: SlideTimestamp[] = data?.slide_timestamps ?? [];
@@ -107,6 +121,9 @@ export function LectureView() {
           className="lecture-audio"
           src={api.getDocumentFileUrl(audioDoc.id)}
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onSeeked={(e) => emitPlayback(e.currentTarget.currentTime, "seek")}
+          onPause={(e) => emitPlayback(e.currentTarget.currentTime, "pause")}
+          onPlay={(e) => emitPlayback(e.currentTarget.currentTime, "resume")}
         />
       )}
 

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 import { ZoomIn, ZoomOut, Loader2, AlertCircle } from "lucide-react";
+import { track } from "../api/track";
 
 // Configure the PDF.js worker. With Vite, importing the worker entry as a
 // URL string lets the bundler emit it as an asset and gives us a stable
@@ -16,6 +17,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface Props {
   url: string;
   filename: string;
+  docId?: string;
 }
 
 const MIN_SCALE = 0.5;
@@ -27,10 +29,12 @@ const SCALE_STEP = 0.2;
  * scrollable column with a zoom control — no browser PDF chrome, styled to
  * match the rest of the app.
  */
-export function PdfViewer({ url, filename }: Props) {
+export function PdfViewer({ url, filename, docId }: Props) {
   const [numPages, setNumPages] = useState<number>(0);
   const [scale, setScale] = useState<number>(1.0);
   const [error, setError] = useState<string | null>(null);
+  // Rate-limit zoom telemetry: at most one event per 2s.
+  const lastZoomTrackRef = useRef(0);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -41,11 +45,26 @@ export function PdfViewer({ url, filename }: Props) {
     setError(err.message || "Failed to load PDF");
   }
 
+  function trackZoom(nextScale: number) {
+    const now = Date.now();
+    if (now - lastZoomTrackRef.current < 2000) return;
+    lastZoomTrackRef.current = now;
+    track("zoom.changed", { document_id: docId ?? null, scale: nextScale });
+  }
+
   function zoomIn() {
-    setScale((s) => Math.min(MAX_SCALE, +(s + SCALE_STEP).toFixed(2)));
+    setScale((s) => {
+      const next = Math.min(MAX_SCALE, +(s + SCALE_STEP).toFixed(2));
+      trackZoom(next);
+      return next;
+    });
   }
   function zoomOut() {
-    setScale((s) => Math.max(MIN_SCALE, +(s - SCALE_STEP).toFixed(2)));
+    setScale((s) => {
+      const next = Math.max(MIN_SCALE, +(s - SCALE_STEP).toFixed(2));
+      trackZoom(next);
+      return next;
+    });
   }
 
   return (

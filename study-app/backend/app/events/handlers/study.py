@@ -18,6 +18,7 @@ from typing import Union
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...agent import behavior
 from ...agent import memory as memory_store
 from ...config import settings
 from ...recommend.session import record_action
@@ -49,8 +50,8 @@ async def update_mastery(event: StudyEvent, session: AsyncSession) -> None:
     """Record each answered question / reviewed card against its concept tag.
 
     Both right AND wrong outcomes feed the tally — mastery reflects correct
-    answers too, not just misses. FSRS scheduling happens inside
-    update_concept_mastery.
+    answers too, not just misses. FSRS scheduling and rolling answer latency
+    happen inside update_concept_mastery.
     """
     recorded = 0
     for outcome in event.results:
@@ -58,7 +59,10 @@ async def update_mastery(event: StudyEvent, session: AsyncSession) -> None:
         if not concept:
             continue
         await memory_store.update_concept_mastery(
-            session, concept, correct=_outcome_correct(outcome)
+            session,
+            concept,
+            correct=_outcome_correct(outcome),
+            latency_secs=outcome.latency_secs,
         )
         recorded += 1
     if recorded:
@@ -75,7 +79,8 @@ async def update_mastery(event: StudyEvent, session: AsyncSession) -> None:
 @bus.on(QuizAttempted)
 async def update_profile_from_quiz(event: QuizAttempted, session: AsyncSession) -> None:
     """Feed the quiz score + doc difficulty into the learner profile so the
-    agent can calibrate level, preferred difficulty, and formats."""
+    agent can calibrate level, preferred difficulty, and formats. The quiz's
+    duration feeds the study-pattern history (pacing signal)."""
     doc_difficulty: str | None = None
     if event.document_id:
         analysis = await memory_store.read_memory(
@@ -85,6 +90,8 @@ async def update_profile_from_quiz(event: QuizAttempted, session: AsyncSession) 
     await memory_store.update_learner_profile(
         session, quiz_score=event.score, doc_difficulty=doc_difficulty
     )
+    if event.duration_secs:
+        await behavior.record_quiz_duration(session, event.duration_secs, event.score)
 
 
 @bus.on(FlashcardsReviewed, StudySessionReviewed)
@@ -92,7 +99,8 @@ async def update_profile_from_cards(
     event: Union[FlashcardsReviewed, StudySessionReviewed],
     session: AsyncSession,
 ) -> None:
-    """Feed flashcard review results into the profile (known-ratio stat)."""
+    """Feed flashcard review results into the profile (known-ratio stat).
+    Completed study sessions also count toward the completion-rate pattern."""
     if not event.results:
         return
     await memory_store.update_learner_profile(
@@ -101,6 +109,8 @@ async def update_profile_from_cards(
             {"known": r.known, "concept": r.concept} for r in event.results
         ],
     )
+    if isinstance(event, StudySessionReviewed):
+        await behavior.record_study_session_completed(session)
 
 
 # --- Reaction 3: session tracking (recommendation chaining + fatigue) -------

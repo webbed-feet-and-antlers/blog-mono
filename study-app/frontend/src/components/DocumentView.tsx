@@ -4,6 +4,7 @@ import { Loader2, Mic, AlertCircle, FileText, FileType } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { DocumentDetail } from "../types";
 import { PdfViewer } from "./PdfViewer";
 
@@ -94,7 +95,12 @@ export function DocumentView({ doc }: Props) {
             <button
               type="button"
               className={view === "pdf" ? "active" : ""}
-              onClick={() => setView("pdf")}
+              onClick={() => {
+                if (view !== "pdf") {
+                  track("view.mode_toggled", { document_id: doc.id, mode: "pdf" });
+                }
+                setView("pdf");
+              }}
             >
               <FileType size={14} />
               Document
@@ -102,7 +108,12 @@ export function DocumentView({ doc }: Props) {
             <button
               type="button"
               className={view === "text" ? "active" : ""}
-              onClick={() => setView("text")}
+              onClick={() => {
+                if (view !== "text") {
+                  track("view.mode_toggled", { document_id: doc.id, mode: "text" });
+                }
+                setView("text");
+              }}
             >
               <FileText size={14} />
               Extracted text
@@ -112,6 +123,7 @@ export function DocumentView({ doc }: Props) {
             <PdfViewer
               url={api.getDocumentFileUrl(doc.id)}
               filename={doc.filename}
+              docId={doc.id}
             />
           ) : (
             doc.text && (

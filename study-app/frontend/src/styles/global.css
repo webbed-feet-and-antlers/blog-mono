@@ -3194,3 +3194,123 @@ button.small {
   color: var(--accent);
   margin-bottom: 14px;
 }
+
+/* --- Understanding panel ("How the agent sees you") ----------------------- */
+
+.profile-card-clickable {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  border: 1px solid var(--border, transparent);
+  transition: border-color 0.15s ease;
+}
+
+.profile-card-clickable:hover {
+  border-color: var(--accent, #7c6cf0);
+}
+
+.profile-card-brain {
+  margin-left: auto;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+
+.understanding-modal {
+  max-width: 520px;
+}
+
+.understanding-summary {
+  margin: 4px 0 10px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.understanding-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.understanding-trait {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--accent-tint, rgba(124, 108, 240, 0.12));
+  color: var(--accent, #7c6cf0);
+}
+
+.understanding-habits {
+  margin: 0;
+  font-size: 12.5px;
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.understanding-refresh-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.understanding-refresh-row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  padding: 4px 10px;
+}
+
+.understanding-refresh-msg {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.understanding-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.understanding-stat {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg-inset, rgba(127, 127, 127, 0.08));
+}
+
+.understanding-stat-value {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.understanding-stat-label {
+  font-size: 11.5px;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+.understanding-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.understanding-doc {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--bg-inset, rgba(127, 127, 127, 0.08));
+  font-size: 13px;
+}
+
+.understanding-doc .cdi-sub {
+  white-space: nowrap;
+  opacity: 0.6;
+  font-size: 12px;
+}

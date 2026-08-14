@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { FlashcardContent } from "../types";
 
 interface Props {
@@ -29,14 +30,25 @@ export function FlashcardView({ contentId, content }: Props) {
   const reviewsRef = useRef(reviews);
   reviewsRef.current = reviews;
 
+  // --- Per-card timing (behavioral difficulty signal) -----------------------
+  const shownAtRef = useRef(Date.now());
+  const cardSecsRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    shownAtRef.current = Date.now();
+  }, [index]);
+
   const card = content.cards[index];
   const isLast = index === content.cards.length - 1;
   const knownCount = Object.values(reviews).filter((r) => r === "known").length;
   const progressPct = Math.round((knownCount / content.cards.length) * 100);
 
   const reviewMutation = useMutation({
-    mutationFn: (results: { card_id: string; known: boolean; concept: string }[]) =>
-      api.submitFlashcardReview(contentId, results),
+    mutationFn: (results: {
+      card_id: string;
+      known: boolean;
+      concept: string;
+      secs?: number | null;
+    }[]) => api.submitFlashcardReview(contentId, results),
     onSuccess: () => {
       // Invalidate memory queries so mastery-driven features refresh.
       queryClient.invalidateQueries({ queryKey: ["memory"] });
@@ -56,6 +68,7 @@ export function FlashcardView({ contentId, content }: Props) {
           card_id: c.id,
           known: reviewed[c.id] === "known",
           concept: c.concept ?? "",
+          secs: cardSecsRef.current[c.id] ?? null,
         }));
       if (results.length > 0) {
         reviewMutation.mutate(results);
@@ -73,6 +86,10 @@ export function FlashcardView({ contentId, content }: Props) {
     setIndex((i) => Math.max(i - 1, 0));
   }
   function markKnown(value: boolean) {
+    cardSecsRef.current[card.id] = Math.max(
+      1,
+      Math.round((Date.now() - shownAtRef.current) / 1000),
+    );
     setReviews((prev) => ({
       ...prev,
       [card.id]: value ? "known" : "learning",
@@ -98,7 +115,19 @@ export function FlashcardView({ contentId, content }: Props) {
       <div className="flashcard-scene">
         <div
           className={`flashcard ${flipped ? "flipped" : ""}`}
-          onClick={() => setFlipped((f) => !f)}
+          onClick={() => {
+            if (!flipped) {
+              track("flashcard.flipped", {
+                card_id: card.id,
+                concept: card.concept ?? null,
+                front_secs: Math.max(
+                  1,
+                  Math.round((Date.now() - shownAtRef.current) / 1000),
+                ),
+              });
+            }
+            setFlipped((f) => !f);
+          }}
         >
           <div className="card-face front">
             <span className="face-pill">Question</span>

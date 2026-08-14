@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { StudySession as StudySessionData } from "../api/client";
 
 interface Props {
@@ -25,6 +26,33 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
   >({});
   const [completed, setCompleted] = useState(false);
 
+  // --- Timing + abandonment tracking ----------------------------------------
+  const startedAtRef = useRef(Date.now());
+  const shownAtRef = useRef(Date.now());
+  const cardSecsRef = useRef<Record<string, number>>({});
+  const completedRef = useRef(false);
+  const resultsRef = useRef(results);
+  resultsRef.current = results;
+
+  useEffect(() => {
+    shownAtRef.current = Date.now();
+  }, [index]);
+
+  // Leaving mid-session (exit button, browser back) is a signal — currently
+  // it discards all results; at minimum the agent should know it happened.
+  useEffect(() => {
+    return () => {
+      if (!completedRef.current && initialSession.cards.length > 0) {
+        track("study.abandoned", {
+          session_id: initialSession.id,
+          completed: Object.keys(resultsRef.current).length,
+          total: initialSession.cards.length,
+        });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const card = initialSession.cards[index];
   const isLast = index === initialSession.cards.length - 1;
   const knownCount = Object.values(results).filter(
@@ -36,6 +64,10 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
 
   function markKnown(value: boolean) {
     if (!card) return;
+    cardSecsRef.current[card.id] = Math.max(
+      1,
+      Math.round((Date.now() - shownAtRef.current) / 1000),
+    );
     setResults((prev) => ({
       ...prev,
       [card.id]: value ? "known" : "learning",
@@ -50,6 +82,7 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
 
   async function finishSession() {
     setCompleted(true);
+    completedRef.current = true;
     const allResults = { ...results };
     // Include the last card if it was just marked.
     const reviewData = initialSession.cards
@@ -59,9 +92,14 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
         known: allResults[c.id] === "known",
         concept: c.concept,
         content_id: c.content_id,
+        secs: cardSecsRef.current[c.id] ?? null,
       }));
     if (reviewData.length > 0) {
-      await api.submitSessionReview(initialSession.id, reviewData);
+      await api.submitSessionReview(
+        initialSession.id,
+        reviewData,
+        Math.max(1, Math.round((Date.now() - startedAtRef.current) / 1000)),
+      );
     }
   }
 
@@ -139,7 +177,19 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
         <div className="flashcard-scene">
           <div
             className={`flashcard ${flipped ? "flipped" : ""}`}
-            onClick={() => setFlipped((f) => !f)}
+            onClick={() => {
+              if (!flipped) {
+                track("flashcard.flipped", {
+                  card_id: card.id,
+                  concept: card.concept,
+                  front_secs: Math.max(
+                    1,
+                    Math.round((Date.now() - shownAtRef.current) / 1000),
+                  ),
+                });
+              }
+              setFlipped((f) => !f);
+            }}
           >
             <div className="card-face front">
               <span className="face-pill">

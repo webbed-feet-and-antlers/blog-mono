@@ -256,7 +256,11 @@ def _as_jsonable(value: Any) -> Any:
 
 
 async def update_concept_mastery(
-    session: AsyncSession, concept: str, correct: bool, rating: int | None = None
+    session: AsyncSession,
+    concept: str,
+    correct: bool,
+    rating: int | None = None,
+    latency_secs: float | None = None,
 ) -> None:
     """Record one interaction outcome for a concept.
 
@@ -269,6 +273,10 @@ async def update_concept_mastery(
         correct: Whether the learner got it right (quiz/flashcard).
         rating: FSRS rating (1=Again, 2=Hard, 3=Good, 4=Easy). If None,
                 inferred from `correct`: Good if correct, Again if wrong.
+        latency_secs: How long the learner took to answer/review, when the
+                client reports it. Rolled into entry["latency"] as a running
+                average — slow+wrong is a stronger weakness signal than
+                either alone.
     """
     concept = (concept or "").strip()
     if not concept:
@@ -293,6 +301,13 @@ async def update_concept_mastery(
         # Update FSRS spaced-repetition scheduling.
         existing_fsrs = entry.get("fsrs")
         entry["fsrs"] = fsrs_scheduler.schedule_review(existing_fsrs, rating)
+
+        # Rolling average answer latency (behavioral difficulty signal).
+        if latency_secs is not None and latency_secs > 0:
+            latency = entry.get("latency") or {"avg_secs": 0.0, "samples": 0}
+            n = int(latency.get("samples", 0))
+            avg = (float(latency.get("avg_secs", 0)) * n + latency_secs) / (n + 1)
+            entry["latency"] = {"avg_secs": round(avg, 1), "samples": n + 1}
 
         mastery[concept] = entry
         await write_memory(session, "user", "", "concept_mastery", mastery)

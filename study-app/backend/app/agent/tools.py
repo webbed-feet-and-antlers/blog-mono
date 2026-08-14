@@ -39,6 +39,40 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
     """Surface relevant prior learnings (the shared-backbone payoff)."""
     hints: list[str] = []
 
+    # --- Behavioral understanding (reflection + deterministic patterns) ---
+    # The narrative layer reads FIRST — it frames everything below.
+    insights = memory.get("learner_insights") or {}
+    if insights.get("summary"):
+        parts = [f"Learner insights (from observed behavior): {insights['summary']}"]
+        traits = insights.get("traits") or []
+        if traits:
+            parts.append(f"Notable: {'; '.join(str(t) for t in traits[:5])}.")
+        habits = insights.get("habits")
+        if habits:
+            parts.append(str(habits))
+        hints.append(" ".join(parts))
+
+    patterns = memory.get("study_patterns") or {}
+    pattern_bits = []
+    hour = patterns.get("best_study_hour_utc")
+    if hour is not None:
+        pattern_bits.append(f"most active around {int(hour):02d}:00 UTC")
+    sessions = patterns.get("sessions") or {}
+    completed = int(sessions.get("completed", 0))
+    abandoned = int(sessions.get("abandoned", 0))
+    if completed + abandoned >= 2:
+        pattern_bits.append(f"{completed}/{completed + abandoned} study sessions completed")
+    avg_quiz = patterns.get("avg_quiz_duration_secs")
+    if avg_quiz:
+        pattern_bits.append(f"avg quiz takes ~{int(avg_quiz)}s")
+    fatigue = memory.get("fatigue")
+    if fatigue == "fatigued":
+        pattern_bits.append("currently deep into a long study session — favor shorter, gentler material")
+    elif fatigue == "focused":
+        pattern_bits.append("mid-session — keep material focused")
+    if pattern_bits:
+        hints.append("Study patterns: " + ", ".join(pattern_bits) + ".")
+
     # --- Learner profile (the highest-level personalization context) ---
     profile = memory.get("learner_profile") or {}
     if profile and profile.get("learner_level", "unknown") != "unknown":
@@ -91,7 +125,14 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
             if m.get("due"):
                 due_marker = " ⚡ DUE"
                 due_count += 1
-            line = f"  - {m['concept']}: {seen_str} [{label}]{due_marker}"
+            # Behavioral difficulty: slow average answers signal hard recall
+            # even when the tally looks fine.
+            latency = m.get("latency") or {}
+            slow_marker = ""
+            avg_secs = latency.get("avg_secs")
+            if avg_secs and float(avg_secs) >= 12.0:
+                slow_marker = f" · slow recall (~{int(float(avg_secs))}s avg)"
+            line = f"  - {m['concept']}: {seen_str} [{label}]{due_marker}{slow_marker}"
 
             # Knowledge graph: show prerequisite mastery so the agent can
             # sequence material along the dependency chain.

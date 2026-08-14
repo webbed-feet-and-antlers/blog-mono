@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, X, Loader2 } from "lucide-react";
 import * as api from "../api/client";
+import { track } from "../api/track";
 import type { QuizContent, QuizQuestion } from "../types";
 
 interface Props {
@@ -16,8 +17,29 @@ export function QuizView({ contentId, content }: Props) {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [submitted, setSubmitted] = useState(false);
 
+  // --- Timing (behavioral signal for per-concept difficulty) ---------------
+  const startedAtRef = useRef(Date.now());
+  // First-answer timestamp per question — latency = first pick − quiz render.
+  const firstAnswerAtRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    startedAtRef.current = Date.now();
+    firstAnswerAtRef.current = {};
+  }, [contentId]);
+
   const submit = useMutation({
-    mutationFn: (a: Record<string, number>) => api.submitQuiz(contentId, a),
+    mutationFn: (a: Record<string, number>) => {
+      const timings: Record<string, number> = {};
+      for (const [qid, at] of Object.entries(firstAnswerAtRef.current)) {
+        timings[qid] = Math.max(1, Math.round((at - startedAtRef.current) / 1000));
+      }
+      return api.submitQuiz(contentId, a, {
+        duration_secs: Math.max(
+          1,
+          Math.round((Date.now() - startedAtRef.current) / 1000),
+        ),
+        question_timings: timings,
+      });
+    },
     onSuccess: () => {
       setSubmitted(true);
       queryClient.invalidateQueries({ queryKey: ["memory"] });
@@ -25,8 +47,29 @@ export function QuizView({ contentId, content }: Props) {
     },
   });
 
-  function select(qid: string, idx: number) {
+  function select(q: QuizQuestion, idx: number) {
     if (submitted) return;
+    const qid = q.id;
+    const isFirst = firstAnswerAtRef.current[qid] === undefined;
+    if (isFirst) {
+      firstAnswerAtRef.current[qid] = Date.now();
+      track("quiz.answered", {
+        question_id: qid,
+        concept: q.concept ?? null,
+        latency_secs: Math.max(
+          1,
+          Math.round((Date.now() - startedAtRef.current) / 1000),
+        ),
+        changed: false,
+      });
+    } else if (firstAnswerAtRef.current[qid] !== undefined) {
+      track("quiz.answered", {
+        question_id: qid,
+        concept: q.concept ?? null,
+        latency_secs: 0,
+        changed: true,
+      });
+    }
     setAnswers((prev) => ({ ...prev, [qid]: idx }));
   }
 
@@ -78,7 +121,7 @@ export function QuizView({ contentId, content }: Props) {
                 <button
                   key={oi}
                   className={cls}
-                  onClick={() => select(q.id, oi)}
+                  onClick={() => select(q, oi)}
                   disabled={submitted}
                 >
                   <span className="opt-badge">{LETTERS[oi]}</span>
