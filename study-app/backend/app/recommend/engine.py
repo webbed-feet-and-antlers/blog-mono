@@ -49,6 +49,11 @@ FATIGUE_PENALTIES = {
     "fatigued": 0.20,   # Significant penalty after 50+ min
 }
 
+# Peak-hour boost — the mirror of the fatigue penalty. When it's near the
+# learner's habitual study hour (study_patterns.best_study_hour), practice
+# gets a small lift instead of a drag.
+PEAK_HOUR_BOOST = 0.05
+
 
 class RecommendationEngine:
     """The strategy registry. Holds all registered strategies and runs
@@ -90,6 +95,13 @@ class RecommendationEngine:
                 for r in results:
                     if r.category == "practice":
                         r.score = max(0.0, r.score - penalty)
+
+        # Peak-hour boost — practice lifts slightly near the learner's
+        # habitual study hour (the fatigue penalty's optimistic mirror).
+        if ctx.is_peak_hour:
+            for r in results:
+                if r.category == "practice":
+                    r.score = min(1.0, r.score + PEAK_HOUR_BOOST)
 
         # Apply dismissal penalty — if the user dismissed a tool this session,
         # drop its score significantly.

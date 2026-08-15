@@ -272,6 +272,9 @@ async def _build_grounding(
             "level": profile.get("learner_level"),
             "preferred_difficulty": profile.get("preferred_difficulty"),
             "avg_score": (profile.get("stats") or {}).get("avg_score"),
+            "flashcard_known_ratio": (profile.get("stats") or {}).get(
+                "flashcard_known_ratio"
+            ),
             "insights_summary": (insights or {}).get("summary")
             if isinstance(insights, dict)
             else None,

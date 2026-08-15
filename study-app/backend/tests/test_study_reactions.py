@@ -312,6 +312,48 @@ async def test_memory_hint_includes_behavioral_lines(client, db):
     assert "slow recall (~14s avg)" in hint
 
 
+async def test_memory_hint_includes_profile_stats(client, db):
+    """flashcard_known_ratio + derived score trend reach the prompt."""
+    from app.agent import tools
+
+    memory = {
+        "learner_profile": {
+            "learner_level": "beginner",
+            "preferred_difficulty": "easy",
+            "stats": {
+                "avg_score": 0.45,
+                "flashcard_known_ratio": 1.0,
+                "score_history": [
+                    {"score": 0.2}, {"score": 0.3}, {"score": 0.25},
+                    {"score": 0.5}, {"score": 0.55}, {"score": 0.6},
+                ],
+            },
+        },
+    }
+    cards_hint = tools._memory_hint(memory, "flashcards")
+    assert "knows ~100% of reviewed flashcards" in cards_hint
+    assert "favor application-style over definition cards" in cards_hint
+    assert "scores trending up (25%→55%) — can push difficulty" in cards_hint
+
+    # Quiz task sees the ratio too, without the card-style clause.
+    quiz_hint = tools._memory_hint(memory, "quiz")
+    assert "knows ~100% of reviewed flashcards" in quiz_hint
+    assert "application-style" not in quiz_hint
+
+    # Notes task gets neither; a flat history yields no trend line.
+    notes_hint = tools._memory_hint(
+        {**memory, "learner_profile": {
+            **memory["learner_profile"],
+            "stats": {"avg_score": 0.5, "score_history": [
+                {"score": 0.5}, {"score": 0.5}, {"score": 0.5}, {"score": 0.5}
+            ]},
+        }},
+        "notes",
+    )
+    assert "reviewed flashcards" not in notes_hint
+    assert "trending" not in notes_hint
+
+
 async def test_events_endpoint_lists_log(client, db):
     doc, quiz = make_quiz(doc_id="doc-r4", content_id="quiz-r4")
     db.add_all([doc, quiz])

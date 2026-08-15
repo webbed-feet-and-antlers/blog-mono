@@ -15,8 +15,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..agent import behavior as behavior_store
 from ..agent import memory as memory_store
 from ..agent import fsrs_scheduler
+from ..agent.reflection import get_learner_insights
 from ..models import ContentItem, Document
 
 
@@ -88,10 +90,18 @@ class UserContext:
     proactive_decks: list = field(default_factory=list)
     # Session
     session: SessionContext | None = None
+    # Behavioral understanding (the same keys reflection/generation consume).
+    # Design rule: scoring reads the measurements, never the LLM's prose.
+    insights: dict = field(default_factory=dict)
+    patterns: dict = field(default_factory=dict)
+    engagement: dict = field(default_factory=dict)
+    slow_concepts: list[dict] = field(default_factory=list)
+    neglected_docs: list[str] = field(default_factory=list)
+    is_peak_hour: bool = False
     # Feature flags
     enabled_features: set[str] = field(default_factory=lambda: {
         "onboarding", "due_review_ready", "due_review_generate",
-        "proactive_deck", "quiz_gap", "start_notes",
+        "weak_spot", "proactive_deck", "quiz_gap", "start_notes",
         "quiz", "flashcards", "fallback",
     })
     # Learned weights (from bandit, Phase 4)
@@ -150,6 +160,18 @@ async def build_context(session: AsyncSession) -> UserContext:
     # Session
     sess = await _get_session(session)
 
+    # Behavioral understanding — the learner-model keys the agent already
+    # maintains. Measurements (latency, dwell, hour histogram, session
+    # outcomes) feed scoring; the LLM-written insights stay language.
+    insights = await get_learner_insights(session) or {}
+    patterns = await memory_store.read_memory(
+        session, "user", "", behavior_store.PATTERNS_KEY
+    ) or {}
+    engagement = await memory_store.read_memory(
+        session, "user", "", behavior_store.ENGAGEMENT_KEY
+    ) or {}
+    slow_concepts = await behavior_store.get_slow_concepts(session)
+
     # Computed helpers
     total_concepts = len(mastery)
     mastered_count = sum(
@@ -171,11 +193,46 @@ async def build_context(session: AsyncSession) -> UserContext:
         analyses=analyses,
         proactive_decks=proactive_decks,
         session=sess,
+        insights=insights,
+        patterns=patterns if isinstance(patterns, dict) else {},
+        engagement=engagement if isinstance(engagement, dict) else {},
+        slow_concepts=slow_concepts,
+        neglected_docs=_neglected_docs(documents, analyses, engagement),
+        is_peak_hour=_is_peak_hour(patterns),
         due_count=len(due_concepts),
         mastered_count=mastered_count,
         total_concepts=total_concepts,
         welcome_back=welcome_back,
     )
+
+
+def _neglected_docs(
+    documents: dict[str, Document], analyses: dict[str, dict], engagement: dict
+) -> list[str]:
+    """Analyzed docs the learner has never opened (no recorded views).
+
+    `documents` preserves the upload-desc order from build_context, so the
+    neglected list does too. These are the docs quiz-gap/start-notes nudges
+    should surface first — content that exists but never got attention.
+    """
+    viewed = {
+        doc_id
+        for doc_id, entry in (engagement.get("docs") or {}).items()
+        if (entry or {}).get("views", 0) > 0
+    }
+    return [
+        doc_id for doc_id in documents
+        if doc_id in analyses and doc_id not in viewed
+    ]
+
+
+def _is_peak_hour(patterns: dict) -> bool:
+    """True within ±1h of the learner's habitual study hour (UTC)."""
+    best = patterns.get("best_study_hour") if isinstance(patterns, dict) else None
+    if not isinstance(best, int) or isinstance(best, bool):
+        return False
+    now_hour = datetime.now(timezone.utc).hour
+    return min((now_hour - best) % 24, (best - now_hour) % 24) <= 1
 
 
 def _find_due_flashcard_cards(all_content, due_names: set[str]) -> list[dict]:

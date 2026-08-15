@@ -35,6 +35,36 @@ def _concept_hint(analysis: dict[str, Any]) -> str:
     return f"\nKey concepts identified in the document: {preview}."
 
 
+def _score_trend(
+    score_history: list[dict] | None, min_entries: int = 4, threshold: float = 0.1
+) -> str | None:
+    """Derive a calibration phrase from the stored quiz score history.
+
+    Compares first-half vs second-half averages; ±10 points counts as a
+    trend, anything quieter is noise and returns None. Deterministic —
+    the trend signal score_history always implied but never surfaced.
+    """
+    if not isinstance(score_history, list):
+        return None
+    scores = [
+        s.get("score")
+        for s in score_history
+        if isinstance(s, dict) and s.get("score") is not None
+    ]
+    if len(scores) < min_entries:
+        return None
+    mid = len(scores) // 2
+    first = sum(scores[:mid]) / mid
+    second = sum(scores[mid:]) / (len(scores) - mid)
+    delta = second - first
+    first_pct, second_pct = round(first * 100), round(second * 100)
+    if delta >= threshold:
+        return f"scores trending up ({first_pct}%→{second_pct}%) — can push difficulty"
+    if delta <= -threshold:
+        return f"scores trending down ({first_pct}%→{second_pct}%) — consolidate before advancing"
+    return None
+
+
 def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
     """Surface relevant prior learnings (the shared-backbone payoff)."""
     hints: list[str] = []
@@ -76,10 +106,20 @@ def _memory_hint(memory: dict[str, Any], task_type: str) -> str:
     # --- Learner profile (the highest-level personalization context) ---
     profile = memory.get("learner_profile") or {}
     if profile and profile.get("learner_level", "unknown") != "unknown":
+        stats = profile.get("stats") or {}
         parts = [f"{profile['learner_level']} learner"]
-        avg = (profile.get("stats") or {}).get("avg_score")
+        avg = stats.get("avg_score")
         if avg is not None:
             parts.append(f"avg {int(avg * 100)}%")
+        trend = _score_trend(stats.get("score_history"))
+        if trend:
+            parts.append(trend)
+        known = stats.get("flashcard_known_ratio")
+        if known is not None and task_type in ("quiz", "flashcards"):
+            known_str = f"knows ~{int(known * 100)}% of reviewed flashcards"
+            if task_type == "flashcards" and known >= 0.8:
+                known_str += " — favor application-style over definition cards"
+            parts.append(known_str)
         diff = profile.get("preferred_difficulty")
         if diff:
             parts.append(f"prefers {diff} difficulty")

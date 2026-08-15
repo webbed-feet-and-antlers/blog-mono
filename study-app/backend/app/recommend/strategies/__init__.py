@@ -10,6 +10,22 @@ from __future__ import annotations
 from ..context import UserContext, RecommendationResult
 
 
+def _format_tilt(ctx: UserContext) -> bool:
+    """True when the learner's measured time/energy budget favors short formats.
+
+    Grounded in study_patterns: quizzes consistently running long (>2 min on
+    average) or more abandoned than completed sessions mean flashcards fit
+    the moment better than another quiz.
+    """
+    patterns = ctx.patterns if isinstance(ctx.patterns, dict) else {}
+    avg_secs = patterns.get("avg_quiz_duration_secs")
+    sessions = patterns.get("sessions") or {}
+    abandoned = int(sessions.get("abandoned", 0) or 0)
+    completed = int(sessions.get("completed", 0) or 0)
+    long_quizzes = isinstance(avg_secs, (int, float)) and avg_secs > 120
+    return long_quizzes or abandoned > completed
+
+
 class OnboardingStrategy:
     """New user with no documents — recommend uploading."""
     name = "onboarding"
@@ -50,12 +66,33 @@ class DueReviewReadyStrategy:
         )
 
         count = len(ctx.due_concepts)
+        rationale = (
+            f"You have concepts due for spaced repetition from {doc_title}. "
+            "Review them before you forget."
+        )
+
+        # Behavioral enrichment: a due concept the learner also answers
+        # slowly is the one to call out.
+        slow_by_concept = {c["concept"]: c for c in ctx.slow_concepts}
+        slow_due = [
+            slow_by_concept[d["concept"]]
+            for d in ctx.due_concepts
+            if d["concept"] in slow_by_concept
+        ]
+        if slow_due:
+            first = slow_due[0]
+            more = f" (+{len(slow_due) - 1} more)" if len(slow_due) > 1 else ""
+            rationale += (
+                f" {first['concept']} is one you recall slowly"
+                f" (~{first['avg_secs']}s avg){more}."
+            )
+
         return RecommendationResult(
             strategy_name=self.name,
             category=self.category,
             action="review_flashcards",
             title=f"Review {count} due concept{'s' if count != 1 else ''}",
-            rationale=f"You have concepts due for spaced repetition from {doc_title}. Review them before you forget.",
+            rationale=rationale,
             score=0.95,  # soft override — FSRS urgency
             document_id=best_doc,
             tab="flashcards",
@@ -114,6 +151,71 @@ class DueReviewGenerateStrategy:
         return best_doc or next(iter(ctx.documents), None)
 
 
+class WeakSpotStrategy:
+    """Concepts the learner answers slowly — recommend a targeted quiz.
+
+    Grounded in behavioral measurements: per-concept answer latency (from
+    quiz/flashcard timings) plus weak-topic flags. Defers to spaced
+    repetition when actual reviews are due — DueReviewReady owns that moment.
+    """
+    name = "weak_spot"
+    category = "practice"
+
+    def evaluate(self, ctx: UserContext) -> RecommendationResult | None:
+        if ctx.due_cards:
+            return None  # FSRS-due reviews win this moment
+
+        weak_names = {c["concept"] for c in ctx.slow_concepts}
+        corroborated = bool(ctx.weak_topics)
+        # Two independent slow concepts, or one corroborated by weak-topic flags.
+        if len(weak_names) < 2 and not (weak_names and corroborated):
+            return None
+
+        doc_id = self._doc_covering_weakness(ctx, weak_names)
+        if not doc_id:
+            return None
+        doc = ctx.documents[doc_id]
+
+        named = ctx.slow_concepts[:2]
+        names = " and ".join(c["concept"] for c in named)
+        rationale = (
+            f"You recall {names} slowly (~{named[0]['avg_secs']}s avg) — "
+            f"a targeted quiz would tighten that."
+        )
+
+        score = 0.55 + 0.05 * min(len(ctx.slow_concepts), 4)
+        return RecommendationResult(
+            strategy_name=self.name,
+            category=self.category,
+            action="generate_quiz",
+            title=f"Targeted quiz on your slow concepts",
+            rationale=rationale,
+            score=min(score, 0.75),
+            document_id=doc_id,
+            tab="quiz",
+            ready=False,
+        )
+
+    def _doc_covering_weakness(self, ctx: UserContext, slow_names: set[str]) -> str | None:
+        """The doc whose analysis covers the most slow/weak concepts."""
+        weak_set = set(slow_names)
+        for entry in ctx.weak_topics:
+            topic = entry.get("topic")
+            if topic:
+                weak_set.add(str(topic))
+        best_doc = None
+        best_count = 0
+        for doc_id, analysis in ctx.analyses.items():
+            if doc_id not in ctx.documents:
+                continue
+            concepts = {str(c) for c in (analysis.get("concepts") or [])}
+            overlap = len(weak_set & concepts)
+            if overlap > best_count:
+                best_count = overlap
+                best_doc = doc_id
+        return best_doc
+
+
 class ProactiveDeckStrategy:
     """An unseen proactive review deck exists — recommend it."""
     name = "proactive_deck"
@@ -141,20 +243,38 @@ class ProactiveDeckStrategy:
 
 
 class QuizGapStrategy:
-    """Document has notes but no quiz — test yourself."""
+    """Document has notes but no quiz — test yourself.
+
+    Never-opened docs (neglected, per engagement) jump the queue: content
+    that exists but never got attention is the likelier blind spot.
+    """
     name = "quiz_gap"
     category = "practice"
 
     def evaluate(self, ctx: UserContext) -> RecommendationResult | None:
-        for doc_id, content in ctx.content_by_doc.items():
+        neglected = set(ctx.neglected_docs)
+        ordered = [d for d in ctx.neglected_docs if d in ctx.content_by_doc]
+        ordered += [d for d in ctx.content_by_doc if d not in neglected]
+        for doc_id in ordered:
+            content = ctx.content_by_doc[doc_id]
             if content["notes"] and not content["quiz"] and doc_id in ctx.documents:
                 doc = ctx.documents[doc_id]
+                if doc_id in neglected:
+                    rationale = (
+                        f"You haven't opened {doc.filename} since uploading it — "
+                        "a quiz would tell you where you stand."
+                    )
+                else:
+                    rationale = (
+                        "You have study notes but haven't taken a quiz yet. "
+                        "Test your understanding."
+                    )
                 return RecommendationResult(
                     strategy_name=self.name,
                     category=self.category,
                     action="generate_quiz",
                     title=f"Test yourself on {doc.filename}",
-                    rationale="You have study notes but haven't taken a quiz yet. Test your understanding.",
+                    rationale=rationale,
                     score=0.60,
                     document_id=doc_id,
                     tab="quiz",
@@ -164,21 +284,37 @@ class QuizGapStrategy:
 
 
 class StartNotesStrategy:
-    """Document with no content at all — start with notes."""
+    """Document with no content at all — start with notes.
+
+    Never-opened docs (neglected, per engagement) jump the queue.
+    """
     name = "start_notes"
     category = "organize"
 
     def evaluate(self, ctx: UserContext) -> RecommendationResult | None:
-        for doc_id in ctx.documents:
+        neglected = set(ctx.neglected_docs)
+        ordered = list(ctx.neglected_docs)
+        ordered += [d for d in ctx.documents if d not in neglected]
+        for doc_id in ordered:
             content = ctx.content_by_doc.get(doc_id, {"notes": [], "quiz": [], "flashcards": []})
-            if not any(content.values()):
+            if not any(content.values()) and doc_id in ctx.documents:
                 doc = ctx.documents[doc_id]
+                if doc_id in neglected:
+                    rationale = (
+                        "You uploaded this but haven't opened it yet — "
+                        "generate notes to get started."
+                    )
+                else:
+                    rationale = (
+                        "This document has no study materials yet. "
+                        "Generate notes to get started."
+                    )
                 return RecommendationResult(
                     strategy_name=self.name,
                     category=self.category,
                     action="generate_notes",
                     title=f"Start studying {doc.filename}",
-                    rationale="This document has no study materials yet. Generate notes to get started.",
+                    rationale=rationale,
                     score=0.55,
                     document_id=doc_id,
                     tab="notes",
@@ -226,6 +362,10 @@ class QuizStrategy:
         if ctx.session and len(ctx.session.actions) >= 2:
             score += 0.10
 
+        # Format tilt: measured quiz duration/abandonment favor flashcards.
+        if _format_tilt(ctx):
+            score -= 0.05
+
         return RecommendationResult(
             strategy_name=self.name,
             category=self.category,
@@ -268,6 +408,11 @@ class FlashcardStrategy:
             score += min(ctx.due_count / 20, 0.30)  # up to +0.30
             rationale = f"{ctx.due_count} concepts due for review — flashcards will help."
 
+        # Format tilt: measured quiz duration/abandonment favor flashcards.
+        if _format_tilt(ctx):
+            score += 0.10
+            rationale += " And flashcards fit the time you have — your quizzes have been running long."
+
         return RecommendationResult(
             strategy_name=self.name,
             category=self.category,
@@ -308,6 +453,7 @@ def register_all(engine):
     engine.register(OnboardingStrategy())
     engine.register(DueReviewReadyStrategy())
     engine.register(DueReviewGenerateStrategy())
+    engine.register(WeakSpotStrategy())
     engine.register(ProactiveDeckStrategy())
     engine.register(QuizGapStrategy())
     engine.register(StartNotesStrategy())
