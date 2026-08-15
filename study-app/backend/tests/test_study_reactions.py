@@ -24,6 +24,9 @@ async def _handler_rows(event_type: str) -> dict[str | None, AgentEvent]:
 
 
 async def test_quiz_attempt_runs_all_reactions(client, db):
+    _before = await memory_store.get_learner_profile(db)
+    before_quizzes = _before["stats"]["total_quizzes"]
+
     doc, quiz = make_quiz(doc_id="doc-r1", content_id="quiz-r1")
     db.add_all([doc, quiz])
     await db.commit()
@@ -47,8 +50,8 @@ async def test_quiz_attempt_runs_all_reactions(client, db):
 
     # Reaction 2: learner profile.
     profile = await memory_store.get_learner_profile(db)
-    assert profile["stats"]["total_quizzes"] == 1
-    assert profile["stats"]["score_history"][0]["score"] == 0.5
+    assert profile["stats"]["total_quizzes"] == before_quizzes + 1
+    assert profile["stats"]["score_history"][-1]["score"] == 0.5
 
     # Reaction 3: recommendation session tracking.
     session_data = await memory_store.read_memory(db, "user", "", "session")
@@ -67,6 +70,7 @@ async def test_quiz_attempt_runs_all_reactions(client, db):
         "study.update_profile_from_quiz",
         "study.record_activity",
         "study.detect_weak_topics",
+        "plans.mark_progress_from_quiz",
     }
     assert all(r.status == "ok" for r in rows.values())
     assert rows[None].payload["score"] == 0.5
@@ -130,6 +134,9 @@ async def test_flashcard_review_reactions(client, db):
     db.add_all([doc, deck])
     await db.commit()
 
+    _before = await memory_store.get_learner_profile(db)
+    before_reviews = _before["stats"]["total_flashcard_reviews"]
+
     # One result without a concept — recovered from the stored card.
     resp = await client.post(
         "/api/flashcards/deck-r3/review",
@@ -148,7 +155,7 @@ async def test_flashcard_review_reactions(client, db):
     assert mastery["Meiosis"]["wrong"] == 1  # recovered from the card
 
     profile = await memory_store.get_learner_profile(db)
-    assert profile["stats"]["total_flashcard_reviews"] == 2
+    assert profile["stats"]["total_flashcard_reviews"] == before_reviews + 2
 
     session_data = await memory_store.read_memory(db, "user", "", "session")
     assert session_data["actions"][-1]["tool"] == "flashcards"
@@ -317,16 +324,17 @@ async def test_events_endpoint_lists_log(client, db):
     assert resp.status_code == 200
     rows = resp.json()
     assert len(rows) >= 5
-    # The 5 newest QuizAttempted rows (dispatch + 4 handlers) are all ok.
+    # The 6 newest QuizAttempted rows (dispatch + 5 handlers) are all ok.
     quiz_rows = [r for r in rows if r["event_type"] == "QuizAttempted"]
-    assert len(quiz_rows) >= 5
-    assert all(r["status"] == "ok" for r in quiz_rows[:5])
-    assert {r["handler"] for r in quiz_rows[:5]} == {
+    assert len(quiz_rows) >= 6
+    assert all(r["status"] == "ok" for r in quiz_rows[:6])
+    assert {r["handler"] for r in quiz_rows[:6]} == {
         None,
         "study.update_mastery",
         "study.update_profile_from_quiz",
         "study.record_activity",
         "study.detect_weak_topics",
+        "plans.mark_progress_from_quiz",
     }
 
     # Filter by event_type works.

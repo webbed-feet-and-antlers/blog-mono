@@ -390,6 +390,17 @@ export async function renameModule(id: string, title: string): Promise<Module> {
   });
 }
 
+export async function setModuleExamDate(
+  id: string,
+  examDate: string | null,
+): Promise<Module> {
+  return request<Module>(`/api/modules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exam_date: examDate }),
+  });
+}
+
 export async function deleteModule(id: string): Promise<void> {
   await request<void>(`/api/modules/${id}`, { method: "DELETE" });
 }
@@ -505,16 +516,93 @@ export interface StudySession {
   rationale: string;
 }
 
+// --- Study plans ---
+
+export interface PlanItem {
+  id: string;
+  type:
+    | "review_concepts"
+    | "take_quiz"
+    | "generate_quiz"
+    | "review_deck"
+    | "generate_flashcards"
+    | "read_document";
+  title: string;
+  rationale: string;
+  day_offset: number;
+  estimate_mins: number;
+  status: "pending" | "done";
+  done_at: string | null;
+  done_reason: string | null;
+  done_kind: "auto" | "manual" | null;
+  target: {
+    document_id?: string | null;
+    concepts?: string[] | null;
+  };
+}
+
+export interface StudyPlanData {
+  id: string;
+  module_id: string;
+  version: number;
+  generated_at: string;
+  stale_reasons: string[];
+  items: PlanItem[];
+  meta: Record<string, unknown>;
+  staleness: { stale: boolean; reasons: string[] };
+}
+
+export async function getStudyPlan(
+  moduleId: string,
+): Promise<StudyPlanData | null> {
+  try {
+    return await request<StudyPlanData>(`/api/modules/${moduleId}/plan`);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
+
+export async function generateStudyPlan(
+  moduleId: string,
+  examDate?: string | null,
+): Promise<StudyPlanData> {
+  return request<StudyPlanData>(`/api/modules/${moduleId}/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exam_date: examDate ?? null }),
+  });
+}
+
+export async function patchPlanItem(
+  planId: string,
+  itemId: string,
+  status: "done" | "pending",
+): Promise<{ status: string; item: PlanItem }> {
+  return request(`/api/plans/${planId}/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}
+
 export async function startStudySession(
   type: string = "flashcards",
   count: number = 20,
   scope: string = "global",
   documentId?: string,
+  moduleId?: string,
 ): Promise<StudySession> {
   return request<StudySession>("/api/study-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, count, scope, document_id: documentId }),
+    body: JSON.stringify({
+      type,
+      count,
+      scope,
+      document_id: documentId ?? null,
+      module_id: moduleId ?? null,
+    }),
   });
 }
 

@@ -122,3 +122,16 @@ class ActivitiesLogged:
     """
 
     entries: list[ActivityEntry] = field(default_factory=list)
+
+
+# --- Study plans (adaptive, module-scoped) ----------------------------------
+
+
+@dataclass
+class StudyPlanStaleDetected:
+    """A module's study plan no longer matches reality (new content analyzed,
+    quiz results). The regen handler regenerates it behind a per-module
+    cooldown so a semester's uploads don't burn unbounded LLM calls."""
+
+    module_id: str
+    reason: str

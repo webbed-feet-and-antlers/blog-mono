@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { ModulePlanPanel } from "./ModulePlanPanel";
 import type { Document, Lesson, Module, ModuleTree } from "../types";
 
 /**
@@ -403,6 +404,11 @@ export function DrivePage() {
         <div className="empty drive-empty">
           No documents match "{searchQuery}".
         </div>
+      )}
+
+      {/* Module study plan — the agent's adaptive plan for this module */}
+      {moduleId && !lessonId && currentModule && !isSearching && (
+        <ModulePlanPanel module={currentModule} />
       )}
 
       {/* Folder grid */}

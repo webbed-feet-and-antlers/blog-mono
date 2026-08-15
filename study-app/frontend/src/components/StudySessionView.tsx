@@ -9,6 +9,7 @@ import {
   Zap,
   Sparkles,
 } from "lucide-react";
+import { useRouterState } from "@tanstack/react-router";
 import * as api from "../api/client";
 import { track } from "../api/track";
 import type { StudySession as StudySessionData } from "../api/client";
@@ -250,11 +251,22 @@ export function StudySessionLoader({ onExit }: { onExit: () => void }) {
   const [session, setSession] = useState<StudySessionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Module scope via /study?module=<id> (plan deep links use this).
+  const search = useRouterState({
+    select: (s) => s.location.search as { module?: string },
+  });
+  const moduleId = search.module;
 
   // Fetch session on mount.
   useState(() => {
     api
-      .startStudySession("flashcards", 20, "global")
+      .startStudySession(
+        "flashcards",
+        20,
+        moduleId ? "module" : "global",
+        undefined,
+        moduleId,
+      )
       .then((s) => setSession(s))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));

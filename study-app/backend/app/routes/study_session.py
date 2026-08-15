@@ -39,8 +39,9 @@ router = APIRouter(prefix="/api/study-session", tags=["study-session"])
 class StudySessionRequest(BaseModel):
     type: str = "flashcards"  # "flashcards" | "quiz" (quiz deferred)
     count: int = 20
-    scope: str = "global"  # "global" | "document"
+    scope: str = "global"  # "global" | "document" | "module"
     document_id: str | None = None
+    module_id: str | None = None
 
 
 class SessionCard(BaseModel):
@@ -88,10 +89,20 @@ async def compose_session(
     session_id = uuid.uuid4().hex[:16]
     target_count = req.count
 
-    # 1. Load all flashcard cards across all documents (or scoped to one doc).
+    # 1. Load all flashcard cards across all documents (or scoped to one doc
+    #    or one module — the module's doc set includes lesson docs).
     stmt = select(ContentItem).where(ContentItem.type == "flashcards")
     if req.scope == "document" and req.document_id:
         stmt = stmt.where(ContentItem.document_id == req.document_id)
+    elif req.scope == "module" and req.module_id:
+        from ..agent.planner import get_module_doc_ids
+
+        module_doc_ids = await get_module_doc_ids(session, req.module_id)
+        if module_doc_ids:
+            stmt = stmt.where(ContentItem.document_id.in_(module_doc_ids))
+        else:
+            # Empty module → no decks (document_id is never null in practice).
+            stmt = stmt.where(ContentItem.document_id.is_(None))
     result = await session.execute(stmt)
     all_decks = result.scalars().all()
 

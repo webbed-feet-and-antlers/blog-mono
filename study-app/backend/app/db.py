@@ -64,6 +64,18 @@ async def init_db() -> None:
             text("PRAGMA table_info(documents)")
         )
         columns = {row[1] for row in result.fetchall()}
+        # Module exam date (paces study plans).
+        mod_cols = {
+            row[1]
+            for row in (
+                await conn.execute(text("PRAGMA table_info(modules)"))
+            ).fetchall()
+        }
+        if "exam_date" not in mod_cols:
+            await conn.execute(
+                text("ALTER TABLE modules ADD COLUMN exam_date DATE")
+            )
+            logger.info("Migrated modules table: added exam_date column")
         if "lesson_id" not in columns:
             await conn.execute(
                 text(

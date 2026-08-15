@@ -22,6 +22,7 @@ from ..schemas import (
     LessonOut,
     LessonWithDocs,
     ModuleCreate,
+    ModuleUpdate,
     ModuleOut,
     ModuleTreeResponse,
     ModuleWithTree,
@@ -144,7 +145,7 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
 async def create_module(
     req: ModuleCreate, session: AsyncSession = Depends(get_session)
 ):
-    module = Module(id=uuid.uuid4().hex[:12], title=req.title)
+    module = Module(id=uuid.uuid4().hex[:12], title=req.title, exam_date=req.exam_date)
     session.add(module)
     await session.commit()
     await session.refresh(module)
@@ -152,15 +153,20 @@ async def create_module(
 
 
 @router.patch("/modules/{module_id}", response_model=ModuleOut)
-async def rename_module(
+async def update_module(
     module_id: str,
-    req: ModuleCreate,
+    req: ModuleUpdate,
     session: AsyncSession = Depends(get_session),
 ):
+    """Update a module's title and/or exam date (paces its study plan).
+    Only fields actually present in the request body change."""
     module = await session.get(Module, module_id)
     if module is None:
         raise HTTPException(status_code=404, detail="Module not found")
-    module.title = req.title
+    if "title" in req.model_fields_set and req.title is not None:
+        module.title = req.title
+    if "exam_date" in req.model_fields_set:
+        module.exam_date = req.exam_date
     await session.commit()
     await session.refresh(module)
     return module

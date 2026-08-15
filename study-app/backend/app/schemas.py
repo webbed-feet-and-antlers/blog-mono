@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
@@ -180,11 +180,59 @@ class ActivityBatchIn(BaseModel):
     events: list[ActivityEventIn] = Field(default_factory=list)
 
 
+# --- Study plans ---
+
+
+class PlanItemOut(BaseModel):
+    id: str
+    type: str
+    title: str
+    rationale: str = ""
+    day_offset: int = 0
+    estimate_mins: int = 15
+    status: str = "pending"  # pending | done
+    done_at: str | None = None
+    done_reason: str | None = None
+    done_kind: str | None = None  # auto | manual
+    target: dict = {}
+
+
+class StudyPlanOut(BaseModel):
+    id: str
+    module_id: str
+    version: int
+    generated_at: datetime
+    stale_reasons: list = []
+    items: list[PlanItemOut] = []
+    meta: dict = {}
+    # Computed on read: whether the plan should regenerate and why.
+    staleness: dict = {}
+
+    model_config = {"from_attributes": True}
+
+
+class PlanGenerateRequest(BaseModel):
+    exam_date: date | None = None
+
+
+class PlanItemPatch(BaseModel):
+    status: Literal["done", "pending"]
+
+
 # --- Modules & Lessons (organization hierarchy) ---
 
 
 class ModuleCreate(BaseModel):
     title: str
+    exam_date: date | None = None
+
+
+class ModuleUpdate(BaseModel):
+    """Partial module update — only fields the client actually sent change
+    (checked via model_fields_set), so a rename doesn't wipe the exam date
+    and vice versa."""
+    title: str | None = None
+    exam_date: date | None = None
 
 
 class LessonCreate(BaseModel):
@@ -194,6 +242,7 @@ class LessonCreate(BaseModel):
 class ModuleOut(BaseModel):
     id: str
     title: str
+    exam_date: date | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

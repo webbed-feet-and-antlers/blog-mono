@@ -101,6 +101,7 @@ export interface Lesson {
 export interface Module {
   id: string;
   title: string;
+  exam_date?: string | null;
   created_at: string;
   lessons: Lesson[];
   documents: Document[];

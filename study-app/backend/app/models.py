@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -23,6 +23,8 @@ class Module(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
+    # Optional target/exam date — paces the module's study plan.
+    exam_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     lessons: Mapped[list["Lesson"]] = relationship(
@@ -219,6 +221,33 @@ class UserActivity(Base):
     type: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # Type-specific payload, e.g. {document_id, tab, dwell_secs}.
     props: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class StudyPlan(Base):
+    """The agent-generated study plan for one module (one active plan per
+    module, versioned in place).
+
+    items JSON shape (per item):
+      {id, type, title, rationale, day_offset, estimate_mins,
+       status: pending|done, done_at, done_reason, done_kind: auto|manual,
+       target: {module_id?, document_id?, concepts?}}
+    Types: review_concepts | take_quiz | generate_quiz | review_deck |
+           generate_flashcards | read_document
+    """
+
+    __tablename__ = "study_plans"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    module_id: Mapped[str] = mapped_column(
+        ForeignKey("modules.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    version: Mapped[int] = mapped_column(default=1)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    # Staleness signals appended by event handlers ("new document analyzed",
+    # "quiz results") — cleared on regeneration.
+    stale_reasons: Mapped[list] = mapped_column(JSON, default=list)
+    items: Mapped[list] = mapped_column(JSON, default=list)
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class LectureSession(Base):
