@@ -25,6 +25,7 @@ import {
 import { useRecorder, formatTime, blobToFile } from "../hooks/useRecorder";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { FileToModuleModal, type FilingTarget } from "./FileToModuleModal";
 
 interface SlideTimestampState {
   slide_number: number;
@@ -217,15 +218,36 @@ export function RecordPage() {
     recordSlideTimestamp(1);
   }
 
-  async function handleStopAndSave() {
+  // Set while the "add to module" prompt is open — the recording keeps
+  // running until a choice is made, so nothing is lost on Skip/close.
+  const [filingPrompt, setFilingPrompt] = useState(false);
+
+  function handleStopAndSave() {
+    if (!startPromiseRef.current) return;
+    setFilingPrompt(true);
+  }
+
+  async function saveLecture(target: FilingTarget | null) {
+    setFilingPrompt(false);
     if (!startPromiseRef.current) return;
     setSaving(true);
 
     stop();
     const audioBlob = await startPromiseRef.current;
 
+    // File the recording (and its slides) into the chosen module/lesson.
+    const lessonId = target?.lessonId;
+    const moduleId = target && !lessonId ? target.moduleId : undefined;
+
     const audioFile = blobToFile(audioBlob);
-    const audioDoc = await api.uploadDocument(audioFile);
+    const audioDoc = await api.uploadDocument(audioFile, lessonId, undefined, moduleId);
+
+    // Slides were uploaded earlier (unfiled) — move them alongside.
+    if (slidesDocId) {
+      await api.moveDocument(slidesDocId, { lessonId, moduleId }).catch(() => {
+        // Filing failure shouldn't lose the lecture.
+      });
+    }
 
     const sessionTitle = title.trim() || `Lecture ${new Date().toLocaleDateString()}`;
     const session = await api.createLecture({
@@ -236,6 +258,7 @@ export function RecordPage() {
       duration_seconds: elapsedSec,
       slide_timestamps: slideTimestamps,
       slide_count: slideCount,
+      lesson_id: lessonId ?? undefined,
     });
 
     localStorage.removeItem(DRAFT_KEY);
@@ -569,6 +592,14 @@ export function RecordPage() {
       </div>
 
       {/* Confirmation Leave Modal */}
+      {filingPrompt && (
+        <FileToModuleModal
+          noun="lecture"
+          skipLabel="Save unfiled"
+          onSelect={saveLecture}
+        />
+      )}
+
       {showLeaveModal && (
         <div className="modal-backdrop">
           <div className="modal-content">

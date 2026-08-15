@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { FileToModuleModal } from "./FileToModuleModal";
 import { ModulePlanPanel } from "./ModulePlanPanel";
 import type { Document, Lesson, Module, ModuleTree } from "../types";
 
@@ -68,6 +69,9 @@ export function ModulesPage() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   // Edit-details modal for a module (semester / exam date / title).
   const [editingModule, setEditingModule] = useState<Module | null>(null);
+  // A picked file awaiting a module choice (root view only — inside a
+  // module/lesson the context is already known).
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   // Semester group expansion overrides: current group is expanded by default,
   // older groups collapsed — toggling writes here.
   const [groupExpanded, setGroupExpanded] = useState<Record<string, boolean>>({});
@@ -261,14 +265,30 @@ export function ModulesPage() {
   function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    // File into the current context: lesson if inside a lesson, module if
-    // inside a module, otherwise unfiled.
+    if (!moduleId) {
+      // Root view: prompt for a module instead of filing to Unfiled.
+      setPendingFile(file);
+    } else {
+      // File into the current context: lesson if inside a lesson, module
+      // if inside a module.
+      uploadMut.mutate({
+        file,
+        lessonId: lessonId ?? undefined,
+        moduleId: !lessonId ? moduleId : undefined,
+      });
+    }
+    e.target.value = ""; // reset for re-upload
+  }
+
+  function uploadWith(target: { moduleId?: string; lessonId?: string } | null) {
+    const file = pendingFile;
+    setPendingFile(null);
+    if (!file) return;
     uploadMut.mutate({
       file,
-      lessonId: lessonId ?? undefined,
-      moduleId: !lessonId ? moduleId ?? undefined : undefined,
+      lessonId: target?.lessonId,
+      moduleId: target && !target.lessonId ? target.moduleId : undefined,
     });
-    e.target.value = ""; // reset for re-upload
   }
 
   // --- Drag & drop ---
@@ -662,6 +682,9 @@ export function ModulesPage() {
           onClose={() => setShowNewFolder(false)}
           onCreate={commitNewFolder}
         />
+      )}
+      {pendingFile && (
+        <FileToModuleModal noun="document" onSelect={uploadWith} />
       )}
       {editingModule && (
         <EditModuleModal

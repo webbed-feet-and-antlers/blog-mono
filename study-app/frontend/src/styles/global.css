@@ -3813,3 +3813,107 @@ button.small {
   display: flex;
   gap: 12px;
 }
+
+/* --- File-to-module prompt --------------------------------------------------- */
+
+.file-to-module-modal {
+  max-width: 480px;
+  width: 92%;
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.file-to-module-modal .understanding-body {
+  flex: 1;
+}
+
+.file-to-module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+
+.file-to-module-module {
+  display: flex;
+  flex-direction: column;
+}
+
+.file-to-module-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border, #2a2a30);
+  border-radius: 10px;
+  background: var(--bg-inset, rgba(127, 127, 127, 0.06));
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-to-module-row:hover {
+  border-color: var(--accent, #7c6cf0);
+}
+
+.file-to-module-row.lesson {
+  margin-left: 22px;
+  padding: 7px 12px;
+}
+
+.ftm-icon {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.ftm-name {
+  flex: 1;
+  font-size: 0.88rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ftm-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.ftm-expand:hover {
+  background: var(--accent-tint, rgba(124, 108, 240, 0.12));
+  color: var(--accent, #7c6cf0);
+}
+
+.file-to-module-lessons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.file-to-module-footer {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  border-top: 1px solid var(--border, #2a2a30);
+  flex-shrink: 0;
+}
+
+.file-to-module-footer button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { FileToModuleModal } from "./FileToModuleModal";
 import { ProfileCard } from "./ProfileCard";
 
 interface Props {
@@ -44,8 +45,19 @@ export function Sidebar({
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   const upload = useMutation({
-    mutationFn: (file: File) =>
-      api.uploadDocument(file, undefined, (pct) => setUploadProgress(pct)),
+    mutationFn: ({
+      file,
+      target,
+    }: {
+      file: File;
+      target?: { lessonId?: string; moduleId?: string };
+    }) =>
+      api.uploadDocument(
+        file,
+        target?.lessonId,
+        (pct) => setUploadProgress(pct),
+        target?.moduleId,
+      ),
     onSuccess: (doc) => {
       setUploadProgress(null);
       queryClient.invalidateQueries({ queryKey: ["documents"] });
@@ -55,10 +67,25 @@ export function Sidebar({
     onError: () => setUploadProgress(null),
   });
 
+  // A picked file awaiting a module choice (the "add to module" prompt).
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    await upload.mutateAsync(files[0]);
+    // Prompt for a module (current semester first) instead of filing
+    // straight to Unfiled.
+    setPendingFile(files[0]);
     if (fileInput.current) fileInput.current.value = "";
+  }
+
+  async function uploadWith(target: {
+    moduleId?: string;
+    lessonId?: string;
+  } | null) {
+    const file = pendingFile;
+    setPendingFile(null);
+    if (!file) return;
+    await upload.mutateAsync({ file, target: target ?? undefined });
   }
 
   const uploading = upload.isPending;
@@ -145,6 +172,10 @@ export function Sidebar({
       <div className="sidebar-spacer" />
 
       <ProfileCard />
+
+      {pendingFile && (
+        <FileToModuleModal noun="document" onSelect={uploadWith} />
+      )}
     </aside>
   );
 }
