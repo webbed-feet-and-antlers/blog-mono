@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   Home,
-  HardDrive,
+  LayoutGrid,
   Network,
   Mic,
   UploadCloud,
@@ -84,9 +84,9 @@ export function Sidebar({
           <Home size={16} />
           Home
         </button>
-        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "drive" }); onDrive(); }}>
-          <HardDrive size={16} />
-          My Drive
+        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "modules" }); onDrive(); }}>
+          <LayoutGrid size={16} />
+          Modules
         </button>
         <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "concepts" }); onConcepts(); }}>
           <Network size={16} />

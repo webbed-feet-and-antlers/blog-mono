@@ -374,11 +374,31 @@ export async function listModuleTree(): Promise<ModuleTree> {
   return request<ModuleTree>("/api/modules");
 }
 
-export async function createModule(title: string): Promise<Module> {
+export interface ModuleMeta {
+  academic_year?: string | null;
+  term?: string | null;
+  exam_date?: string | null;
+}
+
+export async function createModule(
+  title: string,
+  meta?: ModuleMeta,
+): Promise<Module> {
   return request<Module>("/api/modules", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, ...(meta ?? {}) }),
+  });
+}
+
+export async function updateModule(
+  id: string,
+  patch: ModuleMeta & { title?: string },
+): Promise<Module> {
+  return request<Module>(`/api/modules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
   });
 }
 

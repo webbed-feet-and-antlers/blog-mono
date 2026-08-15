@@ -3718,3 +3718,98 @@ button.small {
   color: #4ade80;
   background: rgba(74, 222, 128, 0.08);
 }
+
+/* --- Semester groups (Modules page root) ------------------------------------ */
+
+.semester-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.semester-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #2a2a30);
+  border-radius: 10px;
+  background: var(--bg-inset, rgba(127, 127, 127, 0.06));
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.semester-group-header:hover {
+  border-color: var(--accent, #7c6cf0);
+}
+
+.semester-group-header.current {
+  border-color: var(--accent, #7c6cf0);
+  background: var(--accent-tint, rgba(124, 108, 240, 0.1));
+}
+
+.semester-group-chevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: transform 0.15s ease;
+}
+
+.semester-group-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.semester-group-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--accent, #7c6cf0);
+  color: #fff;
+}
+
+.semester-group-count {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+/* --- Shared form fields (modals) --------------------------------------------- */
+
+.form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  flex: 1;
+}
+
+.form-label input,
+.form-label select {
+  border: 1px solid var(--border, #2a2a30);
+  border-radius: 8px;
+  padding: 7px 10px;
+  background: var(--bg, #0f0f12);
+  color: inherit;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 400;
+}
+
+.form-label input:focus,
+.form-label select:focus {
+  outline: none;
+  border-color: var(--accent, #7c6cf0);
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+}

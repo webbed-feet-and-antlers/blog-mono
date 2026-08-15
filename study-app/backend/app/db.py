@@ -76,6 +76,17 @@ async def init_db() -> None:
                 text("ALTER TABLE modules ADD COLUMN exam_date DATE")
             )
             logger.info("Migrated modules table: added exam_date column")
+        # Semester organization (academic year + term).
+        if "academic_year" not in mod_cols:
+            await conn.execute(
+                text("ALTER TABLE modules ADD COLUMN academic_year VARCHAR")
+            )
+            logger.info("Migrated modules table: added academic_year column")
+        if "term" not in mod_cols:
+            await conn.execute(
+                text("ALTER TABLE modules ADD COLUMN term VARCHAR")
+            )
+            logger.info("Migrated modules table: added term column")
         if "lesson_id" not in columns:
             await conn.execute(
                 text(

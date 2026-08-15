@@ -69,6 +69,9 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
             ModuleWithTree(
                 id=m.id,
                 title=m.title,
+                exam_date=m.exam_date,
+                academic_year=m.academic_year,
+                term=m.term,
                 created_at=m.created_at,
                 lessons=[
                     LessonWithDocs(
@@ -145,7 +148,13 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
 async def create_module(
     req: ModuleCreate, session: AsyncSession = Depends(get_session)
 ):
-    module = Module(id=uuid.uuid4().hex[:12], title=req.title, exam_date=req.exam_date)
+    module = Module(
+        id=uuid.uuid4().hex[:12],
+        title=req.title,
+        exam_date=req.exam_date,
+        academic_year=req.academic_year,
+        term=req.term,
+    )
     session.add(module)
     await session.commit()
     await session.refresh(module)
@@ -167,6 +176,10 @@ async def update_module(
         module.title = req.title
     if "exam_date" in req.model_fields_set:
         module.exam_date = req.exam_date
+    if "academic_year" in req.model_fields_set:
+        module.academic_year = req.academic_year
+    if "term" in req.model_fields_set:
+        module.term = req.term
     await session.commit()
     await session.refresh(module)
     return module

@@ -225,14 +225,18 @@ class PlanItemPatch(BaseModel):
 class ModuleCreate(BaseModel):
     title: str
     exam_date: date | None = None
+    academic_year: str | None = None
+    term: str | None = None
 
 
 class ModuleUpdate(BaseModel):
     """Partial module update — only fields the client actually sent change
     (checked via model_fields_set), so a rename doesn't wipe the exam date
-    and vice versa."""
+    or semester and vice versa."""
     title: str | None = None
     exam_date: date | None = None
+    academic_year: str | None = None
+    term: str | None = None
 
 
 class LessonCreate(BaseModel):
@@ -243,6 +247,8 @@ class ModuleOut(BaseModel):
     id: str
     title: str
     exam_date: date | None = None
+    academic_year: str | None = None
+    term: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

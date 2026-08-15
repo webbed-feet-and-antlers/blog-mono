@@ -14,7 +14,7 @@ import { RecordPage } from "./components/RecordPage";
 import { LectureView } from "./components/LectureView";
 import { StudySessionLoader } from "./components/StudySessionView";
 import { ConceptsPage } from "./components/ConceptsPage";
-import { DrivePage } from "./components/DrivePage";
+import { ModulesPage } from "./components/ModulesPage";
 import { QuizzesPage } from "./components/QuizzesPage";
 import { FlashcardsPage } from "./components/FlashcardsPage";
 import type { TabId } from "./types";
@@ -41,7 +41,7 @@ function Layout() {
           onHome={() => navigate({ to: "/" })}
           onRecord={() => navigate({ to: "/record" })}
           onConcepts={() => navigate({ to: "/concepts" })}
-          onDrive={() => navigate({ to: "/drive" })}
+          onDrive={() => navigate({ to: "/modules" })}
           onQuizzes={() => navigate({ to: "/quizzes" })}
           onFlashcards={() => navigate({ to: "/flashcards" })}
         />
@@ -151,11 +151,11 @@ const conceptsRoute = createRoute({
   },
 });
 
-// /drive → Drive-style content browser (inside Layout shell, sidebar visible)
-const driveRoute = createRoute({
+// /modules → module browser organized by semester (inside Layout shell)
+const modulesRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/drive",
-  component: DrivePage,
+  path: "/modules",
+  component: ModulesPage,
 });
 
 // /quizzes → all quizzes across all documents
@@ -180,7 +180,7 @@ const routeTree = rootRoute.addChildren([
   lectureRoute,
   studyRoute,
   conceptsRoute,
-  driveRoute,
+  modulesRoute,
   quizzesRoute,
   flashcardsRoute,
 ]);

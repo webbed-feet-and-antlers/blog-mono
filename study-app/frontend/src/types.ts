@@ -102,6 +102,8 @@ export interface Module {
   id: string;
   title: string;
   exam_date?: string | null;
+  academic_year?: string | null;
+  term?: string | null;
   created_at: string;
   lessons: Lesson[];
   documents: Document[];

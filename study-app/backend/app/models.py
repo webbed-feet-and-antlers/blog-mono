@@ -25,6 +25,11 @@ class Module(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     # Optional target/exam date — paces the module's study plan.
     exam_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
+    # Semester organization. academic_year like "2026/27"; term like
+    # "Autumn" | "Spring" | "Summer" (or any label). Both nullable — unfiled
+    # modules surface in the "No semester set" group until assigned.
+    academic_year: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    term: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     lessons: Mapped[list["Lesson"]] = relationship(
