@@ -10,21 +10,31 @@ per test, membership assertions instead of exact lists.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import random
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from app.agent import behavior as behavior_store
 from app.agent import memory as memory_store
+from app.models import Document, Module, StudyPlan
+from app.recommend.bandit import LinUCBOptimizer
 from app.recommend.context import UserContext, build_context
-from app.recommend.engine import PEAK_HOUR_BOOST, engine as rec_engine
+from app.recommend.engine import (
+    EXAM_BOOST_MAX,
+    EXAM_RAMP_DAYS,
+    PEAK_HOUR_BOOST,
+    engine as rec_engine,
+)
 from app.recommend.strategies import (
     DueReviewReadyStrategy,
     FlashcardStrategy,
+    PlanTodayStrategy,
+    ProactiveDeckStrategy,
     QuizGapStrategy,
     QuizStrategy,
+    RevisitStrategy,
     WeakSpotStrategy,
 )
-from app.models import Document
 
 from conftest import make_quiz
 
@@ -207,3 +217,142 @@ async def test_recommend_endpoint_smoke(client):
     assert "context" in body and "alternatives" in body
     if body["primary"] is not None:
         assert body["primary"]["rationale"]  # enriched or not, always present
+
+
+async def test_build_context_reads_structural_layer(db):
+    """Exam dates and study plans reach the recommendation context."""
+    module = Module(
+        id="mod-rec",
+        title="BIO201",
+        exam_date=date.today() + timedelta(days=3),
+    )
+    doc, quiz = make_quiz(doc_id="doc-rec-mod", content_id="quiz-rec-mod")
+    doc.module_id = module.id
+    plan = StudyPlan(
+        id="plan-rec",
+        module_id=module.id,
+        version=1,
+        generated_at=datetime.now(timezone.utc),
+        items=[
+            {"id": "pi1", "type": "review_concepts", "title": "Review due concepts",
+             "rationale": "7 concepts due", "day_offset": 0, "status": "pending",
+             "target": {}},
+            {"id": "pi2", "type": "read_document", "title": "Done already",
+             "rationale": "", "day_offset": 0, "status": "done", "target": {}},
+            {"id": "pi3", "type": "generate_quiz", "title": "Future quiz",
+             "rationale": "", "day_offset": 5, "status": "pending", "target": {}},
+        ],
+    )
+    db.add_all([module, doc, quiz, plan])
+    await db.commit()
+
+    ctx = await build_context(db)
+    assert ctx.days_to_exam == 3
+    assert ctx.doc_exam_days.get("doc-rec-mod") == 3
+    titles = [i["title"] for i in ctx.plan_today]
+    assert "Review due concepts" in titles      # due today → included
+    assert "Done already" not in titles         # done → skipped
+    assert "Future quiz" not in titles          # day_offset 5 → not due yet
+    by_title = {i["title"]: i for i in ctx.plan_today}
+    assert by_title["Review due concepts"]["module_title"] == "BIO201"
+
+
+def test_plan_today_strategy():
+    strat = PlanTodayStrategy()
+    assert strat.evaluate(UserContext()) is None  # no plan → none
+
+    ctx = UserContext(plan_today=[{
+        "id": "pi1", "type": "review_concepts", "title": "Review due concepts",
+        "rationale": "7 FSRS-due concepts, also your weakest.",
+        "estimate_mins": 20, "day_offset": 0,
+        "module_id": "mod-rec", "module_title": "BIO201",
+        "target": {"document_id": "doc-rec-mod"},
+    }])
+    result = strat.evaluate(ctx)
+    assert result is not None
+    assert result.score == 0.92
+    assert result.title == "Today's plan: Review due concepts"
+    assert result.action == "review_flashcards" and result.ready is True
+    assert result.document_id == "doc-rec-mod"
+    assert "BIO201" in result.rationale and "~20 min" in result.rationale
+
+    # take_quiz deep-links to the existing quiz.
+    ctx.plan_today = [{**ctx.plan_today[0], "type": "take_quiz"}]
+    result = strat.evaluate(ctx)
+    assert result.action == "view_document" and result.tab == "quiz"
+
+
+def test_engine_exam_boost(monkeypatch):
+    import sys
+
+    engine_mod = sys.modules["app.recommend.engine"]
+    monkeypatch.setattr(engine_mod.random, "random", lambda: 0.99)
+
+    def decide(exam_days: dict[str, int]) -> float:
+        ctx = UserContext(
+            documents={"d": _doc("d", "x.pdf")},
+            doc_exam_days=exam_days,
+            enabled_features={"fallback"},
+        )
+        out = rec_engine.decide(ctx)
+        return out["primary"]["score"]
+
+    off, on = decide({}), decide({"d": 3})
+    expected = EXAM_BOOST_MAX * (1 - 3 / EXAM_RAMP_DAYS)
+    # to_dict() rounds scores to 3 decimals — compare at that precision.
+    assert round(on - off, 3) == round(expected, 3)
+    # Far-out exams get nothing.
+    assert round(decide({"d": 60}) - off, 6) == 0.0
+
+
+def test_bandit_exam_feature():
+    opt = LinUCBOptimizer()
+    features = opt.extract_features(UserContext(days_to_exam=10))
+    assert round(features[4], 6) == round((30 - 10) / 30, 6)
+    assert opt.extract_features(UserContext())[4] == 0.0
+    assert opt.extract_features(UserContext(days_to_exam=0))[4] == 1.0
+
+
+def test_proactive_deck_ranks_by_weakness():
+    deck_b = SimpleNamespace(
+        id="deckB", document_id="docB",
+        content={"cards": [{"concept": "Unrelated"}, {"concept": "Other"}]},
+    )
+    deck_a = SimpleNamespace(
+        id="deckA", document_id="docA",
+        content={"cards": [{"concept": "ChlorophyllW"}, {"concept": "ATPW"}]},
+    )
+    ctx = UserContext(
+        proactive_decks=[deck_b, deck_a],  # wrong one first on purpose
+        documents={"docA": _doc("docA", "a.pdf"), "docB": _doc("docB", "b.pdf")},
+        slow_concepts=[
+            {"concept": "ChlorophyllW", "avg_secs": 30.0, "samples": 2, "mastery_pct": 0.1},
+            {"concept": "ATPW", "avg_secs": 28.0, "samples": 2, "mastery_pct": 0.1},
+        ],
+    )
+    result = ProactiveDeckStrategy().evaluate(ctx)
+    assert result is not None
+    assert result.content_id == "deckA"
+    assert "targeting 2 of your weak concepts" in result.rationale
+
+
+def test_revisit_strategy():
+    stale = (datetime.now(timezone.utc) - timedelta(days=9)).isoformat()
+    ctx = UserContext(
+        engagement={"docs": {
+            "doc-stale": {"views": 3, "dwell_secs": 90.0, "last_viewed": stale},
+        }},
+        documents={"doc-stale": _doc("doc-stale", "old-friend.pdf")},
+    )
+    result = RevisitStrategy().evaluate(ctx)
+    assert result is not None
+    assert result.document_id == "doc-stale"
+    assert result.score == 0.40 and result.ready is True
+    assert "haven't revisited this in 9 days" in result.rationale
+
+    # Recently-viewed docs don't trigger it.
+    recent = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    ctx.engagement = {"docs": {
+        "doc-stale": {"views": 3, "last_viewed": recent},
+    }}
+    assert RevisitStrategy().evaluate(ctx) is None

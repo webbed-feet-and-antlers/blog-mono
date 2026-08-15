@@ -26,11 +26,14 @@ async def recommend(session: AsyncSession = Depends(get_session)):
     ctx = await build_context(session)
     response = engine.decide(ctx)
 
-    # Log impression for telemetry.
+    # Log impression for telemetry, with the bandit's feature vector —
+    # the context that produced this impression can't be reconstructed later.
     try:
+        from ..recommend.bandit import LinUCBOptimizer
         from ..recommend.telemetry import log_impression
 
-        await log_impression(session, response)
+        features = LinUCBOptimizer().extract_features(ctx).tolist()
+        await log_impression(session, response, features=features)
         await session.commit()
     except Exception:
         pass  # telemetry is best-effort

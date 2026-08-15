@@ -9,7 +9,7 @@ context, which is built once per /api/recommend call.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -19,7 +19,7 @@ from ..agent import behavior as behavior_store
 from ..agent import memory as memory_store
 from ..agent import fsrs_scheduler
 from ..agent.reflection import get_learner_insights
-from ..models import ContentItem, Document
+from ..models import ContentItem, Document, Module, StudyPlan
 
 
 @dataclass
@@ -98,11 +98,15 @@ class UserContext:
     slow_concepts: list[dict] = field(default_factory=list)
     neglected_docs: list[str] = field(default_factory=list)
     is_peak_hour: bool = False
+    # Structural layer — stakes (exams) and commitments (study plans).
+    plan_today: list[dict] = field(default_factory=list)
+    days_to_exam: int | None = None          # nearest upcoming exam, days away
+    doc_exam_days: dict[str, int] = field(default_factory=dict)  # doc_id → days
     # Feature flags
     enabled_features: set[str] = field(default_factory=lambda: {
         "onboarding", "due_review_ready", "due_review_generate",
         "weak_spot", "proactive_deck", "quiz_gap", "start_notes",
-        "quiz", "flashcards", "fallback",
+        "plan_today", "revisit", "quiz", "flashcards", "fallback",
     })
     # Learned weights (from bandit, Phase 4)
     weights: dict[str, list[float]] = field(default_factory=dict)
@@ -160,6 +164,30 @@ async def build_context(session: AsyncSession) -> UserContext:
     # Session
     sess = await _get_session(session)
 
+    # Structural layer — exam stakes and the study plans paced to them.
+    module_rows = await session.execute(select(Module))
+    modules = list(module_rows.scalars().all())
+    module_titles = {m.id: m.title for m in modules}
+    exam_days_by_module: dict[str, int] = {}
+    today = date.today()
+    for m in modules:
+        if m.exam_date is not None:
+            days = (m.exam_date - today).days
+            if days >= 0:
+                exam_days_by_module[m.id] = days
+    doc_exam_days = {
+        doc_id: days
+        for doc_id, doc in documents.items()
+        if doc.module_id is not None
+        and (days := exam_days_by_module.get(doc.module_id)) is not None
+    }
+    days_to_exam = min(exam_days_by_module.values()) if exam_days_by_module else None
+
+    plan_rows = await session.execute(select(StudyPlan))
+    plan_today = _todays_plan_items(
+        plan_rows.scalars().all(), module_titles
+    )
+
     # Behavioral understanding — the learner-model keys the agent already
     # maintains. Measurements (latency, dwell, hour histogram, session
     # outcomes) feed scoring; the LLM-written insights stay language.
@@ -199,11 +227,52 @@ async def build_context(session: AsyncSession) -> UserContext:
         slow_concepts=slow_concepts,
         neglected_docs=_neglected_docs(documents, analyses, engagement),
         is_peak_hour=_is_peak_hour(patterns),
+        plan_today=plan_today,
+        days_to_exam=days_to_exam,
+        doc_exam_days=doc_exam_days,
         due_count=len(due_concepts),
         mastered_count=mastered_count,
         total_concepts=total_concepts,
         welcome_back=welcome_back,
     )
+
+
+def _todays_plan_items(
+    plans: list[StudyPlan], module_titles: dict[str, str]
+) -> list[dict]:
+    """Pending plan items due today or overdue, most overdue first.
+
+    day_offset is relative to the plan's generation (0 = the day it was
+    generated), so an item is due once `elapsed days >= day_offset`. Done
+    items are skipped — the plan's own progress detection already marked
+    them. Max two per module, three overall, so the recommender surfaces
+    the next step rather than the whole plan.
+    """
+    now = datetime.now(timezone.utc)
+    out: list[dict] = []
+    for plan in plans:
+        generated = plan.generated_at
+        if generated is None:
+            continue
+        if generated.tzinfo is None:  # SQLite returns naive datetimes
+            generated = generated.replace(tzinfo=timezone.utc)
+        elapsed = (now - generated).days
+        pending = [
+            item for item in (plan.items or [])
+            if isinstance(item, dict)
+            and item.get("status") != "done"
+            and isinstance(item.get("day_offset"), int)
+            and item["day_offset"] <= elapsed
+        ]
+        pending.sort(key=lambda i: i["day_offset"])
+        for item in pending[:2]:
+            out.append({
+                **item,
+                "module_id": plan.module_id,
+                "module_title": module_titles.get(plan.module_id, "your module"),
+            })
+    out.sort(key=lambda i: i.get("day_offset", 0))
+    return out[:3]
 
 
 def _neglected_docs(

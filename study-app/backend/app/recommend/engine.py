@@ -54,6 +54,11 @@ FATIGUE_PENALTIES = {
 # gets a small lift instead of a drag.
 PEAK_HOUR_BOOST = 0.05
 
+# Exam urgency — practice on exam-module documents ramps up as the exam
+# closes (full boost on exam day, fading to zero at EXAM_RAMP_DAYS out).
+EXAM_RAMP_DAYS = 14
+EXAM_BOOST_MAX = 0.10
+
 
 class RecommendationEngine:
     """The strategy registry. Holds all registered strategies and runs
@@ -102,6 +107,19 @@ class RecommendationEngine:
             for r in results:
                 if r.category == "practice":
                     r.score = min(1.0, r.score + PEAK_HOUR_BOOST)
+
+        # Exam urgency — practice on exam-module docs ramps up as the date
+        # closes (the plan is paced to this; so is the recommendation).
+        if ctx.doc_exam_days:
+            for r in results:
+                if r.category != "practice" or r.document_id is None:
+                    continue
+                days = ctx.doc_exam_days.get(r.document_id)
+                if days is not None and days <= EXAM_RAMP_DAYS:
+                    r.score = min(
+                        1.0,
+                        r.score + EXAM_BOOST_MAX * (1 - days / EXAM_RAMP_DAYS),
+                    )
 
         # Apply dismissal penalty — if the user dismissed a tool this session,
         # drop its score significantly.

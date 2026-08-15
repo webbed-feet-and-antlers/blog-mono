@@ -67,8 +67,11 @@ class LinUCBOptimizer:
         if ctx.session and ctx.session.actions:
             chaining = 1.0
 
-        # Exam urgency — stub (no exam data yet).
+        # Exam urgency — days to the nearest upcoming exam (module exam_date),
+        # full urgency on the day, zero from 30 days out.
         exam_urgency = 0.0
+        if ctx.days_to_exam is not None:
+            exam_urgency = max(0.0, min((30 - ctx.days_to_exam) / 30, 1.0))
 
         mastery_gap = 0.0
         if ctx.total_concepts > 0:
@@ -101,13 +104,16 @@ class LinUCBOptimizer:
         # Group events by strategy and accumulate ridge regression updates.
         updates: dict[str, list[tuple[np.ndarray, float]]] = {}
         for event in events:
-            # Reconstruct the feature vector from context_snapshot.
-            # Since we don't store the full feature vector, use a simplified
-            # version: just the bias term + the score as a proxy.
-            # In production you'd store the feature vector at impression time.
-            features = np.zeros(NUM_FEATURES)
-            features[0] = 1.0  # bias
-            features[1] = min(event.score, 1.0)  # use score as proxy for urgency
+            # Prefer the feature vector stored at impression time (carried
+            # onto interaction events by log_interaction). Legacy events
+            # predate feature storage — fall back to the score proxy.
+            stored = (event.context_snapshot or {}).get("features")
+            if isinstance(stored, list) and len(stored) == NUM_FEATURES:
+                features = np.array(stored, dtype=float)
+            else:
+                features = np.zeros(NUM_FEATURES)
+                features[0] = 1.0  # bias
+                features[1] = min(event.score, 1.0)  # score as urgency proxy
 
             strategy = event.strategy_name
             if strategy not in updates:

@@ -18,16 +18,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 
-async def log_impression(session: AsyncSession, response: dict) -> None:
+async def log_impression(session: AsyncSession, response: dict, features: list | None = None) -> None:
     """Log a recommendation impression — one event per shown recommendation.
 
     Called from the /api/recommend endpoint after the engine decides.
+    `features` is the bandit's context feature vector, stored here so the
+    nightly weight update can learn from the context that produced the
+    impression (reconstructing it later is impossible).
     Best-effort: failures are swallowed so they don't break recommendations.
     """
     try:
         from ..models import RecommendationEvent
 
         impression_id = response.get("impression_id", uuid.uuid4().hex[:16])
+        snapshot = {"features": features} if features else {}
 
         # Log primary.
         primary = response.get("primary")
@@ -42,7 +46,7 @@ async def log_impression(session: AsyncSession, response: dict) -> None:
                 rank=1,
                 event_type="impression",
                 reward=None,
-                context_snapshot={},
+                context_snapshot=snapshot,
             )
             session.add(event)
 
@@ -58,7 +62,7 @@ async def log_impression(session: AsyncSession, response: dict) -> None:
                 rank=i,
                 event_type="impression",
                 reward=None,
-                context_snapshot={},
+                context_snapshot=snapshot,
             )
             session.add(event)
     except Exception:
@@ -112,6 +116,13 @@ async def log_interaction(
 
         reward = calculate_reward(action_type, duration_secs)
 
+        # Carry the impression's feature vector onto the interaction event —
+        # the bandit updates from interaction rows, and the features belong
+        # to the moment the impression was made, not the moment of the click.
+        snap = dict(impression.context_snapshot or {}) if impression else {}
+        if duration_secs is not None:
+            snap["duration_secs"] = duration_secs
+
         # Update the impression's reward.
         if impression:
             impression.reward = reward
@@ -127,7 +138,7 @@ async def log_interaction(
             rank=impression.rank if impression else 0,
             event_type=action_type,
             reward=reward,
-            context_snapshot={"duration_secs": duration_secs} if duration_secs else {},
+            context_snapshot=snap,
         )
         session.add(event)
         # The caller owns the transaction — no commit here (same convention

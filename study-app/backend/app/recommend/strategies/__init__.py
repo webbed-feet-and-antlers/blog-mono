@@ -8,6 +8,7 @@ register_all(). The engine and other strategies never need to change.
 from __future__ import annotations
 
 from ..context import UserContext, RecommendationResult
+from datetime import datetime, timezone
 
 
 def _format_tilt(ctx: UserContext) -> bool:
@@ -216,24 +217,107 @@ class WeakSpotStrategy:
         return best_doc
 
 
+class PlanTodayStrategy:
+    """Today's study-plan item — the plan speaks on the home card.
+
+    The planner already paced each module toward its exam; this makes the
+    recommendation panel and the plan one voice instead of two agents
+    disagreeing. Scored just below FSRS-due reviews (memory decay is the
+    one thing that outranks a commitment) and above everything else.
+    """
+    name = "plan_today"
+    category = "learn"
+
+    # Plan item type → frontend action. review_* routes to the study
+    # session composer; take_quiz/read_document deep-link to the doc.
+    _ACTIONS = {
+        "review_concepts": ("review_flashcards", None, True),
+        "review_deck": ("review_flashcards", None, True),
+        "take_quiz": ("view_document", "quiz", True),
+        "generate_quiz": ("generate_quiz", "quiz", False),
+        "generate_flashcards": ("generate_flashcards", "flashcards", False),
+        "read_document": ("view_document", "document", True),
+    }
+
+    def evaluate(self, ctx: UserContext) -> RecommendationResult | None:
+        if not ctx.plan_today:
+            return None
+        item = ctx.plan_today[0]
+        action, tab, ready = self._ACTIONS.get(
+            item.get("type"), ("view_document", "document", True)
+        )
+        title = item.get("title") or "Today's plan"
+        module_title = item.get("module_title", "your module")
+        rationale = item.get("rationale") or "Scheduled in your study plan."
+        estimate = item.get("estimate_mins")
+        if estimate:
+            rationale += f" (~{estimate} min)"
+        return RecommendationResult(
+            strategy_name=self.name,
+            category=self.category,
+            action=action,
+            title=f"Today's plan: {title}",
+            rationale=f"{module_title} — {rationale}",
+            score=0.92,  # top authority under FSRS-due reviews
+            document_id=(item.get("target") or {}).get("document_id"),
+            tab=tab,
+            ready=ready,
+        )
+
+
 class ProactiveDeckStrategy:
-    """An unseen proactive review deck exists — recommend it."""
+    """An unseen proactive review deck exists — recommend the most relevant.
+
+    Decks are ranked by overlap with the learner's slow/weak concepts
+    rather than taken in list order: the deck that targets the actual
+    weakness is the one worth a click.
+    """
     name = "proactive_deck"
     category = "practice"
 
     def evaluate(self, ctx: UserContext) -> RecommendationResult | None:
         if not ctx.proactive_decks:
             return None
-        deck = ctx.proactive_decks[0]
+        weak_set = {c["concept"] for c in ctx.slow_concepts}
+        for entry in ctx.weak_topics:
+            topic = entry.get("topic")
+            if topic:
+                weak_set.add(str(topic))
+
+        best_deck = None
+        best_overlap = -1
+        for deck in ctx.proactive_decks:
+            concepts = {
+                (card.get("concept") or "").strip()
+                for card in deck.content.get("cards", [])
+            }
+            overlap = len(concepts & weak_set)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_deck = deck
+        deck = best_deck
+        if deck is None:
+            return None
+
         doc = ctx.documents.get(deck.document_id)
         title_str = doc.filename if doc else "your documents"
         card_count = len(deck.content.get("cards", []))
+        if best_overlap > 0:
+            rationale = (
+                f"The agent prepared a {card_count}-card review deck targeting "
+                f"{best_overlap} of your weak concepts. Jump right in."
+            )
+        else:
+            rationale = (
+                f"The agent prepared a {card_count}-card review deck from "
+                f"{title_str}. Jump right in."
+            )
         return RecommendationResult(
             strategy_name=self.name,
             category=self.category,
             action="review_flashcards",
             title="A review deck is ready for you",
-            rationale=f"The agent prepared a {card_count}-card review deck from {title_str}. Jump right in.",
+            rationale=rationale,
             score=0.80,
             document_id=deck.document_id,
             tab="flashcards",
@@ -321,6 +405,57 @@ class StartNotesStrategy:
                     ready=False,
                 )
         return None
+
+
+class RevisitStrategy:
+    """A previously-read document untouched for days — revisit it.
+
+    Engagement remembers when each doc was last opened; staleness plus
+    prior attention (they chose to read it once) is a gentle, grounded
+    nudge. Scores below gap strategies — a revisit is nice, a gap is work.
+    """
+    name = "revisit"
+    category = "learn"
+    REVISIT_DAYS = 5
+
+    def evaluate(self, ctx: UserContext) -> RecommendationResult | None:
+        now = datetime.now(timezone.utc)
+        docs = ctx.engagement.get("docs") or {}
+        best = None  # (days_stale, doc_id)
+        for doc_id, entry in docs.items():
+            entry = entry or {}
+            if (entry.get("views") or 0) <= 0 or doc_id not in ctx.documents:
+                continue
+            last = entry.get("last_viewed")
+            if not last:
+                continue
+            try:
+                last_dt = datetime.fromisoformat(str(last))
+            except ValueError:
+                continue
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            days = (now - last_dt).days
+            if days >= self.REVISIT_DAYS and (best is None or days > best[0]):
+                best = (days, doc_id)
+        if best is None:
+            return None
+        days, doc_id = best
+        doc = ctx.documents[doc_id]
+        return RecommendationResult(
+            strategy_name=self.name,
+            category=self.category,
+            action="view_document",
+            title=f"Revisit {doc.filename}",
+            rationale=(
+                f"You haven't revisited this in {days} days — "
+                "a quick re-read keeps it fresh."
+            ),
+            score=0.40,
+            document_id=doc_id,
+            tab="document",
+            ready=True,
+        )
 
 
 class QuizStrategy:
@@ -453,10 +588,12 @@ def register_all(engine):
     engine.register(OnboardingStrategy())
     engine.register(DueReviewReadyStrategy())
     engine.register(DueReviewGenerateStrategy())
+    engine.register(PlanTodayStrategy())
     engine.register(WeakSpotStrategy())
     engine.register(ProactiveDeckStrategy())
     engine.register(QuizGapStrategy())
     engine.register(StartNotesStrategy())
+    engine.register(RevisitStrategy())
     engine.register(QuizStrategy())
     engine.register(FlashcardStrategy())
     engine.register(FallbackStrategy())
