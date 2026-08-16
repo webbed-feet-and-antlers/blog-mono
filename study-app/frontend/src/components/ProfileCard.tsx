@@ -37,9 +37,10 @@ export function ProfileCard() {
           <span className={`profile-level-badge ${level}`}>
             {level === "unknown" ? "New" : level}
           </span>
-          <span className="profile-level-label">
-            {isUnknown ? "Learner" : `${level} learner`}
-          </span>
+          {/* The badge already states the level; only label the unknown state. */}
+          {isUnknown && (
+            <span className="profile-level-label">Learner</span>
+          )}
           <Brain size={14} className="profile-card-brain" />
         </div>
         <div className="profile-stats">

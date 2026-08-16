@@ -171,6 +171,27 @@ export function DocTabView() {
     (selectedId ? items.find((i) => i.id === selectedId) : undefined) ??
     latest;
 
+  // Broken link / deleted document: show a proper error state instead of
+  // spinning on "Loading…" forever.
+  if (doc.isError) {
+    return (
+      <div className="empty-hero">
+        <div className="empty-icon">
+          <FileText size={30} strokeWidth={1.8} />
+        </div>
+        <h2>Document not found</h2>
+        <p>It may have been deleted, or the link is broken.</p>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => navigate({ to: "/modules" })}
+        >
+          Back to modules
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="section-head">

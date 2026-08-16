@@ -27,6 +27,7 @@
   --danger: #dc2626;
   --danger-tint: #fee2e2;
   --warn: #d97706;
+  --warn-tint: #fef3c7;
 
   /* Lines */
   --border: #e4e4e7;
@@ -100,6 +101,17 @@ button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* Keyboard focus ring — visible only for keyboard navigation, so mouse
+   users never see it. Components with their own focus styling (inputs
+   with accent border + tint ring) opt out via their :focus rules. */
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -140,6 +152,16 @@ button.small {
   display: grid;
   grid-template-columns: 300px 1fr;
   height: 100vh;
+}
+
+/* Focused, full-screen experiences (record / lecture / study): no sidebar,
+   the page component owns its width and padding. */
+.app.app-focused {
+  grid-template-columns: 1fr;
+}
+.app.app-focused .main {
+  padding: 0;
+  max-width: none;
 }
 
 .sidebar {
@@ -306,6 +328,9 @@ button.small {
   font-size: 0.95rem;
   max-width: 360px;
   line-height: 1.5;
+}
+.empty-hero button {
+  margin-top: 20px;
 }
 
 .loading {
@@ -744,8 +769,8 @@ button.small {
 }
 .flashcard {
   width: 100%;
-  height: 280px;
-  position: relative;
+  min-height: 280px;
+  display: grid;
   cursor: pointer;
   transform-style: preserve-3d;
   transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -754,8 +779,8 @@ button.small {
   transform: rotateY(180deg);
 }
 .card-face {
-  position: absolute;
-  inset: 0;
+  grid-area: 1 / 1;
+  position: relative;
   border-radius: var(--r-lg);
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
@@ -763,9 +788,12 @@ button.small {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 48px;
+  /* Extra top room so centered text never collides with the corner pill
+     ("QUESTION" / "ANSWER") when content grows tall. */
+  padding: 52px 48px 44px;
   text-align: center;
   box-shadow: var(--shadow-md);
+  overflow-wrap: anywhere;
 }
 .card-face.front {
   background: var(--panel);
@@ -1060,7 +1088,7 @@ button.small {
   padding: 3px 8px;
   border-radius: var(--r-pill);
 }
-.study-tag.review { background: #fef3c7; color: #b45309; }
+.study-tag.review { background: var(--warn-tint); color: var(--warn); }
 .study-tag.new { background: var(--accent-tint); color: var(--accent); }
 .study-progress-bar {
   width: 100%;
@@ -1147,7 +1175,7 @@ button.small {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--panel-hover, rgba(255, 255, 255, 0.05));
+  background: var(--panel-hover);
   border: 1px solid var(--border);
   padding: 4px 10px;
   border-radius: var(--r-pill);
@@ -1168,7 +1196,7 @@ button.small {
   text-overflow: ellipsis;
 }
 .mic-select option {
-  background: var(--panel, #1e1e24);
+  background: var(--panel);
   color: var(--text);
 }
 
@@ -1193,7 +1221,7 @@ button.small {
   animation: pulse 1.2s ease-in-out infinite;
 }
 .recording-pulse.paused {
-  background: #f59e0b;
+  background: var(--warn);
   animation: none;
 }
 .timer-text {
@@ -1207,7 +1235,7 @@ button.small {
   color: var(--danger);
 }
 .timer-text.paused {
-  color: #f59e0b;
+  color: var(--warn);
 }
 .paused-badge {
   font-size: 0.68rem;
@@ -1215,8 +1243,8 @@ button.small {
   letter-spacing: 0.06em;
   padding: 3px 8px;
   border-radius: var(--r-pill);
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  background: rgba(217, 119, 6, 0.15);
+  color: var(--warn);
   text-transform: uppercase;
 }
 
@@ -1230,7 +1258,7 @@ button.small {
 }
 .audio-meter-fill {
   height: 100%;
-  background: linear-gradient(90deg, #10b981 0%, #3b82f6 70%, #ef4444 100%);
+  background: linear-gradient(90deg, var(--ok) 0%, #3b82f6 70%, var(--danger) 100%);
   border-radius: var(--r-pill);
   transition: width 0.08s ease-out;
 }
@@ -1263,20 +1291,20 @@ button.small {
   transition: background 0.15s, border-color 0.15s;
 }
 .record-action-btn:hover {
-  background: var(--panel-hover, rgba(255, 255, 255, 0.08));
+  background: var(--panel-hover);
   border-color: var(--border-strong);
 }
 .record-action-btn.pause-btn:hover {
-  color: #f59e0b;
-  border-color: rgba(245, 158, 11, 0.4);
+  color: var(--warn);
+  border-color: rgba(217, 119, 6, 0.4);
 }
 .record-action-btn.resume-btn {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
-  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(22, 163, 74, 0.1);
+  color: var(--ok);
+  border-color: rgba(22, 163, 74, 0.3);
 }
 .record-action-btn.resume-btn:hover {
-  background: rgba(16, 185, 129, 0.2);
+  background: rgba(22, 163, 74, 0.2);
 }
 
 .record-big-btn {
@@ -1423,7 +1451,7 @@ button.small {
   cursor: pointer;
 }
 .slide-jump-select option {
-  background: var(--panel, #1e1e24);
+  background: var(--panel);
   color: var(--text);
 }
 .slide-counter {
@@ -1446,7 +1474,7 @@ button.small {
   color: #fff;
   border: none;
   cursor: pointer;
-  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.2));
+  box-shadow: var(--shadow-sm);
   transition: background 0.15s, transform 0.08s;
   margin-left: 4px;
 }
@@ -1455,13 +1483,13 @@ button.small {
   transform: translateY(-1px);
 }
 .post-slide-btn.posted {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: rgba(22, 163, 74, 0.15);
+  color: var(--ok);
+  border: 1px solid rgba(22, 163, 74, 0.3);
   box-shadow: none;
 }
 .post-slide-btn.posted:hover {
-  background: rgba(16, 185, 129, 0.25);
+  background: rgba(22, 163, 74, 0.25);
 }
 
 .slide-timestamps {
@@ -1488,13 +1516,13 @@ button.small {
   border-radius: var(--r-pill);
   background: var(--accent-tint);
   color: var(--accent);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(91, 91, 214, 0.2);
   overflow: hidden;
   transition: background 0.12s, border-color 0.12s;
 }
 .slide-ts-badge.active {
   border-color: var(--accent);
-  background: rgba(59, 130, 246, 0.25);
+  background: rgba(91, 91, 214, 0.25);
   font-weight: 600;
 }
 .slide-ts-click {
@@ -1556,14 +1584,14 @@ button.small {
   font-weight: 600;
   color: var(--accent);
   background: var(--accent-tint);
-  border: 1px solid rgba(59, 130, 246, 0.25);
+  border: 1px solid rgba(91, 91, 214, 0.25);
   border-radius: var(--r-pill);
   padding: 3px 10px;
   cursor: pointer;
   transition: background 0.12s;
 }
 .notes-ts-btn:hover {
-  background: rgba(59, 130, 246, 0.25);
+  background: rgba(91, 91, 214, 0.25);
 }
 
 /* Modal Confirmation Dialog */
@@ -1578,13 +1606,15 @@ button.small {
   z-index: 1000;
 }
 .modal-content {
-  background: var(--panel, #18181b);
-  border: 1px solid var(--border-strong, #3f3f46);
-  border-radius: var(--r-md, 12px);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
   padding: 24px 28px;
   max-width: 440px;
   width: 90%;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    0 24px 64px -12px rgba(24, 24, 27, 0.25),
+    0 4px 16px rgba(24, 24, 27, 0.08);
 }
 .modal-header {
   display: flex;
@@ -1598,7 +1628,7 @@ button.small {
   margin: 0;
 }
 .text-warning {
-  color: #f59e0b;
+  color: var(--warn);
 }
 .modal-content p {
   font-size: 0.9rem;
@@ -1803,7 +1833,7 @@ button.small {
   color: #fff;
 }
 .profile-level-badge.beginner {
-  background: #f59e0b;
+  background: var(--warn);
 }
 .profile-level-badge.intermediate {
   background: var(--accent);
@@ -1861,7 +1891,7 @@ button.small {
   color: var(--text-faint);
 }
 .rec-due {
-  color: #b45309;
+  color: var(--warn);
   font-weight: 600;
 }
 
@@ -2396,7 +2426,7 @@ button.small {
   color: var(--text-dim);
 }
 .drive-card-icon.audio-icon {
-  background: var(--ok-tint, #e8f5e9);
+  background: var(--ok-tint);
   color: var(--ok);
 }
 
@@ -2803,7 +2833,7 @@ button.small {
   flex-shrink: 0;
 }
 .mastery-dot.very-weak { background: var(--danger); }
-.mastery-dot.weak { background: #f59e0b; }
+.mastery-dot.weak { background: var(--warn); }
 .mastery-dot.strong { background: var(--ok); }
 .mastery-dot.new { background: var(--text-faint); }
 .concept-name {
@@ -2827,8 +2857,8 @@ button.small {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--r-pill);
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--warn-tint);
+  color: var(--warn);
 }
 .concept-blocked-badge {
   display: inline-flex;
@@ -2857,7 +2887,7 @@ button.small {
 }
 .prereq-mastery { color: var(--text-dim); }
 .prereq-mastery.very-weak { color: var(--danger); font-weight: 500; }
-.prereq-mastery.weak { color: #b45309; }
+.prereq-mastery.weak { color: var(--warn); }
 .prereq-mastery.strong { color: var(--ok); }
 .prereq-mastery.new { color: var(--text-faint); }
 .concept-modules {
@@ -2886,8 +2916,8 @@ button.small {
   font-weight: 600;
   padding: 3px 9px;
   border-radius: var(--r-pill);
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--warn-tint);
+  color: var(--warn);
   margin-bottom: 10px;
 }
 
@@ -3143,7 +3173,7 @@ button.small {
 
 
 .proactive-banner {
-  background: linear-gradient(135deg, var(--accent-tint) 0%, #f5f3ff 100%);
+  background: linear-gradient(135deg, var(--accent-tint) 0%, var(--accent-tint-strong) 100%);
   border: 1px solid var(--accent-tint-strong);
   border-radius: var(--r-md);
   padding: 16px 20px;
@@ -3208,7 +3238,7 @@ button.small {
 }
 
 .profile-card-clickable:hover {
-  border-color: var(--accent, #7c6cf0);
+  border-color: var(--accent);
 }
 
 .profile-card-brain {
@@ -3234,7 +3264,7 @@ button.small {
   align-items: center;
   gap: 12px;
   padding: 16px 20px 14px;
-  border-bottom: 1px solid var(--border, #2a2a30);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -3245,8 +3275,8 @@ button.small {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: var(--accent-tint, rgba(124, 108, 240, 0.12));
-  color: var(--accent, #7c6cf0);
+  background: var(--accent-tint);
+  color: var(--accent);
   flex-shrink: 0;
 }
 
@@ -3275,7 +3305,7 @@ button.small {
 
 .understanding-summary {
   margin: 2px 0 10px;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.55;
 }
 
@@ -3287,11 +3317,11 @@ button.small {
 }
 
 .understanding-trait {
-  font-size: 12px;
+  font-size: 0.75rem;
   padding: 3px 10px;
-  border-radius: var(--r-pill, 999px);
-  background: var(--accent-tint, rgba(124, 108, 240, 0.12));
-  color: var(--accent, #7c6cf0);
+  border-radius: var(--r-pill);
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 
 .understanding-habits {
@@ -3307,7 +3337,7 @@ button.small {
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.65;
 }
 
@@ -3317,8 +3347,8 @@ button.small {
   gap: 6px;
   font-size: 12.5px;
   padding: 4px 12px;
-  border-radius: var(--r-pill, 999px);
-  border: 1px solid var(--border, #2a2a30);
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -3326,8 +3356,8 @@ button.small {
 }
 
 .understanding-refresh:hover:not(:disabled) {
-  border-color: var(--accent, #7c6cf0);
-  color: var(--accent, #7c6cf0);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .understanding-refresh:disabled {
@@ -3337,7 +3367,7 @@ button.small {
 
 .understanding-refresh-msg {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   opacity: 0.65;
 }
 
@@ -3352,7 +3382,7 @@ button.small {
 
 .understanding-empty p {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.81rem;
   color: var(--text-dim);
   line-height: 1.5;
   max-width: 340px;
@@ -3368,11 +3398,11 @@ button.small {
 .understanding-stat {
   padding: 8px 10px;
   border-radius: 10px;
-  background: var(--bg-inset, rgba(127, 127, 127, 0.08));
+  background: var(--bg-inset);
 }
 
 .understanding-stat-value {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
 }
 
@@ -3403,17 +3433,17 @@ button.small {
 }
 
 .understanding-hist-bar:hover {
-  background: var(--text-dim, #888);
+  background: var(--text-dim);
 }
 
 .understanding-hist-bar.best {
-  background: var(--accent, #7c6cf0);
+  background: var(--accent);
 }
 
 .understanding-hist-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 0.625rem;
   opacity: 0.45;
   margin-top: 3px;
 }
@@ -3438,14 +3468,14 @@ button.small {
   gap: 12px;
   padding: 7px 10px;
   border-radius: 10px;
-  background: var(--bg-inset, rgba(127, 127, 127, 0.08));
-  font-size: 13px;
+  background: var(--bg-inset);
+  font-size: 0.81rem;
 }
 
 .understanding-doc .cdi-sub {
   white-space: nowrap;
   opacity: 0.6;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 /* --- Module study plan panel ----------------------------------------------- */
@@ -3453,9 +3483,9 @@ button.small {
 .module-plan {
   margin: 14px 0 22px;
   padding: 16px 18px;
-  border: 1px solid var(--border, #2a2a30);
-  border-radius: var(--r-md, 12px);
-  background: var(--panel, #18181b);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--panel);
 }
 
 .module-plan-empty {
@@ -3472,7 +3502,7 @@ button.small {
   gap: 7px;
   font-weight: 600;
   font-size: 0.95rem;
-  color: var(--accent, #7c6cf0);
+  color: var(--accent);
 }
 
 .module-plan-empty-text p {
@@ -3502,10 +3532,10 @@ button.small {
 }
 
 .module-plan-date-input {
-  border: 1px solid var(--border, #2a2a30);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 5px 9px;
-  background: var(--bg, #0f0f12);
+  background: var(--bg);
   color: inherit;
   font: inherit;
   font-size: 0.82rem;
@@ -3532,14 +3562,14 @@ button.small {
   font-size: 0.74rem;
   font-weight: 600;
   padding: 2px 9px;
-  border-radius: var(--r-pill, 999px);
-  background: var(--bg-inset, rgba(127, 127, 127, 0.12));
+  border-radius: var(--r-pill);
+  background: var(--bg-inset);
   color: var(--text-dim);
 }
 
 .module-plan-exam-chip.soon {
   background: rgba(239, 68, 68, 0.14);
-  color: #f87171;
+  color: var(--danger);
 }
 
 .module-plan-date-edit {
@@ -3553,7 +3583,7 @@ button.small {
 }
 
 .module-plan-date-edit:hover {
-  color: var(--accent, #7c6cf0);
+  color: var(--accent);
 }
 
 .module-plan-meta {
@@ -3569,7 +3599,7 @@ button.small {
 }
 
 .module-plan-stale {
-  color: #f59e0b;
+  color: var(--warn);
   font-style: normal;
 }
 
@@ -3580,21 +3610,21 @@ button.small {
   width: 26px;
   height: 26px;
   border-radius: 8px;
-  border: 1px solid var(--border, #2a2a30);
+  border: 1px solid var(--border);
   background: transparent;
   color: inherit;
   cursor: pointer;
 }
 
 .module-plan-refresh:hover:not(:disabled) {
-  border-color: var(--accent, #7c6cf0);
-  color: var(--accent, #7c6cf0);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .module-plan-progress-bar {
   height: 4px;
   border-radius: 2px;
-  background: var(--bg-inset, rgba(127, 127, 127, 0.15));
+  background: var(--bg-inset);
   overflow: hidden;
   margin-bottom: 14px;
 }
@@ -3602,7 +3632,7 @@ button.small {
 .module-plan-progress-fill {
   height: 100%;
   border-radius: 2px;
-  background: var(--accent, #7c6cf0);
+  background: var(--accent);
   transition: width 0.3s ease;
 }
 
@@ -3632,7 +3662,7 @@ button.small {
   align-items: stretch;
   gap: 0;
   border-radius: 10px;
-  background: var(--bg-inset, rgba(127, 127, 127, 0.08));
+  background: var(--bg-inset);
   overflow: hidden;
 }
 
@@ -3666,8 +3696,8 @@ button.small {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: var(--accent-tint, rgba(124, 108, 240, 0.12));
-  color: var(--accent, #7c6cf0);
+  background: var(--accent-tint);
+  color: var(--accent);
   flex-shrink: 0;
 }
 
@@ -3707,7 +3737,7 @@ button.small {
   justify-content: center;
   width: 36px;
   border: none;
-  border-left: 1px solid var(--border, #2a2a30);
+  border-left: 1px solid var(--border);
   background: none;
   color: var(--text-dim);
   cursor: pointer;
@@ -3715,7 +3745,7 @@ button.small {
 }
 
 .module-plan-check.on {
-  color: #4ade80;
+  color: var(--ok);
   background: rgba(74, 222, 128, 0.08);
 }
 
@@ -3734,9 +3764,9 @@ button.small {
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--border, #2a2a30);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg-inset, rgba(127, 127, 127, 0.06));
+  background: var(--bg-inset);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -3744,12 +3774,12 @@ button.small {
 }
 
 .semester-group-header:hover {
-  border-color: var(--accent, #7c6cf0);
+  border-color: var(--accent);
 }
 
 .semester-group-header.current {
-  border-color: var(--accent, #7c6cf0);
-  background: var(--accent-tint, rgba(124, 108, 240, 0.1));
+  border-color: var(--accent);
+  background: var(--accent-tint);
 }
 
 .semester-group-chevron {
@@ -3767,8 +3797,8 @@ button.small {
   font-size: 0.72rem;
   font-weight: 700;
   padding: 2px 9px;
-  border-radius: var(--r-pill, 999px);
-  background: var(--accent, #7c6cf0);
+  border-radius: var(--r-pill);
+  background: var(--accent);
   color: #fff;
 }
 
@@ -3793,10 +3823,10 @@ button.small {
 
 .form-label input,
 .form-label select {
-  border: 1px solid var(--border, #2a2a30);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 7px 10px;
-  background: var(--bg, #0f0f12);
+  background: var(--bg);
   color: inherit;
   font: inherit;
   font-size: 0.88rem;
@@ -3806,7 +3836,7 @@ button.small {
 .form-label input:focus,
 .form-label select:focus {
   outline: none;
-  border-color: var(--accent, #7c6cf0);
+  border-color: var(--accent);
 }
 
 .form-row {
@@ -3848,9 +3878,9 @@ button.small {
   gap: 10px;
   width: 100%;
   padding: 9px 12px;
-  border: 1px solid var(--border, #2a2a30);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg-inset, rgba(127, 127, 127, 0.06));
+  background: var(--bg-inset);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -3858,7 +3888,7 @@ button.small {
 }
 
 .file-to-module-row:hover {
-  border-color: var(--accent, #7c6cf0);
+  border-color: var(--accent);
 }
 
 .file-to-module-row.lesson {
@@ -3892,8 +3922,8 @@ button.small {
 }
 
 .ftm-expand:hover {
-  background: var(--accent-tint, rgba(124, 108, 240, 0.12));
-  color: var(--accent, #7c6cf0);
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 
 .file-to-module-lessons {
@@ -3907,7 +3937,7 @@ button.small {
   display: flex;
   justify-content: center;
   padding: 12px;
-  border-top: 1px solid var(--border, #2a2a30);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -3916,4 +3946,18 @@ button.small {
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
+}
+
+/* --- Reduced motion ------------------------------------------------------- */
+
+/* Respect the OS-level setting: kill non-essential animation (flips, slides,
+   pulses) while keeping opacity fades for state feedback. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

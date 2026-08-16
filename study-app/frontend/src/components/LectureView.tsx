@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import * as api from "../api/client";
 import { track } from "../api/track";
@@ -88,6 +88,22 @@ export function LectureView() {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+
+  if (lecture.isError) {
+    return (
+      <div className="lecture-loading">
+        <AlertCircle size={24} />
+        Lecture not found — it may have been deleted.
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => navigate({ to: "/" })}
+        >
+          Back to home
+        </button>
+      </div>
+    );
   }
 
   if (lecture.isLoading || !data) {

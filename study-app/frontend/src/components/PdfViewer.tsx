@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -35,6 +35,20 @@ export function PdfViewer({ url, filename, docId }: Props) {
   const [error, setError] = useState<string | null>(null);
   // Rate-limit zoom telemetry: at most one event per 2s.
   const lastZoomTrackRef = useRef(0);
+  // Track the canvas width so pages can fit-to-width at zoom 1x. The zoom
+  // buttons then act as a multiplier over that fitted width.
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasWidth, setCanvasWidth] = useState<number>(0);
+
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const measure = () => setCanvasWidth(el.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   function onDocumentLoadSuccess({ numPages }: { numPages: number }) {
     setNumPages(numPages);
@@ -95,7 +109,7 @@ export function PdfViewer({ url, filename, docId }: Props) {
         </span>
       </div>
 
-      <div className="pdf-canvas">
+      <div className="pdf-canvas" ref={canvasRef}>
         <Document
           file={url}
           onLoadSuccess={onDocumentLoadSuccess}
@@ -118,7 +132,14 @@ export function PdfViewer({ url, filename, docId }: Props) {
                 <Page
                   key={`page_${i + 1}`}
                   pageNumber={i + 1}
-                  scale={scale}
+                  /* Fit to the available width at 1x; the zoom multiplier
+                     scales on top. Falls back to react-pdf's default when
+                     the container hasn't been measured yet. */
+                  width={
+                    canvasWidth > 0
+                      ? Math.max(240, (canvasWidth - 48) * scale)
+                      : undefined
+                  }
                   renderTextLayer
                   renderAnnotationLayer
                 />

@@ -5,6 +5,7 @@ import {
   Outlet,
   redirect,
   useNavigate,
+  useRouterState,
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Sidebar } from "./components/Sidebar";
@@ -28,23 +29,33 @@ const queryClient = new QueryClient({
 
 // --- Layout shell (shared sidebar + main content via <Outlet>) ---
 
+// Routes that render as focused, full-screen experiences (recorder, lecture
+// playback, study session) get no sidebar — the page owns its own layout.
+const FOCUSED_ROUTES = ["/record", "/lecture", "/study"];
+
 function Layout() {
   const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const focused = FOCUSED_ROUTES.some(
+    (r) => pathname === r || pathname.startsWith(`${r}/`),
+  );
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="app">
-        <Sidebar
-          onNavigate={(id: string) =>
-            navigate({ to: "/documents/$docId", params: { docId: id } })
-          }
-          onHome={() => navigate({ to: "/" })}
-          onRecord={() => navigate({ to: "/record" })}
-          onConcepts={() => navigate({ to: "/concepts" })}
-          onDrive={() => navigate({ to: "/modules" })}
-          onQuizzes={() => navigate({ to: "/quizzes" })}
-          onFlashcards={() => navigate({ to: "/flashcards" })}
-        />
+      <div className={`app${focused ? " app-focused" : ""}`}>
+        {!focused && (
+          <Sidebar
+            onNavigate={(id: string) =>
+              navigate({ to: "/documents/$docId", params: { docId: id } })
+            }
+            onHome={() => navigate({ to: "/" })}
+            onRecord={() => navigate({ to: "/record" })}
+            onConcepts={() => navigate({ to: "/concepts" })}
+            onDrive={() => navigate({ to: "/modules" })}
+            onQuizzes={() => navigate({ to: "/quizzes" })}
+            onFlashcards={() => navigate({ to: "/flashcards" })}
+          />
+        )}
         <main className="main">
           <Outlet />
         </main>
