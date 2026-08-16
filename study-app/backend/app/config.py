@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     transcription_model: str = "qwen/qwen3-asr-1.7b"
     audio_max_bytes: int = 500 * 1024 * 1024  # 500 MB
 
+    # Evals (backend/evals/) — the judge is a *stronger* model than the
+    # generator so a model never grades its own failure modes. Runs at
+    # temperature 0 via the same OpenRouter client as everything else.
+    evals_judge_model: str = "deepseek/deepseek-v3.2"
+    evals_n: int = 10  # cases per suite (EVALS_N; a 25-case deep run takes hours)
+
     # Paths
     base_dir: Path = Path(__file__).resolve().parent.parent
     storage_dir: Path = base_dir / "storage"

@@ -83,3 +83,15 @@ tasks:
     dir: study-app/frontend
     cmds:
       - npm run check
+
+  study-app:evals-prepare:
+    desc: "Download + prepare public eval datasets into study-app/backend/evals/data/"
+    dir: study-app/backend
+    cmds:
+      - "VIRTUAL_ENV= uv run python -m evals.data"
+
+  study-app:evals:
+    desc: "Run the AI-feature eval suites (needs study-app:evals-prepare first; EVALS_N caps cases/suite)"
+    dir: study-app/backend
+    cmds:
+      - "VIRTUAL_ENV= uv run pytest evals/ -m evals -rA --tb=short"

@@ -19,7 +19,7 @@ interface.
 │                 │        │  ┌────────────────────────────────────┐  │
 │  • upload docs  │        │  │  LangGraph agent (shared backbone)  │  │
 │  • notes view   │        │  │                                    │  │
-│  • quiz play    │        │  │  analyze → plan → retrieve_memory   │  │
+│  • quiz play    │        │  │  analyze → retrieve_memory → plan   │  │
 │  • card review  │        │  │      → generate → validate → finalize│ │
 │                 │        │  │                                    │  │
 │                 │        │  │  tools: notes / quiz / flashcards   │  │
@@ -39,14 +39,14 @@ interface.
 All three features run through one LangGraph `StateGraph`:
 
 ```
-START → analyze_document → plan → retrieve_memory → generate → validate → finalize → END
+START → analyze_document → retrieve_memory → plan → generate → validate → finalize → END
 ```
 
 | Node | Job |
 |---|---|
 | `analyze_document` | Extract topic, concepts, structure, difficulty from the doc. Cached per-doc in memory so it only runs once. |
-| `plan` | Given the requested feature + analysis, *decide* what to generate (e.g. "8 questions weighted to weak topics"). |
 | `retrieve_memory` | Pull prior learnings — quiz misses, style prefs, past generations — into the generation context. **This is the shared-backbone payoff.** |
+| `plan` | Given the requested feature + analysis + memory, *decide* what to generate (e.g. "8 questions weighted to weak topics"). |
 | `generate` | Dispatch to the feature tool (`generate_notes` / `generate_quiz` / `generate_flashcards`). |
 | `validate` | Structural self-check (quiz has 4 options + valid answer, cards aren't empty, etc.). Bad output is rejected, not persisted. |
 | `finalize` | Persist a `ContentItem` and write back what the agent learned to memory. |

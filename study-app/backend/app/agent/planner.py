@@ -40,6 +40,17 @@ def _as_utc(dt: datetime | None) -> datetime | None:
     return dt
 
 
+def _clip_rationale(text: str, limit: int = 220) -> str:
+    """Clip a rationale to `limit` chars without cutting mid-word."""
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    clip = text[:limit]
+    if " " in clip:
+        clip = clip[: clip.rfind(" ")]
+    return clip.rstrip(" ,;:-") + "…"
+
+
 ITEM_TYPES = (
     "review_concepts",
     "take_quiz",
@@ -70,7 +81,9 @@ _SYSTEM_PROMPT = (
     "- Schedule generate_quiz/generate_flashcards for documents that have "
     "no material yet; take_quiz/review_deck for those that do.\n"
     "- Each rationale must cite the data behind it (due count, recall %, "
-    "missing material, exam proximity).\n\n"
+    "missing material, exam proximity). Write rationales as natural prose "
+    "for the learner — never echo input flags like has_quiz/has_deck or "
+    "other machine field names.\n\n"
     'Return ONLY JSON: {"items": [{"type": str, "title": str, "rationale": '
     "str, \"day_offset\": int, \"estimate_mins\": int, \"document_title\": "
     "str | null, \"concepts\": [str] | null}]}"
@@ -325,7 +338,7 @@ def _validate_items(
             "id": uuid.uuid4().hex[:10],
             "type": itype,
             "title": title,
-            "rationale": str(raw.get("rationale", "")).strip()[:220],
+            "rationale": _clip_rationale(str(raw.get("rationale", "")).strip()),
             "day_offset": max(0, min(int(raw.get("day_offset") or 0), MAX_DAYS_HORIZON - 1)),
             "estimate_mins": max(5, min(int(raw.get("estimate_mins") or 15), 90)),
             "status": "pending",

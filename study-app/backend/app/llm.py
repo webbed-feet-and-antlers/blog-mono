@@ -44,16 +44,18 @@ async def chat(
     temperature: float = 0.3,
     max_tokens: int | None = None,
     retries: int = 2,
+    model: str | None = None,
 ) -> str:
     """Run a chat completion and return the assistant's text content.
 
     Retries on empty responses (a common transient failure on cheap/free LLM
     endpoints like OpenRouter's free tier — the model returns "" on rate limits
-    or timeouts). Backs off 1s, then 2s.
+    or timeouts). Backs off 1s, then 2s. `model` optionally overrides
+    settings.openrouter_model for a single call (the evals judge uses this).
     """
     client = _get_client()
     kwargs: dict[str, Any] = {
-        "model": settings.openrouter_model,
+        "model": model or settings.openrouter_model,
         "messages": messages,
         "temperature": temperature,
     }
@@ -100,6 +102,7 @@ async def chat_json(
     *,
     temperature: float = 0.3,
     max_tokens: int | None = None,
+    model: str | None = None,
 ) -> dict[str, Any]:
     """Chat expecting a JSON object response. Parses and returns the dict.
 
@@ -118,6 +121,7 @@ async def chat_json(
         json_mode=True,
         temperature=temperature,
         max_tokens=max_tokens,
+        model=model,
     )
     try:
         return json.loads(raw)
@@ -145,6 +149,7 @@ async def chat_json(
             json_mode=True,
             temperature=temperature,
             max_tokens=max_tokens,
+            model=model,
         )
         try:
             return json.loads(raw)
@@ -155,6 +160,7 @@ async def chat_json(
         json_mode=True,
         temperature=temperature,
         max_tokens=max_tokens,
+        model=model,
     )
     try:
         return json.loads(raw)

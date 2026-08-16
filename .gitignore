@@ -239,3 +239,7 @@ study-app/backend/study_app.db
 study-app/backend/study_app.db-*
 study-app/backend/storage/
 study-app/frontend/dist/
+# Eval harness — downloaded datasets + per-run reports (baselines are tracked)
+study-app/backend/evals/data/
+study-app/backend/evals/reports/*
+!study-app/backend/evals/reports/baselines/
