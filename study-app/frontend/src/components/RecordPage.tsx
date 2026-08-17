@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   Mic,
   MicOff,
+  Monitor,
   Square,
   ArrowLeft,
   FileText,
@@ -22,7 +23,12 @@ import {
   Check,
   X,
 } from "lucide-react";
-import { useRecorder, formatTime, blobToFile } from "../hooks/useRecorder";
+import {
+  useRecorder,
+  formatTime,
+  blobToFile,
+  type AudioSource,
+} from "../hooks/useRecorder";
 import * as api from "../api/client";
 import { track } from "../api/track";
 import { toast } from "sonner";
@@ -73,11 +79,18 @@ export function RecordPage() {
     availableDevices,
     selectedDeviceId,
     setSelectedDeviceId,
+    screenAudioActive,
     start,
     pause,
     resume,
     stop,
   } = useRecorder();
+
+  // Screen/tab audio capture is Chrome/Edge-only (getDisplayMedia audio);
+  // unsupported browsers only see the microphone option.
+  const screenAudioSupported =
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices?.getDisplayMedia;
 
   const slidesInputRef = useRef<HTMLInputElement>(null);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -98,6 +111,8 @@ export function RecordPage() {
   // Set when getUserMedia fails on start (permission denied / no mic) so the
   // failed click is surfaced instead of silently doing nothing.
   const [micError, setMicError] = useState<string | null>(null);
+  // Audio source for the next recording (microphone / + screen / screen only).
+  const [audioSource, setAudioSource] = useState<AudioSource>("mic");
   // Set while the "add to module" prompt is open — the recording keeps
   // running until a choice is made, so nothing is lost on Skip/close.
   const [filingPrompt, setFilingPrompt] = useState(false);
@@ -137,6 +152,35 @@ export function RecordPage() {
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isRecording, isPaused]);
+
+  // Log a start only when recording actually began (a cancelled share picker
+  // or denied mic never flips isRecording), with the source that was chosen.
+  const startLoggedRef = useRef(false);
+  useEffect(() => {
+    if (isRecording && !startLoggedRef.current) {
+      startLoggedRef.current = true;
+      track("recording.started", { source: audioSource });
+    }
+    if (!isRecording) startLoggedRef.current = false;
+  }, [isRecording, audioSource]);
+
+  // A live session can also end from outside the page — clicking "Stop
+  // sharing" in the browser's bar stops the recorder in useRecorder. Route
+  // that into the same stop-and-save flow the Stop button uses, so the
+  // captured audio isn't stranded (guards mirror handleStopAndSave).
+  useEffect(() => {
+    if (
+      !isRecording &&
+      !isPaused &&
+      !saving &&
+      !filingPrompt &&
+      !showLeaveModal &&
+      startPromiseRef.current &&
+      elapsedSec >= 1
+    ) {
+      setFilingPrompt(true);
+    }
+  }, [isRecording, isPaused, saving, filingPrompt, showLeaveModal, elapsedSec]);
 
   // Keyboard navigation for slides preview & note timestamp shortcut (Cmd+T / Ctrl+T)
   useEffect(() => {
@@ -268,15 +312,18 @@ export function RecordPage() {
 
   async function handleStartRecording() {
     setMicError(null);
-    const startPromise = start();
+    const startPromise = start({ source: audioSource });
     startPromiseRef.current = startPromise;
-    // The start promise only rejects before recording begins (mic permission
-    // denied, no input device) — a running recorder always resolves on stop.
+    // The start promise only rejects before recording begins (permission
+    // denied, picker cancelled, no audio shared) — a running recorder always
+    // resolves on stop.
     startPromise.catch((err) => {
       console.error("Failed to start recording:", err);
       startPromiseRef.current = null;
       setMicError(
-        "Microphone unavailable — check this site's microphone permission in your browser settings, then try again."
+        err instanceof Error && err.message
+          ? err.message
+          : "Microphone unavailable — check this site's microphone permission in your browser settings, then try again."
       );
     });
     // Post initial baseline timestamp for slide 1 at 0s
@@ -340,6 +387,7 @@ export function RecordPage() {
   function confirmLeave() {
     if (isRecording || isPaused) {
       track("recording.discarded", { duration_secs: elapsedSec });
+      startPromiseRef.current = null; // discarded — don't trigger the save flow
       stop();
     }
     localStorage.removeItem(DRAFT_KEY);
@@ -388,12 +436,36 @@ export function RecordPage() {
           onChange={(e) => setTitle(e.target.value)}
         />
 
+        {/* Audio source: microphone, screen/tab audio, or both mixed */}
+        <Select
+          value={audioSource}
+          onValueChange={(v) => setAudioSource(v as AudioSource)}
+          disabled={isRecording || isPaused}
+        >
+          <SelectTrigger
+            className="h-8 w-48 gap-1.5 text-xs"
+            aria-label="Audio source"
+          >
+            <Monitor size={14} className="shrink-0 text-muted-foreground" />
+            <SelectValue placeholder="Microphone" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="mic">Microphone</SelectItem>
+            <SelectItem value="mic+screen" disabled={!screenAudioSupported}>
+              Microphone + screen audio
+            </SelectItem>
+            <SelectItem value="screen" disabled={!screenAudioSupported}>
+              Screen audio only
+            </SelectItem>
+          </SelectContent>
+        </Select>
+
         {/* Audio Input Device Dropdown */}
         {availableDevices.length > 0 && (
           <Select
             value={selectedDeviceId ?? undefined}
             onValueChange={setSelectedDeviceId}
-            disabled={isRecording || isPaused}
+            disabled={isRecording || isPaused || audioSource === "screen"}
           >
             <SelectTrigger
               className="h-8 w-52 gap-1.5 text-xs"
@@ -450,7 +522,13 @@ export function RecordPage() {
           {/* Segmented level meter (decorative, driven by audioLevel) */}
           <div
             className="audio-meter"
-            title={`Microphone input level: ${audioLevel}%`}
+            title={`${
+              audioSource === "screen"
+                ? "Screen audio"
+                : audioSource === "mic+screen"
+                  ? "Mixed mic + screen"
+                  : "Microphone"
+            } level: ${audioLevel}%`}
             aria-hidden="true"
           >
             {Array.from({ length: METER_SEGMENTS }, (_, i) => (
@@ -462,6 +540,16 @@ export function RecordPage() {
               />
             ))}
           </div>
+
+          {screenAudioActive && (
+            <span
+              className="screen-audio-chip"
+              title="The recording captures the shared tab/screen's audio. Clicking 'Stop sharing' in your browser ends the session."
+            >
+              <Monitor size={13} />
+              Screen audio — “Stop sharing” ends it
+            </span>
+          )}
 
           <div className="transport-actions">
             {isPaused ? (

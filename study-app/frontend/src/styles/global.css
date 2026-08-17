@@ -872,6 +872,20 @@ textarea:focus-visible,
   text-transform: uppercase;
 }
 
+/* Live indicator while a screen/tab share feeds the recording */
+.screen-audio-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
 /* Segmented LED level meter */
 .audio-meter {
   display: flex;

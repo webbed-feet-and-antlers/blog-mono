@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** Where a recording's audio comes from. */
+export type AudioSource = "mic" | "mic+screen" | "screen";
+
+export interface StartOptions {
+  source?: AudioSource;
+  deviceIdOverride?: string;
+}
+
 /**
  * Reusable audio recording hook (MediaRecorder API).
  * Supports start, pause, resume, stop, real-time audio volume visualizer levels,
  * and audio input device enumeration.
+ *
+ * `start({ source })` picks the audio source: microphone only (default),
+ * the audio of a shared tab/screen (`getDisplayMedia`), or both mixed through
+ * a Web Audio graph — the recorder always emits a single audio track.
  */
 export function useRecorder() {
   const [isRecording, setIsRecording] = useState(false);
@@ -12,6 +24,7 @@ export function useRecorder() {
   const [audioLevel, setAudioLevel] = useState(0); // 0 to 100
   const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+  const [screenAudioActive, setScreenAudioActive] = useState(false);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -20,6 +33,13 @@ export function useRecorder() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const displayStreamRef = useRef<MediaStream | null>(null);
+  const mixCtxRef = useRef<AudioContext | null>(null);
+  // The browser's own "Stop sharing" bar ends the session like Stop & save;
+  // the track's onended handler calls stop via this ref (stop is defined
+  // after start, so a direct reference isn't in scope there).
+  const stopRef = useRef<() => void>(() => {});
 
   // Enumerate input devices
   const loadDevices = useCallback(async () => {
@@ -86,18 +106,97 @@ export function useRecorder() {
     setAudioLevel(0);
   }, []);
 
-  const start = useCallback(async (deviceIdOverride?: string): Promise<Blob> => {
-    const targetDeviceId = deviceIdOverride || selectedDeviceId;
-    const constraints: MediaStreamConstraints = {
-      audio: targetDeviceId ? { deviceId: { exact: targetDeviceId } } : true,
-    };
+  // Stop every source stream and close the mixing graph. Idempotent.
+  const teardownSources = useCallback(() => {
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    displayStreamRef.current?.getTracks().forEach((t) => {
+      t.onended = null;
+      t.stop();
+    });
+    micStreamRef.current = null;
+    displayStreamRef.current = null;
+    if (mixCtxRef.current && mixCtxRef.current.state !== "closed") {
+      mixCtxRef.current.close().catch(() => {});
+    }
+    mixCtxRef.current = null;
+    setScreenAudioActive(false);
+  }, []);
 
+  const start = useCallback(async (opts?: StartOptions): Promise<Blob> => {
+    const source = opts?.source ?? "mic";
+    const wantScreen = source !== "mic";
+    const wantMic = source !== "screen";
+
+    // Screen/tab audio first — the picker is the step most likely to be
+    // cancelled, and cancelling shouldn't have grabbed the mic yet.
+    let displayStream: MediaStream | null = null;
+    if (wantScreen) {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        throw new Error(
+          "Screen audio isn't supported by this browser — use Chrome or Edge, or record with the microphone."
+        );
+      }
+      try {
+        // video is required to open the picker; only the audio track is kept
+        displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
+      } catch {
+        throw new Error(
+          "Screen audio cancelled — nothing was recorded. Try again and pick the tab or screen playing the lecture."
+        );
+      }
+      if (displayStream.getAudioTracks().length === 0) {
+        displayStream.getTracks().forEach((t) => t.stop());
+        throw new Error(
+          "No audio was shared. Pick the tab playing the lecture (or, on Windows, an entire screen) and tick “Share tab audio” in the picker."
+        );
+      }
+      displayStream.getVideoTracks().forEach((t) => t.stop());
+    }
+
+    let micStream: MediaStream | null = null;
+    if (wantMic) {
+      const targetDeviceId = opts?.deviceIdOverride || selectedDeviceId;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: targetDeviceId ? { deviceId: { exact: targetDeviceId } } : true,
+        });
+      } catch {
+        try {
+          // Fallback to basic audio constraints if exact device fails
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (err) {
+          displayStream?.getTracks().forEach((t) => t.stop());
+          throw err;
+        }
+      }
+    }
+
+    // One recorded stream: both sources mixed through a Web Audio graph, or
+    // the single source directly (the default mic path is unchanged).
     let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (err) {
-      // Fallback to basic audio constraints if exact device fails
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (micStream && displayStream) {
+      const AudioContextClass =
+        window.AudioContext || (window as any).webkitAudioContext;
+      const mixCtx = new AudioContextClass();
+      const dest = mixCtx.createMediaStreamDestination();
+      mixCtx.createMediaStreamSource(micStream).connect(dest);
+      mixCtx.createMediaStreamSource(displayStream).connect(dest);
+      stream = dest.stream;
+      mixCtxRef.current = mixCtx;
+    } else {
+      stream = (micStream ?? displayStream)!;
+    }
+    micStreamRef.current = micStream;
+    displayStreamRef.current = displayStream;
+
+    if (displayStream) {
+      setScreenAudioActive(true);
+      displayStream.getAudioTracks().forEach((t) => {
+        t.onended = () => stopRef.current();
+      });
     }
 
     // Refresh device list after permission is granted
@@ -120,7 +219,7 @@ export function useRecorder() {
     const blobPromise = new Promise<Blob>((resolve) => {
       resolveRef.current = resolve;
       recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
+        teardownSources();
         const blob = new Blob(chunksRef.current, { type: mimeType });
         resolve(blob);
       };
@@ -139,7 +238,7 @@ export function useRecorder() {
     }, 1000);
 
     return blobPromise;
-  }, [selectedDeviceId, loadDevices, setupAudioAnalysis]);
+  }, [selectedDeviceId, loadDevices, setupAudioAnalysis, teardownSources]);
 
   const pause = useCallback(() => {
     if (recorderRef.current && isRecording && recorderRef.current.state === "recording") {
@@ -182,8 +281,13 @@ export function useRecorder() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       cleanupAudioAnalysis();
+      teardownSources();
     };
-  }, [cleanupAudioAnalysis]);
+  }, [cleanupAudioAnalysis, teardownSources]);
+
+  useEffect(() => {
+    stopRef.current = stop;
+  }, [stop]);
 
   return {
     isRecording,
@@ -193,6 +297,7 @@ export function useRecorder() {
     availableDevices,
     selectedDeviceId,
     setSelectedDeviceId,
+    screenAudioActive,
     start,
     pause,
     resume,
