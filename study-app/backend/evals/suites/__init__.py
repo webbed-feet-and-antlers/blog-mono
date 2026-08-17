@@ -77,7 +77,15 @@ async def quiz_chain(case_id: str, document_text: str, memory: dict) -> tuple:
     if key not in chain_cache:
         analysis = await tools.analyze_document(document_text)
         plan = await tools.plan_task("quiz", analysis, memory, None)
-        quiz = await tools.generate_quiz(document_text, analysis, plan, memory)
+        quiz = None
+        for _ in range(3):  # transient JSON failures from the generator
+            try:
+                quiz = await tools.generate_quiz(document_text, analysis, plan, memory)
+                break
+            except ValueError:
+                continue
+        if quiz is None:
+            raise RuntimeError(f"generate_quiz failed for {case_id} after 3 attempts")
         chain_cache[key] = (analysis, plan, quiz)
     return chain_cache[key]
 
@@ -103,6 +111,24 @@ async def flashcard_chain(case_id: str, document_text: str, memory: dict) -> tup
 def clamp01(score: float | None) -> float:
     """LLM judges occasionally return out-of-range numbers — clamp."""
     return max(0.0, min(1.0, float(score or 0.0)))
+
+
+async def judge_score(metric, test_case) -> tuple[float | None, str]:
+    """a_measure with one retry on unparseable verdicts.
+
+    GEval signals "could not extract a verdict" with a negative score —
+    that is a harness hiccup, not a judgment. Re-ask once, then give up
+    (None) so callers skip the case instead of counting it as a zero.
+    NOTE: criteria must not mention a 0.0-1.0 scale — GEval's prompt has
+    the judge score 0-10 and normalizes by /10, so conflicting scales
+    produce crushed or anchored-to-example-zero scores."""
+    reason = ""
+    for _ in range(2):
+        await metric.a_measure(test_case, _show_indicator=False)
+        reason = metric.reason or ""
+        if metric.score is not None and metric.score >= 0:
+            return clamp01(metric.score), reason
+    return None, reason
 
 
 # --- Deterministic structural checks (mirror the validate node) --------------

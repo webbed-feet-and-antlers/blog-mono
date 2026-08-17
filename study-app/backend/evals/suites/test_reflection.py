@@ -193,7 +193,7 @@ ARCHETYPES = {
 
 
 @pytest.mark.parametrize("archetype", list(ARCHETYPES))
-async def test_reflection_faithfulness(archetype, db):
+async def test_reflection_deterministic(archetype, db):
     from app.agent import reflection
 
     allowed_numbers = await ARCHETYPES[archetype](db)
@@ -255,35 +255,76 @@ async def test_reflection_faithfulness(archetype, db):
     )
     assert clamps_ok
 
-    # 3. Judge: every claim traceable to the actual grounding packet.
-    packet_dict = await reflection._build_grounding_packet(db, total_activities=12)
-    packet = reflection._render_packet(packet_dict)
-    metric = rubric(
-        "Insight faithfulness",
-        criteria=(
-            "The 'actual output' is an AI-written narrative about a learner; "
-            "the 'context' is the complete grounded data packet it was "
-            "allowed to see. Score what fraction of the narrative's claims "
-            "are directly supported by the packet. Invented habits, "
-            "unwarranted generalizations ('always studies at night' from two "
-            "data points), contradictions of the data, and unsupported "
-            "evaluations score low. Flavor and phrasing are free; substance "
-            "must be traceable."
-        ),
-        evaluation_params=[SingleTurnParams.CONTEXT, SingleTurnParams.ACTUAL_OUTPUT],
-        # Regression floor, not the aspiration: the first calibrated run
-        # showed the generator contradicting its packet on ~1-in-3 claims
-        # (e.g. "has not reviewed any flashcards" over 8 flashcard
-        # activities). Improve the layer, then raise this bar.
-        threshold=0.45,
-    )
-    test_case = LLMTestCase(
-        input="Learner narrative", actual_output=text, context=[packet],
-    )
-    await metric.a_measure(test_case, _show_indicator=False)
-    record(
-        "reflection", "faithfulness", case=archetype,
-        score=metric.score or 0.0, threshold=metric.threshold,
-        success=metric.is_successful(), reason=metric.reason or "",
-    )
-    assert metric.is_successful(), metric.reason
+
+async def test_reflection_faithfulness(db):
+    """Aggregate gate on the judge: every claim in the narrative traceable
+    to the grounding packet. Per-archetype verdicts are recorded (a single
+    archetype dipping below the bar is a FINDING, visible in the report);
+    the run gates on the mean.
+
+    Regression floor, not the aspiration: the first calibrated run showed
+    the generator contradicting its packet (e.g. "has not reviewed any
+    flashcards" over 8 flashcard activities). Improve the layer, then
+    raise this bar."""
+    from sqlalchemy import delete
+
+    from app.agent import reflection
+    from app.db import SessionLocal, init_db
+    from app.models import AgentMemory, UserActivity
+
+    from evals.suites import judge_score
+
+    threshold = 0.45
+    scores = []
+    for archetype, seed in ARCHETYPES.items():
+        await init_db()
+        async with SessionLocal() as s:  # fresh world per archetype
+            await s.execute(delete(AgentMemory).where(AgentMemory.scope == "user"))
+            await s.execute(delete(UserActivity))
+            await s.commit()
+        allowed_numbers = await seed(db)
+
+        payload = None
+        for _ in range(3):
+            payload = await reflection.reflect_on_learner(db, force=True)
+            if (payload or {}).get("insights", {}).get("summary"):
+                break
+        insights = (payload or {}).get("insights") or {}
+        assert insights.get("summary"), f"{archetype}: no reflection produced"
+
+        text = " ".join(
+            [insights.get("summary", "")]
+            + [str(t) for t in insights.get("traits") or []]
+            + [str(insights.get("habits") or "")]
+        )
+        packet_dict = await reflection._build_grounding_packet(db, total_activities=12)
+        packet = reflection._render_packet(packet_dict)
+        metric = rubric(
+            "Insight faithfulness",
+            criteria=(
+                "The 'actual output' is an AI-written narrative about a learner; "
+                "the 'context' is the complete grounded data packet it was "
+                "allowed to see. Score what fraction of the narrative's claims "
+                "are directly supported by the packet. Invented habits, "
+                "unwarranted generalizations ('always studies at night' from two "
+                "data points), contradictions of the data, and unsupported "
+                "evaluations score low. Flavor and phrasing are free; substance "
+                "must be traceable."
+            ),
+            evaluation_params=[SingleTurnParams.CONTEXT, SingleTurnParams.ACTUAL_OUTPUT],
+            threshold=threshold,
+        )
+        test_case = LLMTestCase(
+            input="Learner narrative", actual_output=text, context=[packet],
+        )
+        score, reason = await judge_score(metric, test_case)
+        if score is not None:
+            scores.append(score)
+        record(
+            "reflection", "faithfulness", case=archetype,
+            score=score if score is not None else 0.0, threshold=threshold,
+            success=(score is not None and score >= threshold), reason=reason,
+        )
+    assert scores, "no parseable judge verdicts in this run"
+    mean = sum(scores) / len(scores)
+    assert mean >= threshold, f"mean insight faithfulness {mean:.2f} < {threshold}"

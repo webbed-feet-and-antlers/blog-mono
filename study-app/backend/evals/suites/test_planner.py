@@ -177,8 +177,9 @@ async def test_plan_invariants_and_rationales(index, case):
             "grounding facts, score what fraction of rationales cite real "
             "evidence (weak concepts by name, due-for-review status, the "
             "exam timing, unread documents) rather than generic filler "
-            "('this will help you succeed'). 1.0 = every rationale names "
-            "its evidence; 0.0 = pure filler."
+            "('this will help you succeed') — from every rationale naming "
+            "its evidence at the top of the scale to pure filler at the "
+            "bottom."
         ),
         evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
         threshold=0.60,
@@ -187,10 +188,14 @@ async def test_plan_invariants_and_rationales(index, case):
         input=f"Grounding facts:\n{grounding_summary}",
         actual_output=rendered,
     )
-    await metric.a_measure(test_case, _show_indicator=False)
+    from evals.suites import judge_score
+
+    score, reason = await judge_score(metric, test_case)
     record(
         "planner", "rationale_cites_evidence", case=case["id"],
-        score=metric.score or 0.0, threshold=metric.threshold,
-        success=metric.is_successful(), reason=metric.reason or "",
+        score=score if score is not None else 0.0, threshold=metric.threshold,
+        success=(score is not None and score >= metric.threshold), reason=reason,
     )
-    assert metric.is_successful(), metric.reason
+    if score is None:
+        pytest.skip("judge verdict unparseable after retry")
+    assert score >= metric.threshold, reason

@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   UploadCloud,
-  Loader2,
   Pause,
   Play,
   Clock,
@@ -25,7 +24,34 @@ import {
 import { useRecorder, formatTime, blobToFile } from "../hooks/useRecorder";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { toast } from "sonner";
 import { FileToModuleModal, type FilingTarget } from "./FileToModuleModal";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface SlideTimestampState {
   slide_number: number;
@@ -263,6 +289,7 @@ export function RecordPage() {
 
     localStorage.removeItem(DRAFT_KEY);
     setSaving(false);
+    toast.success("Lecture saved", { description: sessionTitle });
     navigate({ to: "/lecture/$lectureId", params: { lectureId: session.id } });
   }
 
@@ -292,15 +319,21 @@ export function RecordPage() {
     <div className={`record-page ${isFullscreenSlide ? "fullscreen-active" : ""}`}>
       {/* Header Bar */}
       <div className="record-header">
-        <button
-          className="ghost icon-btn"
-          onClick={handleBackClick}
-          title="Back to dashboard"
-        >
-          <ArrowLeft size={20} />
-        </button>
-        <input
-          className="record-title-input"
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleBackClick}
+              aria-label="Back to dashboard"
+            >
+              <ArrowLeft size={20} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Back to dashboard</TooltipContent>
+        </Tooltip>
+        <Input
+          className="record-title-input h-9 min-w-0 flex-1 border-0 bg-transparent px-2 text-base shadow-none focus-visible:ring-0 dark:bg-transparent"
           placeholder="Lecture title…"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -308,22 +341,26 @@ export function RecordPage() {
 
         {/* Audio Input Device Dropdown */}
         {availableDevices.length > 0 && (
-          <div className="mic-select-container">
-            <Settings size={15} className="mic-select-icon" />
-            <select
-              className="mic-select"
-              value={selectedDeviceId}
-              onChange={(e) => setSelectedDeviceId(e.target.value)}
-              disabled={isRecording || isPaused}
-              title="Select Microphone Input"
+          <Select
+            value={selectedDeviceId ?? undefined}
+            onValueChange={setSelectedDeviceId}
+            disabled={isRecording || isPaused}
+          >
+            <SelectTrigger
+              className="h-8 w-52 gap-1.5 text-xs"
+              aria-label="Select microphone input"
             >
+              <Settings size={14} className="shrink-0 text-muted-foreground" />
+              <SelectValue placeholder="Microphone" />
+            </SelectTrigger>
+            <SelectContent>
               {availableDevices.map((dev, idx) => (
-                <option key={dev.deviceId || idx} value={dev.deviceId}>
+                <SelectItem key={dev.deviceId || idx} value={dev.deviceId || `mic-${idx}`}>
                   {dev.label || `Microphone ${idx + 1}`}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-          </div>
+            </SelectContent>
+          </Select>
         )}
       </div>
 
@@ -389,7 +426,7 @@ export function RecordPage() {
             >
               {saving ? (
                 <>
-                  <Loader2 size={24} className="spinner" />
+                  <Spinner className="size-6" />
                   Saving…
                 </>
               ) : (
@@ -421,7 +458,7 @@ export function RecordPage() {
               />
               {uploadingSlides ? (
                 <>
-                  <Loader2 size={28} className="spinner" />
+                  <Spinner className="size-7" />
                   <span>Uploading slides…</span>
                 </>
               ) : (
@@ -439,7 +476,7 @@ export function RecordPage() {
               <div className="slide-image-container">
                 {slideLoading && (
                   <div className="slide-loader-overlay">
-                    <Loader2 size={24} className="spinner" />
+                    <Spinner className="size-6" />
                   </div>
                 )}
                 {slidesDocId ? (
@@ -461,51 +498,75 @@ export function RecordPage() {
                 )}
 
                 {/* Fullscreen toggle button */}
-                <button
-                  className="ghost icon-btn slide-fullscreen-btn"
-                  onClick={() => setIsFullscreenSlide(!isFullscreenSlide)}
-                  title={isFullscreenSlide ? "Exit full view" : "Full view"}
-                >
-                  {isFullscreenSlide ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="slide-fullscreen-btn"
+                      onClick={() => setIsFullscreenSlide(!isFullscreenSlide)}
+                      aria-label={isFullscreenSlide ? "Exit full view" : "Full view"}
+                    >
+                      {isFullscreenSlide ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {isFullscreenSlide ? "Exit full view" : "Full view"}
+                  </TooltipContent>
+                </Tooltip>
               </div>
 
               {/* Navigation & Explicit Post Controls */}
               <div className="slide-nav">
-                <button
-                  className="ghost icon-btn"
-                  onClick={prevSlide}
-                  disabled={currentSlide <= 1}
-                  title="Preview previous slide (Left Arrow)"
-                >
-                  <ChevronLeft size={20} />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={prevSlide}
+                      disabled={currentSlide <= 1}
+                      aria-label="Preview previous slide"
+                    >
+                      <ChevronLeft size={20} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Previous slide (←)</TooltipContent>
+                </Tooltip>
 
                 {/* Jump / Preview dropdown */}
-                <select
-                  className="slide-jump-select"
-                  value={currentSlide}
-                  onChange={(e) => jumpToSlide(Number(e.target.value))}
-                  title="Preview specific slide"
+                <Select
+                  value={String(currentSlide)}
+                  onValueChange={(v) => jumpToSlide(Number(v))}
                 >
-                  {Array.from({ length: slideCount }, (_, i) => i + 1).map((n) => {
-                    const isPosted = slideTimestamps.some((t) => t.slide_number === n);
-                    return (
-                      <option key={n} value={n}>
-                        Slide {n} / {slideCount} {isPosted ? "✓" : ""}
-                      </option>
-                    );
-                  })}
-                </select>
+                  <SelectTrigger className="slide-jump-select h-8 w-auto gap-1 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: slideCount }, (_, i) => i + 1).map((n) => {
+                      const isPosted = slideTimestamps.some((t) => t.slide_number === n);
+                      return (
+                        <SelectItem key={n} value={String(n)}>
+                          Slide {n} / {slideCount} {isPosted ? "✓" : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
 
-                <button
-                  className="ghost icon-btn"
-                  onClick={nextSlide}
-                  disabled={currentSlide >= slideCount}
-                  title="Preview next slide (Right Arrow)"
-                >
-                  <ChevronRight size={20} />
-                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={nextSlide}
+                      disabled={currentSlide >= slideCount}
+                      aria-label="Preview next slide"
+                    >
+                      <ChevronRight size={20} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Next slide (→)</TooltipContent>
+                </Tooltip>
 
                 {/* Explicit Post Slide Button */}
                 <button
@@ -571,16 +632,24 @@ export function RecordPage() {
           <div className="record-notes">
             <div className="notes-header-bar">
               <span className="notes-label">Lecture Notes</span>
-              <button
-                className="notes-ts-btn"
-                onClick={insertTimestamp}
-                title="Insert current time marker into notes (Cmd+T / Ctrl+T)"
-              >
-                <Tag size={13} />
-                Insert {formatTime(elapsedSec)}
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    onClick={insertTimestamp}
+                  >
+                    <Tag size={13} />
+                    Insert {formatTime(elapsedSec)}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Insert current time marker into notes (⌘T / Ctrl+T)
+                </TooltipContent>
+              </Tooltip>
             </div>
-            <textarea
+            <Textarea
               ref={notesTextareaRef}
               className="notes-textarea"
               placeholder="Type lecture notes here... Use [Cmd+T] to insert timestamp or [Cmd+P] to post current slide."
@@ -600,29 +669,30 @@ export function RecordPage() {
         />
       )}
 
-      {showLeaveModal && (
-        <div className="modal-backdrop">
-          <div className="modal-content">
-            <div className="modal-header">
-              <AlertTriangle size={24} className="text-warning" />
-              <h3>Leave Recording Studio?</h3>
-            </div>
-            <p>
+      <AlertDialog open={showLeaveModal} onOpenChange={setShowLeaveModal}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle size={24} className="text-warn" />
+              Leave Recording Studio?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               {isRecording || isPaused
                 ? "You have an active recording in progress. Leaving will stop and discard your current session."
                 : "You have unsaved notes in this recording session."}
-            </p>
-            <div className="modal-actions">
-              <button className="ghost" onClick={() => setShowLeaveModal(false)}>
-                Continue Recording
-              </button>
-              <button className="record-big-btn recording" onClick={confirmLeave}>
-                <RotateCcw size={16} /> Discard & Leave
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Continue Recording</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={confirmLeave}
+            >
+              <RotateCcw size={16} /> Discard & Leave
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

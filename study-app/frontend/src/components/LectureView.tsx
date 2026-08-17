@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft } from "lucide-react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import * as api from "../api/client";
 import { track } from "../api/track";
 import type { SlideTimestamp } from "../types";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export function LectureView() {
   const navigate = useNavigate();
@@ -95,13 +104,9 @@ export function LectureView() {
       <div className="lecture-loading">
         <AlertCircle size={24} />
         Lecture not found — it may have been deleted.
-        <button
-          type="button"
-          className="ghost"
-          onClick={() => navigate({ to: "/" })}
-        >
+        <Button variant="ghost" onClick={() => navigate({ to: "/" })}>
           Back to home
-        </button>
+        </Button>
       </div>
     );
   }
@@ -109,7 +114,7 @@ export function LectureView() {
   if (lecture.isLoading || !data) {
     return (
       <div className="lecture-loading">
-        <Loader2 size={24} className="spinner" />
+        <Spinner className="size-6" />
         Loading lecture…
       </div>
     );
@@ -118,13 +123,19 @@ export function LectureView() {
   return (
     <div className="lecture-view">
       <div className="lecture-header">
-        <button
-          className="ghost icon-btn"
-          onClick={() => navigate({ to: "/" })}
-          title="Back"
-        >
-          <ArrowLeft size={20} />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate({ to: "/" })}
+              aria-label="Back"
+            >
+              <ArrowLeft size={20} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Back</TooltipContent>
+        </Tooltip>
         <h2>{data.title}</h2>
         <span className="lecture-duration">{formatDuration(data.duration_seconds)}</span>
       </div>
@@ -170,14 +181,18 @@ export function LectureView() {
           <div className="lecture-transcript-section">
             <h3 className="section-label">Transcript</h3>
             {transcriptStatus === "pending" || transcriptStatus === "transcribing" ? (
-              <div className="transcription-banner">
-                <Loader2 size={16} className="spinner" />
-                {transcriptStatus === "transcribing"
-                  ? "Transcribing audio…"
-                  : "Waiting for transcription to start…"}
-              </div>
+              <Alert className="border-accent-strong bg-accent text-muted-foreground">
+                <Spinner className="size-4" />
+                <AlertDescription>
+                  {transcriptStatus === "transcribing"
+                    ? "Transcribing audio…"
+                    : "Waiting for transcription to start…"}
+                </AlertDescription>
+              </Alert>
             ) : transcriptStatus === "failed" ? (
-              <div className="error">Transcription failed</div>
+              <Alert variant="destructive">
+                <AlertDescription>Transcription failed</AlertDescription>
+              </Alert>
             ) : transcript ? (
               <pre className="doc-text lecture-transcript">{transcript}</pre>
             ) : (
@@ -188,8 +203,8 @@ export function LectureView() {
           {/* Notes */}
           <div className="lecture-notes-section">
             <h3 className="section-label">Notes</h3>
-            <textarea
-              className="notes-textarea lecture-notes-editor"
+            <Textarea
+              className="lecture-notes-editor"
               placeholder="Write notes…"
               value={notesValue}
               onChange={(e) => handleNotesChange(e.target.value)}

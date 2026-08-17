@@ -8,7 +8,15 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Sidebar } from "./components/Sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
+import {
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import { AppSidebar } from "./components/Sidebar";
 import { RecommendationPanel } from "./components/RecommendationPanel";
 import { DocTabView, pendingGenerate } from "./components/DocTabView";
 import { RecordPage } from "./components/RecordPage";
@@ -27,7 +35,7 @@ const queryClient = new QueryClient({
   },
 });
 
-// --- Layout shell (shared sidebar + main content via <Outlet>) ---
+// --- Layout shell (shadcn Sidebar + main content via <Outlet>) ---
 
 // Routes that render as focused, full-screen experiences (recorder, lecture
 // playback, study session) get no sidebar — the page owns its own layout.
@@ -40,27 +48,51 @@ function Layout() {
     (r) => pathname === r || pathname.startsWith(`${r}/`),
   );
 
-  return (
+  const providers = (children: React.ReactNode) => (
     <QueryClientProvider client={queryClient}>
-      <div className={`app${focused ? " app-focused" : ""}`}>
-        {!focused && (
-          <Sidebar
-            onNavigate={(id: string) =>
-              navigate({ to: "/documents/$docId", params: { docId: id } })
-            }
-            onHome={() => navigate({ to: "/" })}
-            onRecord={() => navigate({ to: "/record" })}
-            onConcepts={() => navigate({ to: "/concepts" })}
-            onDrive={() => navigate({ to: "/modules" })}
-            onQuizzes={() => navigate({ to: "/quizzes" })}
-            onFlashcards={() => navigate({ to: "/flashcards" })}
-          />
-        )}
-        <main className="main">
-          <Outlet />
-        </main>
-      </div>
+      <TooltipProvider delayDuration={300}>
+        {children}
+        <Toaster richColors position="bottom-right" />
+      </TooltipProvider>
     </QueryClientProvider>
+  );
+
+  if (focused) {
+    return providers(
+      <main className="main main-focused">
+        <Outlet />
+      </main>,
+    );
+  }
+
+  return providers(
+    <SidebarProvider
+      style={
+        { "--sidebar-width": "300px", "--sidebar-width-icon": "3rem" } as React.CSSProperties
+      }
+    >
+      <AppSidebar
+        pathname={pathname}
+        onNavigate={(id: string) =>
+          navigate({ to: "/documents/$docId", params: { docId: id } })
+        }
+        onHome={() => navigate({ to: "/" })}
+        onRecord={() => navigate({ to: "/record" })}
+        onConcepts={() => navigate({ to: "/concepts" })}
+        onDrive={() => navigate({ to: "/modules" })}
+        onQuizzes={() => navigate({ to: "/quizzes" })}
+        onFlashcards={() => navigate({ to: "/flashcards" })}
+      />
+      <SidebarInset>
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4">
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="!h-4" />
+        </header>
+        <div className="main flex-1">
+          <Outlet />
+        </div>
+      </SidebarInset>
+    </SidebarProvider>,
   );
 }
 

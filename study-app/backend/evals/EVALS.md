@@ -7,17 +7,17 @@ run suites, and `reports/baselines/` for the committed reference run.
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| concept_f1 | 0.661 | 4 | — | — |
-| difficulty_accuracy | 0.400 | 10 | — | — |
-| prereq_edge_recall | 0.008 | 4 | — | — |
-| summary_faithfulness | 1.000 | 4 | — | — |
+| concept_f1 | 0.655 | 4 | — | — |
+| difficulty_accuracy | 0.700 | 10 | — | — |
+| prereq_edge_recall | 0.016 | 4 | — | — |
+| summary_faithfulness | 0.900 | 4 | — | — |
 
 ## flashcards
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| application_style_shift | 0.820 | 5 | — | — |
-| quality_rubric | 0.860 | 10 | — | — |
+| application_style_shift | 0.500 | 4 | — | — |
+| quality_rubric | 0.880 | 10 | — | — |
 | structural_pass | 1.000 | 10 | — | — |
 | variant_distinctness | 1.000 | 10 | — | — |
 
@@ -42,29 +42,29 @@ run suites, and `reports/baselines/` for the committed reference run.
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| faithfulness | 0.981 | 10 | — | — |
-| key_point_coverage | 0.740 | 10 | — | — |
-| rouge1_recall_vs_abstract | 0.020 | 10 | — | — |
+| faithfulness | 0.989 | 10 | — | — |
+| key_point_coverage | 0.400 | 10 | — | — |
+| rouge1_recall_vs_abstract | 0.023 | 10 | — | — |
 | structure_pass | 1.000 | 8 | — | — |
 
 ## planner
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| invariants_pass | 1.000 | 3 | — | — |
+| invariants_pass | 0.600 | 5 | — | — |
 | max_daily_minutes | 51.667 | 3 | — | — |
-| rationale_cites_evidence | 1.000 | 3 | — | — |
+| rationale_cites_evidence | 0.900 | 3 | — | — |
 | weak_engaged_early | 0.667 | 3 | — | — |
 
 ## quiz
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| concept_tag_accuracy | 0.000 | 10 | — | — |
-| distractor_plausibility | 0.150 | 10 | — | — |
-| groundedness | 0.000 | 10 | — | — |
-| personalization_shift | 0.140 | 5 | — | — |
-| structural_pass | 0.000 | 10 | — | — |
+| concept_tag_accuracy | 1.000 | 10 | — | — |
+| distractor_plausibility | 0.980 | 10 | — | — |
+| groundedness | 1.000 | 10 | — | — |
+| personalization_shift | 0.500 | 2 | — | — |
+| structural_pass | 1.000 | 9 | — | — |
 
 ## recommend
 
@@ -80,15 +80,15 @@ run suites, and `reports/baselines/` for the committed reference run.
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| faithfulness | 0.750 | 2 | — | — |
-| format_clamps | 1.000 | 2 | — | — |
-| numbers_grounded | 0.828 | 3 | — | — |
+| faithfulness | 0.533 | 3 | — | — |
+| format_clamps | 1.000 | 3 | — | — |
+| numbers_grounded | 0.963 | 3 | — | — |
 
 ## rename
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| descriptiveness | 0.460 | 10 | — | — |
+| descriptiveness | 0.430 | 10 | — | — |
 | gate_recall | 1.000 | 10 | — | — |
 | rule_pass | 1.000 | 10 | — | — |
 

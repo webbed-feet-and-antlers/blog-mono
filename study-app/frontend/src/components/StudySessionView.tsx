@@ -5,7 +5,6 @@ import {
   Check,
   RotateCcw,
   ArrowLeft,
-  Loader2,
   Zap,
   Sparkles,
 } from "lucide-react";
@@ -13,6 +12,13 @@ import { useRouterState } from "@tanstack/react-router";
 import * as api from "../api/client";
 import { track } from "../api/track";
 import type { StudySession as StudySessionData } from "../api/client";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { cn } from "@/lib/utils";
 
 interface Props {
   session: StudySessionData;
@@ -110,8 +116,13 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
     const pct = Math.round((correct / total) * 100);
     return (
       <div className="study-complete">
-        <div className="study-complete-card">
-          <div className={`study-score-ring ${pct >= 70 ? "pass" : "fail"}`}>
+        <Card className="study-complete-card flex flex-col items-center gap-2 px-10 py-9 text-center">
+          <div
+            className={cn(
+              "flex size-20 items-center justify-center rounded-full text-xl font-bold text-white",
+              pct >= 70 ? "bg-ok" : "bg-destructive",
+            )}
+          >
             {pct}%
           </div>
           <h2>Session complete</h2>
@@ -125,10 +136,10 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
                 ? "Nice work! You're in the optimal learning zone."
                 : "Keep studying — your next session will focus on review."}
           </p>
-          <button className="primary" onClick={onExit}>
+          <Button className="mt-3" onClick={onExit}>
             Done
-          </button>
-        </div>
+          </Button>
+        </Card>
       </div>
     );
   }
@@ -147,32 +158,30 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
   return (
     <div className="study-session-page">
       <div className="study-header">
-        <button className="ghost icon-btn" onClick={onExit} title="Exit">
+        <Button variant="ghost" size="icon" onClick={onExit} aria-label="Exit">
           <ArrowLeft size={20} />
-        </button>
+        </Button>
         <span className="study-progress-text">
           Card {index + 1} of {initialSession.cards.length}
         </span>
         <div className="study-tags">
           {reviewCount > 0 && (
-            <span className="study-tag review">
+            <Badge variant="warning" className="gap-0.5 px-2 py-px text-[0.68rem]">
               <Zap size={11} /> {reviewCount} review
-            </span>
+            </Badge>
           )}
           {newCount > 0 && (
-            <span className="study-tag new">
+            <Badge variant="accent-soft" className="gap-0.5 px-2 py-px text-[0.68rem]">
               <Sparkles size={11} /> {newCount} new
-            </span>
+            </Badge>
           )}
         </div>
       </div>
 
-      <div className="study-progress-bar">
-        <div
-          className="study-progress-fill"
-          style={{ width: `${progressPct}%` }}
-        />
-      </div>
+      <Progress
+        value={progressPct}
+        className="study-progress-bar h-1.5 max-w-[580px]"
+      />
 
       <div className="card-deck">
         <div className="flashcard-scene">
@@ -206,40 +215,44 @@ export function StudySessionView({ session: initialSession, onExit }: Props) {
         </div>
 
         <div className="card-nav">
-          <button
-            className="icon-btn ghost"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => {
               setFlipped(false);
               setIndex((i) => Math.max(i - 1, 0));
             }}
             disabled={index === 0}
+            aria-label="Previous card"
           >
             <ChevronLeft size={20} />
-          </button>
+          </Button>
           <span className="card-counter">
             {knownCount} / {initialSession.cards.length} known
           </span>
-          <button
-            className="icon-btn ghost"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => {
               setFlipped(false);
               setIndex((i) => Math.min(i + 1, initialSession.cards.length - 1));
             }}
             disabled={isLast}
+            aria-label="Next card"
           >
             <ChevronRight size={20} />
-          </button>
+          </Button>
         </div>
 
         <div className="card-nav">
-          <button onClick={() => markKnown(false)}>
+          <Button variant="outline" onClick={() => markKnown(false)}>
             <RotateCcw size={15} />
             Still learning
-          </button>
-          <button className="primary" onClick={() => markKnown(true)}>
+          </Button>
+          <Button onClick={() => markKnown(true)}>
             <Check size={16} />
             I know this
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -276,7 +289,7 @@ export function StudySessionLoader({ onExit }: { onExit: () => void }) {
     return (
       <div className="study-session-page">
         <div className="loading">
-          <Loader2 size={20} className="spinner" />
+          <Spinner className="size-5" />
           Composing your study session…
         </div>
       </div>
@@ -285,10 +298,14 @@ export function StudySessionLoader({ onExit }: { onExit: () => void }) {
   if (error || !session) {
     return (
       <div className="study-session-page">
-        <div className="error">
-          {error || "Failed to start session."}
-        </div>
-        <button className="ghost" onClick={onExit}>Back</button>
+        <Alert variant="destructive" className="mb-4">
+          <AlertDescription>
+            {error || "Failed to start session."}
+          </AlertDescription>
+        </Alert>
+        <Button variant="ghost" onClick={onExit}>
+          Back
+        </Button>
       </div>
     );
   }

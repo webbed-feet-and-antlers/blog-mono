@@ -2,8 +2,6 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  X,
-  Loader2,
   FileText,
   CircleHelp,
   Layers,
@@ -12,6 +10,17 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Props {
   concept: string;
@@ -36,38 +45,30 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
   }, [concept]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal-content concept-detail-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="concept-detail-modal max-h-[85vh] overflow-y-auto sm:max-w-md">
+        <DialogDescription className="sr-only">
+          Everything that references this concept
+        </DialogDescription>
         {refs.isLoading && (
           <div className="loading concept-detail-loading">
-            <Loader2 size={18} className="spinner" />
+            <Spinner className="size-[18px]" />
             Loading references…
           </div>
         )}
 
         {refs.isError && (
-          <div className="error">
-            Failed to load references: {(refs.error as Error).message}
-          </div>
+          <Alert variant="destructive">
+            <AlertDescription>
+              Failed to load references: {(refs.error as Error).message}
+            </AlertDescription>
+          </Alert>
         )}
 
         {refs.data && (
           <>
-            <div className="concept-detail-header">
-              <div className="concept-detail-title-row">
-                <h3>{refs.data.concept}</h3>
-                <button
-                  type="button"
-                  className="ghost icon-btn"
-                  onClick={onClose}
-                  aria-label="Close"
-                >
-                  <X size={16} />
-                </button>
-              </div>
+            <DialogHeader>
+              <DialogTitle>{refs.data.concept}</DialogTitle>
               <div className="concept-detail-stats">
                 {refs.data.mastery_pct !== null
                   ? `${Math.round(refs.data.mastery_pct * 100)}% mastery`
@@ -77,13 +78,16 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                 {refs.data.retrievability !== null &&
                   ` · ${Math.round(refs.data.retrievability * 100)}% recall now`}
                 {refs.data.due && (
-                  <span className="concept-due-badge concept-detail-due">
+                  <Badge
+                    variant="warning"
+                    className="ml-1 gap-0.5 px-2 py-px text-[0.68rem]"
+                  >
                     <Zap size={11} />
                     due
-                  </span>
+                  </Badge>
                 )}
               </div>
-            </div>
+            </DialogHeader>
 
             {/* Documents */}
             <div className="concept-detail-section">
@@ -95,10 +99,10 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                 <div className="concept-detail-none">No documents reference this concept.</div>
               ) : (
                 refs.data.documents.map((d) => (
-                  <button
+                  <Button
                     key={d.id}
-                    type="button"
-                    className="concept-detail-item"
+                    variant="ghost"
+                    className="concept-detail-item h-auto w-full justify-start gap-2.5 px-3 py-2.5 text-left font-normal whitespace-normal"
                     onClick={() => {
                       track("concept.reference_clicked", {
                         concept,
@@ -115,7 +119,7 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                     <span className="cdi-main">{d.filename}</span>
                     {d.topic && <span className="cdi-sub">{d.topic}</span>}
                     <ChevronRight size={13} className="cdi-arrow" />
-                  </button>
+                  </Button>
                 ))
               )}
             </div>
@@ -132,10 +136,10 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                 </div>
               ) : (
                 refs.data.quiz_questions.map((q, i) => (
-                  <button
+                  <Button
                     key={`${q.content_id}-${q.question_id ?? i}`}
-                    type="button"
-                    className="concept-detail-item"
+                    variant="ghost"
+                    className="concept-detail-item h-auto w-full justify-start gap-2.5 px-3 py-2.5 text-left font-normal whitespace-normal"
                     onClick={() => {
                       track("concept.reference_clicked", {
                         concept,
@@ -154,7 +158,7 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                       <span className="cdi-sub">{q.doc_filename}</span>
                     )}
                     <ChevronRight size={13} className="cdi-arrow" />
-                  </button>
+                  </Button>
                 ))
               )}
             </div>
@@ -171,10 +175,10 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                 </div>
               ) : (
                 refs.data.flashcards.map((c, i) => (
-                  <button
+                  <Button
                     key={`${c.content_id}-${c.card_id ?? i}`}
-                    type="button"
-                    className="concept-detail-item"
+                    variant="ghost"
+                    className="concept-detail-item h-auto w-full justify-start gap-2.5 px-3 py-2.5 text-left font-normal whitespace-normal"
                     onClick={() => {
                       track("concept.reference_clicked", {
                         concept,
@@ -196,13 +200,13 @@ export function ConceptDetailModal({ concept, onClose }: Props) {
                       <span className="cdi-sub">{c.doc_filename}</span>
                     )}
                     <ChevronRight size={13} className="cdi-arrow" />
-                  </button>
+                  </Button>
                 ))
               )}
             </div>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

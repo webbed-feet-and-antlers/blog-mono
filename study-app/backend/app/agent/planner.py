@@ -125,23 +125,42 @@ async def generate_study_plan(
 
     grounding = await _build_grounding(session, module, doc_ids)
 
-    result = await chat_json(
-        [
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Module: {module.title}\nPlan this module's study.\n\n"
-                    + _render(grounding)
-                ),
-            },
-        ],
-        temperature=0.2,
-        max_tokens=2500,
-    )
+    async def _ask_for_items() -> list[dict]:
+        result = await chat_json(
+            [
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Module: {module.title}\nPlan this module's study.\n\n"
+                        + _render(grounding)
+                    ),
+                },
+            ],
+            temperature=0.2,
+            max_tokens=2500,
+        )
+        return _validate_items(result.get("items") or [], grounding["documents"])
 
-    raw_items = result.get("items") or []
-    items = _validate_items(raw_items, grounding["documents"])
+    items = await _ask_for_items()
+
+    # The prompt asks for ≤45 minutes per day but nothing enforced it — the
+    # eval suite caught days of 68-75 minutes. One regeneration, keeping the
+    # lighter of the two plans (gated in evals/suites/test_planner.py).
+    overload = _max_daily_minutes(items)
+    if overload > _DAILY_MINUTE_CAP:
+        logger.info(
+            "[planner] heaviest day %dmin > %dmin cap — regenerating once",
+            overload, _DAILY_MINUTE_CAP,
+        )
+        retry = await _ask_for_items()
+        if _max_daily_minutes(retry) < overload:
+            items = retry
+        if _max_daily_minutes(items) > _DAILY_MINUTE_CAP:
+            logger.warning(
+                "[planner] plan still over budget after retry: %dmin on the "
+                "heaviest day", _max_daily_minutes(items),
+            )
 
     # Carry over completion from the previous version (match type + target).
     existing = await _get_plan(session, module_id)
@@ -293,6 +312,20 @@ async def _build_grounding(
             else None,
         },
     }
+
+
+# The prompt says ≤45min/day; the enforced cap carries margin for item
+# rounding rather than trusting the model to sum its own minutes.
+_DAILY_MINUTE_CAP = 60
+
+
+def _max_daily_minutes(items: list[dict]) -> int:
+    """Heaviest day's estimate_mins total."""
+    per_day: dict[int, int] = {}
+    for it in items:
+        day = int(it.get("day_offset", 0))
+        per_day[day] = per_day.get(day, 0) + int(it.get("estimate_mins", 0))
+    return max(per_day.values(), default=0)
 
 
 def _validate_items(

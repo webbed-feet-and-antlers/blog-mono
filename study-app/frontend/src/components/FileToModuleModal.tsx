@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  X,
   ChevronDown,
   ChevronRight,
   FolderOpen,
@@ -11,6 +10,18 @@ import {
 import * as api from "../api/client";
 import { track } from "../api/track";
 import { groupModulesBySemester } from "../lib/semesters";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 export interface FilingTarget {
   moduleId?: string;
@@ -52,11 +63,14 @@ export function FileToModuleModal({ noun, onSelect, skipLabel }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onClick={() => select(null, null)}>
-      <div
-        className="modal-content file-to-module-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog open onOpenChange={(open) => !open && select(null, null)}>
+      <DialogContent className="file-to-module-modal flex max-h-[min(80vh,640px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        <DialogTitle className="sr-only">
+          Add {noun === "lecture" ? "lecture" : noun} to a module?
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Current semester first — you can move it later
+        </DialogDescription>
         <div className="understanding-header">
           <div className="understanding-header-icon">
             <FolderOpen size={18} />
@@ -65,14 +79,6 @@ export function FileToModuleModal({ noun, onSelect, skipLabel }: Props) {
             <h3>Add {noun === "lecture" ? "lecture" : noun} to a module?</h3>
             <p>current semester first — you can move it later</p>
           </div>
-          <button
-            type="button"
-            className="ghost icon-btn"
-            onClick={() => select(null, null)}
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
         </div>
 
         <div className="understanding-body">
@@ -91,16 +97,20 @@ export function FileToModuleModal({ noun, onSelect, skipLabel }: Props) {
                   ? expanded[g.key] !== false
                   : expanded[g.key] === true;
               return (
-                <section key={g.key} className="semester-group">
-                  <button
-                    type="button"
+                <Collapsible
+                  key={g.key}
+                  open={isOpen}
+                  onOpenChange={(open) =>
+                    setExpanded((prev) => ({ ...prev, [g.key]: open }))
+                  }
+                  className="semester-group"
+                >
+                  <CollapsibleTrigger
                     className={`semester-group-header ${g.isCurrent ? "current" : ""}`}
-                    onClick={() => setExpanded((prev) => ({ ...prev, [g.key]: !isOpen }))}
                   >
                     <ChevronDown
                       size={14}
-                      className="semester-group-chevron"
-                      style={{ transform: isOpen ? "" : "rotate(-90deg)" }}
+                      className="semester-group-chevron transition-transform group-data-[state=closed]/collapsible:-rotate-90"
                     />
                     <span className="semester-group-label">{g.label}</span>
                     {g.isCurrent && (
@@ -109,13 +119,23 @@ export function FileToModuleModal({ noun, onSelect, skipLabel }: Props) {
                     <span className="semester-group-count">
                       {g.modules.length} module{g.modules.length === 1 ? "" : "s"}
                     </span>
-                  </button>
-                  {isOpen && (
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
                     <div className="file-to-module-list">
                       {g.modules.map((m) => {
                         const modOpen = expanded[`m-${m.id}`] === true;
                         return (
-                          <div key={m.id} className="file-to-module-module">
+                          <Collapsible
+                            key={m.id}
+                            open={modOpen}
+                            onOpenChange={(open) =>
+                              setExpanded((prev) => ({
+                                ...prev,
+                                [`m-${m.id}`]: open,
+                              }))
+                            }
+                            className="file-to-module-module"
+                          >
                             <button
                               type="button"
                               className="file-to-module-row"
@@ -126,39 +146,24 @@ export function FileToModuleModal({ noun, onSelect, skipLabel }: Props) {
                               <FolderOpen size={15} className="ftm-icon" />
                               <span className="ftm-name">{m.title}</span>
                               {m.lessons.length > 0 && (
-                                <span
-                                  role="button"
-                                  tabIndex={0}
-                                  className="ftm-expand"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpanded((prev) => ({
-                                      ...prev,
-                                      [`m-${m.id}`]: !modOpen,
-                                    }));
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter" || e.key === " ") {
-                                      e.stopPropagation();
-                                      setExpanded((prev) => ({
-                                        ...prev,
-                                        [`m-${m.id}`]: !modOpen,
-                                      }));
-                                    }
-                                  }}
-                                  title="Choose a lesson instead"
-                                >
-                                  {m.lessons.length} lesson
-                                  {m.lessons.length === 1 ? "" : "s"}
-                                  {modOpen ? (
-                                    <ChevronDown size={13} />
-                                  ) : (
-                                    <ChevronRight size={13} />
-                                  )}
-                                </span>
+                                <CollapsibleTrigger asChild>
+                                  <span
+                                    className="ftm-expand"
+                                    onClick={(e) => e.stopPropagation()}
+                                    title="Choose a lesson instead"
+                                  >
+                                    {m.lessons.length} lesson
+                                    {m.lessons.length === 1 ? "" : "s"}
+                                    {modOpen ? (
+                                      <ChevronDown size={13} />
+                                    ) : (
+                                      <ChevronRight size={13} />
+                                    )}
+                                  </span>
+                                </CollapsibleTrigger>
                               )}
                             </button>
-                            {modOpen && (
+                            <CollapsibleContent>
                               <div className="file-to-module-lessons">
                                 {m.lessons.map((l) => (
                                   <button
@@ -177,29 +182,25 @@ export function FileToModuleModal({ noun, onSelect, skipLabel }: Props) {
                                   </button>
                                 ))}
                               </div>
-                            )}
-                          </div>
+                            </CollapsibleContent>
+                          </Collapsible>
                         );
                       })}
                     </div>
-                  )}
-                </section>
+                  </CollapsibleContent>
+                </Collapsible>
               );
             })}
           </div>
         </div>
 
         <div className="file-to-module-footer">
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => select(null, null)}
-          >
+          <Button variant="ghost" onClick={() => select(null, null)}>
             <SkipForward size={14} />
             {skipLabel ?? "Skip for now"}
-          </button>
+          </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -14,6 +14,12 @@ import {
 import * as api from "../api/client";
 import { track } from "../api/track";
 import type { Recommendation } from "../api/client";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Props {
   onNavigate: (docId: string, tab?: string) => void;
@@ -47,7 +53,7 @@ export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: 
     return (
       <div className="empty-hero">
         <div className="empty-icon">
-          <Sparkles size={34} strokeWidth={1.8} className="spinner" />
+          <Sparkles size={34} strokeWidth={1.8} className="animate-spin" />
         </div>
         <h2>Thinking…</h2>
         <p>The agent is figuring out what you should study next.</p>
@@ -140,7 +146,7 @@ export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: 
         {context.due_count > 0 && (
           <>
             <span className="rec-context-sep">·</span>
-            <span className="rec-context-item rec-due">
+            <span className="rec-context-item font-semibold text-warn">
               <Zap size={12} />
               {context.due_count} due
             </span>
@@ -159,16 +165,23 @@ export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: 
         </div>
         <div className="rec-primary-actions">
           {primary.dismissible && (
-            <button
-              className="ghost icon-btn rec-dismiss-btn"
-              title="Not now"
-              onClick={() => handleDismiss(primary)}
-            >
-              <X size={16} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground/70"
+                  onClick={() => handleDismiss(primary)}
+                  aria-label="Not now"
+                >
+                  <X size={16} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Not now</TooltipContent>
+            </Tooltip>
           )}
-          <button
-            className="primary rec-action-btn"
+          <Button
+            className="shrink-0"
             onClick={() => handleAction(primary)}
           >
             {primary.ready ? (
@@ -182,7 +195,7 @@ export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: 
                 Generate
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -193,18 +206,26 @@ export function RecommendationPanel({ onNavigate, onGenerate, onStudySession }: 
           {alternatives.map((alt, i) => {
             const AltIcon = ACTION_ICONS[alt.action] || FileText;
             return (
-              <button
+              <Button
                 key={i}
-                className="rec-alt-card"
+                variant="outline"
+                className="h-auto w-full justify-start gap-3.5 px-4.5 py-3.5 text-left font-normal whitespace-normal hover:border-accent-strong hover:shadow-sm"
                 onClick={() => handleAction(alt)}
               >
-                <AltIcon size={18} className="rec-alt-icon" />
-                <div className="rec-alt-body">
-                  <span className="rec-alt-title">{alt.title}</span>
-                  <span className="rec-alt-rationale">{alt.rationale}</span>
-                </div>
-                <ArrowRight size={15} className="rec-alt-arrow" />
-              </button>
+                <AltIcon size={18} className="shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[0.9rem] font-medium">
+                    {alt.title}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {alt.rationale}
+                  </span>
+                </span>
+                <ArrowRight
+                  size={15}
+                  className="shrink-0 text-muted-foreground/50"
+                />
+              </Button>
             );
           })}
         </div>

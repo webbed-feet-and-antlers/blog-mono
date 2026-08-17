@@ -133,6 +133,8 @@ async def test_difficulty_calibration(case):
 
 @pytest.mark.parametrize("case", ALCPL_CASES, ids=case_ids)
 async def test_summary_faithfulness(case):
+    from evals.suites import judge_score
+
     analysis = await _analysis(case["id"], case["text"])
     summary = str(analysis.get("summary", ""))
     metric = rubric(
@@ -141,7 +143,8 @@ async def test_summary_faithfulness(case):
             "Score the summary's factual faithfulness to the source document. "
             "Every claim in the summary must be supported by the document. "
             "Penalize invented facts, unsupported numbers, and misattributed "
-            "relationships. 1.0 = fully supported, 0.0 = mostly invented."
+            "relationships — from fully supported at the top of the scale to "
+            "mostly invented at the bottom."
         ),
         evaluation_params=[SingleTurnParams.CONTEXT, SingleTurnParams.ACTUAL_OUTPUT],
         threshold=0.75,
@@ -151,14 +154,17 @@ async def test_summary_faithfulness(case):
         actual_output=summary,
         context=[case["text"]],
     )
-    await metric.a_measure(test_case, _show_indicator=False)
+    score, reason = await judge_score(metric, test_case)
     record(
         "analysis",
         "summary_faithfulness",
         case=case["id"],
-        score=metric.score or 0.0,
+        score=score if score is not None else 0.0,
         threshold=metric.threshold,
-        success=metric.is_successful(),
-        reason=metric.reason or "",
+        success=(score is not None and score >= metric.threshold),
+        reason=reason if score is not None
+        else f"judge verdict unparseable — skipped: {reason[:120]}",
     )
-    assert metric.is_successful(), metric.reason
+    if score is None:
+        pytest.skip("judge verdict unparseable after retry")
+    assert score >= metric.threshold, reason

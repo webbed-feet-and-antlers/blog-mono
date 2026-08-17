@@ -94,9 +94,23 @@ are the honest starting point for improving the product:
    discussed the field instead of the study's aim/methods/findings.
    (`notes` suite; ROUGE vs the abstract is report-only — good notes
    restructure and simplify, so lexical overlap is structurally low.)
+6. **Planner days ran over budget.** The prompt promises ≤45min/day but
+   nothing enforced it — the suite caught 68–75-minute days. Fixed in
+   production: `generate_study_plan` now regenerates once when the
+   heaviest day exceeds a 60-minute cap, keeping the lighter plan.
+   (`planner` suite — the invariant that caught it stays gated.)
+7. **The planner judged its own homework — the harness had a scale bug.**
+   GEval's judge prompt asks for an integer score 0–10 (normalized /10)
+   and its example JSON literally demonstrates `"score": 0`. Criteria
+   text that described a "0.0–1.0" scale fought the template: judges
+   following the criteria emitted 1 (=0.1 after normalization); judges
+   anchoring on the example emitted 0 while writing positive reasons.
+   Criteria must describe anchors *qualitatively* ("top of the scale =
+   fully covered"), and `judge_score()` retries/skips unparseable
+   verdicts instead of clamping them to 0. (`evals/suites/__init__.py`.)
 
 Judge-scored metrics gate on the run's **mean**, not per-case: judge scores
 are stochastic, and a single harsh (or numerically erratic — judges
-occasionally return out-of-range values, clamped to [0,1]) verdict
-shouldn't fail an otherwise-good run. Deterministic metrics (structure,
-invariants, calibration) stay per-case.
+occasionally return out-of-range values; those are retried once and then
+skipped, never clamped to 0) verdict shouldn't fail an otherwise-good run.
+Deterministic metrics (structure, invariants, calibration) stay per-case.

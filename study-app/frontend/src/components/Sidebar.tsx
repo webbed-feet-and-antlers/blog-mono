@@ -7,14 +7,26 @@ import {
   Network,
   Mic,
   UploadCloud,
-  Loader2,
   CircleHelp,
   Layers,
 } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { toast } from "sonner";
 import { FileToModuleModal } from "./FileToModuleModal";
 import { ProfileCard } from "./ProfileCard";
+import {
+  Sidebar as SidebarRoot,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from "@/components/ui/sidebar";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Props {
   onHome: () => void;
@@ -24,14 +36,17 @@ interface Props {
   onQuizzes: () => void;
   onFlashcards: () => void;
   onNavigate: (id: string) => void;
+  /** Current pathname, for marking the active nav item. */
+  pathname: string;
 }
 
 /**
- * Slim navigation sidebar. Organization (folders, moving, renaming, uploading
- * into specific folders) lives in the Drive page; the sidebar is just for
- * getting around quickly.
+ * App navigation sidebar built on the shadcn Sidebar primitive: collapsible
+ * on desktop, a slide-over sheet on mobile. Organization (folders, moving,
+ * renaming) lives in the Drive page; the sidebar is just for getting around
+ * quickly.
  */
-export function Sidebar({
+export function AppSidebar({
   onHome,
   onRecord,
   onConcepts,
@@ -39,6 +54,7 @@ export function Sidebar({
   onQuizzes,
   onFlashcards,
   onNavigate,
+  pathname,
 }: Props) {
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -62,6 +78,7 @@ export function Sidebar({
       setUploadProgress(null);
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       queryClient.invalidateQueries({ queryKey: ["module-tree"] });
+      toast.success("Document uploaded", { description: doc.filename });
       onNavigate(doc.id);
     },
     onError: () => setUploadProgress(null),
@@ -90,75 +107,144 @@ export function Sidebar({
 
   const uploading = upload.isPending;
 
+  const navItems: {
+    label: string;
+    icon: typeof Home;
+    path: string;
+    action: () => void;
+  }[] = [
+    {
+      label: "Home",
+      icon: Home,
+      path: "/",
+      action: () => {
+        track("navigation.moved", { to: "home" });
+        onHome();
+      },
+    },
+    {
+      label: "Modules",
+      icon: LayoutGrid,
+      path: "/modules",
+      action: () => {
+        track("navigation.moved", { to: "modules" });
+        onDrive();
+      },
+    },
+    {
+      label: "Concepts",
+      icon: Network,
+      path: "/concepts",
+      action: () => {
+        track("navigation.moved", { to: "concepts" });
+        onConcepts();
+      },
+    },
+    {
+      label: "Quizzes",
+      icon: CircleHelp,
+      path: "/quizzes",
+      action: () => {
+        track("navigation.moved", { to: "quizzes" });
+        onQuizzes();
+      },
+    },
+    {
+      label: "Flashcards",
+      icon: Layers,
+      path: "/flashcards",
+      action: () => {
+        track("navigation.moved", { to: "flashcards" });
+        onFlashcards();
+      },
+    },
+  ];
+
   return (
-    <aside className="sidebar">
+    <SidebarRoot>
       {/* Brand */}
-      <div className="sidebar-header">
-        <div className="brand-clickable" onClick={onHome} title="Home">
-          <div className="brand-mark">
-            <BookOpen size={20} strokeWidth={2.2} />
-          </div>
-          <div className="brand-text">
-            <h1>Study Studio</h1>
-            <p>AI-powered notes, quizzes & flashcards</p>
-          </div>
-        </div>
-      </div>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              className="brand-clickable"
+              onClick={onHome}
+              aria-label="Study Studio — home"
+            >
+              <div className="brand-mark">
+                <BookOpen size={20} strokeWidth={2.2} />
+              </div>
+              <div className="brand-text min-w-0">
+                <h1 className="truncate text-base font-semibold">Study Studio</h1>
+                <p className="truncate text-xs text-muted-foreground">
+                  AI-powered notes, quizzes & flashcards
+                </p>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
 
       {/* Navigation */}
-      <nav className="sidebar-nav">
-        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "home" }); onHome(); }}>
-          <Home size={16} />
-          Home
-        </button>
-        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "modules" }); onDrive(); }}>
-          <LayoutGrid size={16} />
-          Modules
-        </button>
-        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "concepts" }); onConcepts(); }}>
-          <Network size={16} />
-          Concepts
-        </button>
-        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "quizzes" }); onQuizzes(); }}>
-          <CircleHelp size={16} />
-          Quizzes
-        </button>
-        <button type="button" className="sidebar-nav-btn" onClick={() => { track("navigation.moved", { to: "flashcards" }); onFlashcards(); }}>
-          <Layers size={16} />
-          Flashcards
-        </button>
-        <button
-          type="button"
-          className="sidebar-nav-btn"
-          onClick={() => { track("navigation.moved", { to: "record" }); onRecord(); }}
-          disabled={uploading}
-        >
-          <Mic size={16} />
-          Record lecture
-        </button>
-        <button
-          type="button"
-          className="sidebar-nav-btn"
-          onClick={() => !uploading && fileInput.current?.click()}
-          disabled={uploading}
-        >
-          {uploading ? (
-            <Loader2 size={16} className="spinner" />
-          ) : (
-            <UploadCloud size={16} />
-          )}
-          {uploading
-            ? uploadProgress !== null
-              ? `Uploading ${uploadProgress}%`
-              : "Uploading…"
-            : "Upload"}
-        </button>
-        {upload.isError && (
-          <div className="sidebar-upload-error">
-            Upload failed: {(upload.error as Error).message}
-          </div>
-        )}
-      </nav>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {navItems.map((item) => (
+                <SidebarMenuItem key={item.label}>
+                  <SidebarMenuButton
+                    isActive={pathname === item.path}
+                    tooltip={item.label}
+                    onClick={item.action}
+                  >
+                    <item.icon size={16} />
+                    <span>{item.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Record lecture"
+                  onClick={() => {
+                    track("navigation.moved", { to: "record" });
+                    onRecord();
+                  }}
+                  disabled={uploading}
+                >
+                  <Mic size={16} />
+                  <span>Record lecture</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Upload a document"
+                  onClick={() => !uploading && fileInput.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <Spinner className="size-4" />
+                  ) : (
+                    <UploadCloud size={16} />
+                  )}
+                  <span>
+                    {uploading
+                      ? uploadProgress !== null
+                        ? `Uploading ${uploadProgress}%`
+                        : "Uploading…"
+                      : "Upload"}
+                  </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {upload.isError && (
+                <div className="sidebar-upload-error">
+                  Upload failed: {(upload.error as Error).message}
+                </div>
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
 
       <input
         ref={fileInput}
@@ -168,14 +254,14 @@ export function Sidebar({
         onChange={(e) => handleFiles(e.target.files)}
       />
 
-      {/* Spacer pushes profile to the bottom */}
-      <div className="sidebar-spacer" />
-
-      <ProfileCard />
+      {/* Profile pinned to the bottom */}
+      <SidebarFooter>
+        <ProfileCard />
+      </SidebarFooter>
 
       {pendingFile && (
         <FileToModuleModal noun="document" onSelect={uploadWith} />
       )}
-    </aside>
+    </SidebarRoot>
   );
 }

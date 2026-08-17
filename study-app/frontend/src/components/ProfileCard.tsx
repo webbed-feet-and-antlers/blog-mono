@@ -2,7 +2,16 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { GraduationCap, Brain } from "lucide-react";
 import * as api from "../api/client";
+import { Badge } from "@/components/ui/badge";
 import { UnderstandingModal } from "./UnderstandingModal";
+
+/** Solid pill per learner level, matching the hand-rolled badge colors. */
+const LEVEL_VARIANTS: Record<string, string> = {
+  beginner: "bg-warn text-white",
+  intermediate: "bg-primary text-white",
+  advanced: "bg-ok text-white",
+  unknown: "bg-muted-foreground/50 text-white",
+};
 
 /**
  * Shows the agent's current understanding of the learner — level, stats,
@@ -34,9 +43,11 @@ export function ProfileCard() {
         title="How the agent sees you"
       >
         <div className="profile-level-row">
-          <span className={`profile-level-badge ${level}`}>
+          <Badge
+            className={`px-2 py-0.5 text-[0.72rem] font-bold tracking-wide uppercase ${LEVEL_VARIANTS[level] ?? LEVEL_VARIANTS.unknown}`}
+          >
             {level === "unknown" ? "New" : level}
-          </span>
+          </Badge>
           {/* The badge already states the level; only label the unknown state. */}
           {isUnknown && (
             <span className="profile-level-label">Learner</span>

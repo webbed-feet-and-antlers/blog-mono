@@ -1,18 +1,24 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  X,
   Clock,
   Brain,
   Gauge,
   RefreshCw,
-  Loader2,
   BookOpen,
   Timer,
   Sparkles,
 } from "lucide-react";
 import * as api from "../api/client";
 import type { LearnerProfile } from "../api/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Props {
   onClose: () => void;
@@ -31,14 +37,11 @@ export function UnderstandingModal({ onClose }: Props) {
   const [reflecting, setReflecting] = useState(false);
   const [reflectMsg, setReflectMsg] = useState<string | null>(null);
 
-  // Escape closes — while reflecting, let it finish instead of unmounting.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !reflecting) onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [reflecting, onClose]);
+  // While reflecting, ignore close attempts (Esc / backdrop) so the run can
+  // finish instead of unmounting mid-flight. Dialog handles Esc natively.
+  function requestClose() {
+    if (!reflecting) onClose();
+  }
 
   const profile = useProfileFromCache();
 
@@ -69,11 +72,12 @@ export function UnderstandingModal({ onClose }: Props) {
   const slow = profile?.slow_concepts ?? [];
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal-content understanding-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Dialog open onOpenChange={(open) => !open && requestClose()}>
+      <DialogContent className="understanding-modal flex max-h-[min(85vh,720px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogTitle className="sr-only">How the agent sees you</DialogTitle>
+        <DialogDescription className="sr-only">
+          Every signal below personalizes what the agent generates
+        </DialogDescription>
         {/* Fixed header — the close button stays reachable while the body scrolls. */}
         <div className="understanding-header">
           <div className="understanding-header-icon">
@@ -83,14 +87,6 @@ export function UnderstandingModal({ onClose }: Props) {
             <h3>How the agent sees you</h3>
             <p>every signal below personalizes what the agent generates</p>
           </div>
-          <button
-            type="button"
-            className="ghost icon-btn"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
         </div>
 
         <div className="understanding-body">
@@ -121,16 +117,16 @@ export function UnderstandingModal({ onClose }: Props) {
                     {insights.updated_at &&
                       ` · updated ${timeAgo(insights.updated_at)}`}
                   </span>
-                  <button
-                    type="button"
-                    className="understanding-refresh"
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
                     disabled={reflecting}
                     onClick={handleRefresh}
-                    title="Re-run the agent's reflection over your recent behavior"
                   >
                     {reflecting ? (
                       <>
-                        <Loader2 size={13} className="spinner" />
+                        <Spinner className="size-[13px]" />
                         Reflecting…
                       </>
                     ) : (
@@ -139,7 +135,7 @@ export function UnderstandingModal({ onClose }: Props) {
                         Refresh
                       </>
                     )}
-                  </button>
+                  </Button>
                 </div>
                 {reflectMsg && (
                   <div className="understanding-refresh-msg">{reflectMsg}</div>
@@ -153,15 +149,16 @@ export function UnderstandingModal({ onClose }: Props) {
                   builds an understanding from how you use the app, not just
                   your scores.
                 </p>
-                <button
-                  type="button"
-                  className="understanding-refresh"
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2.5 text-xs"
                   disabled={reflecting}
                   onClick={handleRefresh}
                 >
                   {reflecting ? (
                     <>
-                      <Loader2 size={13} className="spinner" />
+                      <Spinner className="size-[13px]" />
                       Reflecting…
                     </>
                   ) : (
@@ -170,7 +167,7 @@ export function UnderstandingModal({ onClose }: Props) {
                       Try reflecting now
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -257,8 +254,8 @@ export function UnderstandingModal({ onClose }: Props) {
             </div>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

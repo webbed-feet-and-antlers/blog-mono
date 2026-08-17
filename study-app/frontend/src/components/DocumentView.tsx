@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Mic, AlertCircle, FileText, FileType } from "lucide-react";
+import { Mic, AlertCircle, FileText, FileType } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import * as api from "../api/client";
 import { track } from "../api/track";
 import type { DocumentDetail } from "../types";
 import { PdfViewer } from "./PdfViewer";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Spinner } from "@/components/ui/spinner";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 interface Props {
   doc: DocumentDetail;
@@ -69,56 +72,60 @@ export function DocumentView({ doc }: Props) {
 
       {/* Transcription status */}
       {isAudio && status === "pending" && (
-        <div className="transcription-banner">
-          <Loader2 size={16} className="spinner" />
-          Waiting for transcription to start…
-        </div>
+        <Alert className="mb-4 border-accent-strong bg-accent text-muted-foreground">
+          <Spinner className="size-4" />
+          <AlertDescription>
+            Waiting for transcription to start…
+          </AlertDescription>
+        </Alert>
       )}
       {isAudio && status === "transcribing" && (
-        <div className="transcription-banner">
-          <Loader2 size={16} className="spinner" />
-          Transcribing audio… this may take a minute.
-        </div>
+        <Alert className="mb-4 border-accent-strong bg-accent text-muted-foreground">
+          <Spinner className="size-4" />
+          <AlertDescription>
+            Transcribing audio… this may take a minute.
+          </AlertDescription>
+        </Alert>
       )}
       {isAudio && status === "failed" && (
-        <div className="error">
-          <AlertCircle size={16} />
-          Transcription failed: {doc.transcription_error || "Unknown error"}
-        </div>
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle />
+          <AlertDescription>
+            Transcription failed: {doc.transcription_error || "Unknown error"}
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* PDF: render the original file in an iframe (native viewer), with a
           toggle to the extracted text. */}
       {isPdf && doc.text !== undefined && (
         <>
-          <div className="doc-view-toggle">
-            <button
-              type="button"
-              className={view === "pdf" ? "active" : ""}
-              onClick={() => {
-                if (view !== "pdf") {
-                  track("view.mode_toggled", { document_id: doc.id, mode: "pdf" });
-                }
-                setView("pdf");
-              }}
+          <ToggleGroup
+            type="single"
+            value={view}
+            onValueChange={(v) => {
+              if (v && v !== view) {
+                track("view.mode_toggled", { document_id: doc.id, mode: v });
+                setView(v as "pdf" | "text");
+              }
+            }}
+            className="w-full justify-start gap-1 border-b bg-sidebar px-4 py-2"
+          >
+            <ToggleGroupItem
+              value="pdf"
+              className="gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground shadow-none data-[state=on]:bg-card data-[state=on]:text-primary"
             >
               <FileType size={14} />
               Document
-            </button>
-            <button
-              type="button"
-              className={view === "text" ? "active" : ""}
-              onClick={() => {
-                if (view !== "text") {
-                  track("view.mode_toggled", { document_id: doc.id, mode: "text" });
-                }
-                setView("text");
-              }}
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="text"
+              className="gap-1.5 rounded-md px-3 py-1 text-xs font-medium text-muted-foreground shadow-none data-[state=on]:bg-card data-[state=on]:text-primary"
             >
               <FileText size={14} />
               Extracted text
-            </button>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
           {view === "pdf" ? (
             <PdfViewer
               url={api.getDocumentFileUrl(doc.id)}

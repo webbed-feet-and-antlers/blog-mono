@@ -72,38 +72,24 @@ body {
 
 /* --- Buttons -------------------------------------------------------------- */
 
+/* Paint-free base for the few remaining hand-rolled button controls
+   (record studio, plan rows, file-to-module rows). Visuals live on each
+   control's own rule or on shadcn Button variants — nothing here may set a
+   background, border, or padding, or it would bleed into Radix/shadcn
+   components that render native <button> elements. */
 button {
   font: inherit;
-  font-weight: 500;
+  color: inherit;
   cursor: pointer;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  border-radius: var(--r-sm);
-  padding: 9px 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s,
-    transform 0.05s;
-  box-shadow: var(--shadow-xs);
-  white-space: nowrap;
-}
-button:hover:not(:disabled) {
-  background: var(--panel-hover);
-  border-color: var(--border-strong);
-}
-button:active:not(:disabled) {
-  transform: translateY(0.5px);
 }
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 /* Keyboard focus ring — visible only for keyboard navigation, so mouse
-   users never see it. Components with their own focus styling (inputs
-   with accent border + tint ring) opt out via their :focus rules. */
+   users never see it. shadcn components opt out via their outline-none +
+   focus-visible ring utilities, which sit in the higher-priority utilities
+   layer. */
 button:focus-visible,
 a:focus-visible,
 select:focus-visible,
@@ -112,89 +98,38 @@ textarea:focus-visible,
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  font-weight: 600;
-  box-shadow: var(--shadow-accent);
-}
-button.primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
-button.danger {
-  color: var(--danger);
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-button.danger:hover:not(:disabled) {
-  background: var(--danger-tint);
-  color: var(--danger);
-}
-button.ghost {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-button.ghost:hover:not(:disabled) {
-  background: var(--panel-hover);
-}
-button.small {
-  padding: 5px 11px;
-  font-size: 0.85em;
-}
 
 /* --- Layout --------------------------------------------------------------- */
 
-.app {
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  height: 100vh;
+/* Main content column: centered, capped width, scrolls independently of the
+   sidebar. Lives inside the shadcn SidebarInset (or directly under <main>
+   for focused routes). */
+.main {
+  overflow-y: auto;
+  padding: 40px 48px;
+  max-width: 880px;
+  margin: 0 auto;
+  width: 100%;
+  min-height: 0;
 }
 
 /* Focused, full-screen experiences (record / lecture / study): no sidebar,
    the page component owns its width and padding. */
-.app.app-focused {
-  grid-template-columns: 1fr;
-}
-.app.app-focused .main {
+.main.main-focused {
   padding: 0;
   max-width: none;
 }
 
-.sidebar {
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.sidebar-header {
-  padding: 22px 20px 16px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
 .brand-clickable {
   display: flex;
   align-items: center;
   gap: 12px;
   cursor: pointer;
   border-radius: var(--r-sm);
-  margin: -4px;
-  padding: 4px;
   transition: opacity 0.12s;
 }
 .brand-clickable:hover {
   opacity: 0.8;
-}
-.sidebar-header-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
 }
 .brand-mark {
   width: 38px;
@@ -221,72 +156,6 @@ button.small {
   line-height: 1.3;
 }
 
-.doc-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 4px 12px;
-}
-
-.doc-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 11px;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  margin-bottom: 2px;
-  border: 1px solid transparent;
-  transition: background 0.12s, border-color 0.12s;
-}
-.doc-item:hover {
-  background: rgba(0, 0, 0, 0.03);
-}
-.doc-item.active {
-  background: var(--accent-tint);
-  border-color: var(--accent-tint-strong);
-}
-.doc-item .doc-icon {
-  color: var(--text-faint);
-  flex-shrink: 0;
-  display: flex;
-}
-.doc-item.active .doc-icon {
-  color: var(--accent);
-}
-.doc-item .meta {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-.doc-item .filename {
-  font-size: 0.875rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.doc-item .sub {
-  font-size: 0.72rem;
-  color: var(--text-faint);
-}
-.doc-item .delete-btn {
-  opacity: 0;
-  transition: opacity 0.12s;
-  padding: 4px;
-  border-radius: 6px;
-}
-.doc-item:hover .delete-btn {
-  opacity: 1;
-}
-
-.main {
-  overflow-y: auto;
-  padding: 40px 48px;
-  max-width: 880px;
-  margin: 0 auto;
-  width: 100%;
-}
 
 /* --- Empty / loading states ---------------------------------------------- */
 
@@ -329,10 +198,6 @@ button.small {
   max-width: 360px;
   line-height: 1.5;
 }
-.empty-hero button {
-  margin-top: 20px;
-}
-
 .loading {
   color: var(--text-dim);
   padding: 20px 0;
@@ -351,32 +216,12 @@ button.small {
     opacity: 1;
   }
 }
-.spinner {
-  width: 18px;
-  height: 18px;
-  border: 2.5px solid var(--accent-tint-strong);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  flex-shrink: 0;
-}
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.error {
-  color: var(--danger);
-  background: var(--danger-tint);
-  border-radius: var(--r-sm);
-  padding: 12px 16px;
-  font-size: 0.875rem;
-  margin-bottom: 16px;
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
 
 /* --- Upload --------------------------------------------------------------- */
 
@@ -424,29 +269,6 @@ button.small {
   border-radius: var(--r-md);
   width: fit-content;
 }
-.tab {
-  padding: 8px 16px;
-  border-radius: var(--r-sm);
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  font-weight: 500;
-  font-size: 0.9rem;
-  box-shadow: none;
-  transition: background 0.15s, color 0.15s;
-}
-.tab:hover:not(.active) {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--text);
-  border: none;
-}
-.tab.active {
-  background: var(--panel);
-  color: var(--accent);
-  border: none;
-  box-shadow: var(--shadow-sm);
-}
-
 /* --- Section heads -------------------------------------------------------- */
 
 .section-head {
@@ -602,157 +424,6 @@ button.small {
 
 /* --- Quiz ----------------------------------------------------------------- */
 
-.score-banner {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: 24px 28px;
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  box-shadow: var(--shadow-sm);
-}
-.score-ring {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #fff;
-  flex-shrink: 0;
-}
-.score-ring.pass {
-  background: var(--ok);
-}
-.score-ring.fail {
-  background: var(--danger);
-}
-.score-info .score-label {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.score-info .score-detail {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-.score-info .score-msg {
-  font-size: 0.9rem;
-  color: var(--text-dim);
-}
-
-.quiz-q {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  padding: 22px 24px;
-  margin-bottom: 14px;
-  box-shadow: var(--shadow-xs);
-}
-.quiz-q .prompt {
-  font-weight: 600;
-  margin-bottom: 16px;
-  font-size: 0.98rem;
-  display: flex;
-  gap: 8px;
-}
-.quiz-q .q-num {
-  color: var(--accent);
-  flex-shrink: 0;
-}
-.quiz-opt {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  padding: 11px 14px;
-  margin-bottom: 8px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  font-size: 0.92rem;
-  box-shadow: none;
-  transition: background 0.12s, border-color 0.12s;
-}
-.quiz-opt:hover:not(:disabled) {
-  background: var(--panel-hover);
-  border-color: var(--border-strong);
-}
-.opt-badge {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--sidebar-bg);
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.78rem;
-  font-weight: 600;
-  flex-shrink: 0;
-  transition: background 0.12s, color 0.12s;
-}
-.quiz-opt.selected {
-  border-color: var(--accent);
-  background: var(--accent-tint);
-}
-.quiz-opt.selected .opt-badge {
-  background: var(--accent);
-  color: #fff;
-}
-.quiz-opt.correct {
-  border-color: var(--ok);
-  background: var(--ok-tint);
-}
-.quiz-opt.correct .opt-badge {
-  background: var(--ok);
-  color: #fff;
-}
-.quiz-opt.wrong {
-  border-color: var(--danger);
-  background: var(--danger-tint);
-}
-.quiz-opt.wrong .opt-badge {
-  background: var(--danger);
-  color: #fff;
-}
-.quiz-explanation {
-  margin-top: 14px;
-  padding: 12px 16px;
-  background: var(--sidebar-bg);
-  border-radius: var(--r-sm);
-  font-size: 0.88rem;
-  color: var(--text-dim);
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  border-left: 3px solid var(--border-strong);
-}
-.quiz-explanation.correct-exp {
-  border-left-color: var(--ok);
-}
-.quiz-explanation.wrong-exp {
-  border-left-color: var(--danger);
-}
-.exp-icon {
-  flex-shrink: 0;
-  margin-top: 1px;
-}
-.exp-icon.ok {
-  color: var(--ok);
-}
-.exp-icon.bad {
-  color: var(--danger);
-}
-
 /* --- Flashcards ----------------------------------------------------------- */
 
 .card-deck {
@@ -844,10 +515,6 @@ button.small {
   gap: 10px;
   align-items: center;
 }
-.icon-btn {
-  padding: 8px;
-  border-radius: var(--r-sm);
-}
 .card-counter {
   color: var(--text-dim);
   font-size: 0.88rem;
@@ -856,30 +523,11 @@ button.small {
   text-align: center;
 }
 
-.card-progress {
-  width: 100%;
-  max-width: 580px;
-  height: 6px;
-  background: var(--sidebar-bg);
-  border-radius: var(--r-pill);
-  overflow: hidden;
-}
-.card-progress-fill {
-  height: 100%;
-  background: var(--ok);
-  border-radius: var(--r-pill);
-  transition: width 0.3s ease;
-}
-
 /* --- Responsive ----------------------------------------------------------- */
 
 @media (max-width: 768px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-  .sidebar {
-    display: none;
-  }
+  /* The shadcn Sidebar becomes a slide-over sheet at this width; the
+     SidebarTrigger in the content header toggles it. */
   .main {
     padding: 24px 20px;
   }
@@ -1006,9 +654,6 @@ button.small {
   opacity: 0;
   transition: opacity 0.12s;
 }
-.doc-item:hover .doc-item-actions {
-  opacity: 1;
-}
 .move-menu {
   position: absolute;
   z-index: 100;
@@ -1079,17 +724,6 @@ button.small {
   display: flex;
   gap: 6px;
 }
-.study-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: var(--r-pill);
-}
-.study-tag.review { background: var(--warn-tint); color: var(--warn); }
-.study-tag.new { background: var(--accent-tint); color: var(--accent); }
 .study-progress-bar {
   width: 100%;
   height: 4px;
@@ -1097,12 +731,6 @@ button.small {
   border-radius: var(--r-pill);
   overflow: hidden;
   margin-bottom: 24px;
-}
-.study-progress-fill {
-  height: 100%;
-  background: var(--ok);
-  border-radius: var(--r-pill);
-  transition: width 0.3s ease;
 }
 .study-complete {
   display: flex;
@@ -1114,20 +742,6 @@ button.small {
   text-align: center;
   padding: 40px;
 }
-.study-score-ring {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #fff;
-  margin: 0 auto 20px;
-}
-.study-score-ring.pass { background: var(--ok); }
-.study-score-ring.fail { background: var(--danger); }
 .study-complete-card h2 { margin: 0 0 8px; font-size: 1.3rem; }
 .study-score-detail { margin: 0 0 4px; font-size: 0.95rem; color: var(--text-dim); }
 .study-score-msg {
@@ -1169,35 +783,6 @@ button.small {
 }
 .record-title-input::placeholder {
   color: var(--text-faint);
-}
-
-.mic-select-container {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--panel-hover);
-  border: 1px solid var(--border);
-  padding: 4px 10px;
-  border-radius: var(--r-pill);
-  color: var(--text-dim);
-  font-size: 0.8rem;
-}
-.mic-select-icon {
-  opacity: 0.7;
-}
-.mic-select {
-  background: transparent;
-  border: none;
-  color: var(--text);
-  font-size: 0.82rem;
-  outline: none;
-  cursor: pointer;
-  max-width: 180px;
-  text-overflow: ellipsis;
-}
-.mic-select option {
-  background: var(--panel);
-  color: var(--text);
 }
 
 .record-timer-bar {
@@ -1576,72 +1161,7 @@ button.small {
   letter-spacing: 0.04em;
   color: var(--text-faint);
 }
-.notes-ts-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--accent);
-  background: var(--accent-tint);
-  border: 1px solid rgba(91, 91, 214, 0.25);
-  border-radius: var(--r-pill);
-  padding: 3px 10px;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.notes-ts-btn:hover {
-  background: rgba(91, 91, 214, 0.25);
-}
-
 /* Modal Confirmation Dialog */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.modal-content {
-  background: var(--panel);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  padding: 24px 28px;
-  max-width: 440px;
-  width: 90%;
-  box-shadow:
-    0 24px 64px -12px rgba(24, 24, 27, 0.25),
-    0 4px 16px rgba(24, 24, 27, 0.08);
-}
-.modal-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-.modal-header h3 {
-  font-size: 1.15rem;
-  font-weight: 600;
-  margin: 0;
-}
-.text-warning {
-  color: var(--warn);
-}
-.modal-content p {
-  font-size: 0.9rem;
-  color: var(--text-dim);
-  line-height: 1.5;
-  margin-bottom: 20px;
-}
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
 .notes-textarea {
   flex: 1;
   width: 100%;
@@ -1791,23 +1311,11 @@ button.small {
   width: 100%;
   border-radius: var(--r-sm);
 }
-.transcription-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 18px;
-  background: var(--accent-tint);
-  border: 1px solid var(--accent-tint-strong);
-  border-radius: var(--r-sm);
-  font-size: 0.88rem;
-  color: var(--accent);
-  margin-bottom: 16px;
-}
 
 /* --- Learner profile card (sidebar) -------------------------------------- */
 
 .profile-card {
-  margin: 8px 12px;
+  /* SidebarFooter already provides uniform p-2 around the card. */
   padding: 14px 16px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -1822,27 +1330,6 @@ button.small {
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
-}
-.profile-level-badge {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 3px 8px;
-  border-radius: var(--r-pill);
-  color: #fff;
-}
-.profile-level-badge.beginner {
-  background: var(--warn);
-}
-.profile-level-badge.intermediate {
-  background: var(--accent);
-}
-.profile-level-badge.advanced {
-  background: var(--ok);
-}
-.profile-level-badge.unknown {
-  background: var(--text-faint);
 }
 .profile-level-label {
   font-size: 0.78rem;
@@ -1890,11 +1377,6 @@ button.small {
 .rec-context-sep {
   color: var(--text-faint);
 }
-.rec-due {
-  color: var(--warn);
-  font-weight: 600;
-}
-
 .rec-primary {
   display: flex;
   align-items: center;
@@ -1946,11 +1428,6 @@ button.small {
   color: var(--text-dim);
   line-height: 1.4;
 }
-.rec-action-btn {
-  flex-shrink: 0;
-  position: relative;
-  z-index: 1;
-}
 .rec-primary-actions {
   display: flex;
   align-items: center;
@@ -1959,15 +1436,6 @@ button.small {
   position: relative;
   z-index: 1;
 }
-.rec-dismiss-btn {
-  padding: 8px;
-  color: var(--text-faint);
-}
-.rec-dismiss-btn:hover {
-  color: var(--text-dim);
-  background: var(--panel-hover);
-}
-
 .rec-alternatives {
   display: flex;
   flex-direction: column;
@@ -1981,47 +1449,6 @@ button.small {
   letter-spacing: 0.04em;
   padding-left: 4px;
 }
-.rec-alt-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-xs);
-  text-align: left;
-  width: 100%;
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.rec-alt-card:hover {
-  border-color: var(--accent-tint-strong);
-  box-shadow: var(--shadow-sm);
-}
-.rec-alt-icon {
-  color: var(--text-dim);
-  flex-shrink: 0;
-}
-.rec-alt-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.rec-alt-title {
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-.rec-alt-rationale {
-  font-size: 0.78rem;
-  color: var(--text-dim);
-}
-.rec-alt-arrow {
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
-
 /* --- Concept list (knowledge graph + mastery) ---------------------------- */
 
 /* --- Concept detail modal -------------------------------------------------- */
@@ -2156,46 +1583,6 @@ button.small {
   padding: 2px 0 10px;
   margin-bottom: 4px;
 }
-.deck-chip {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px 14px;
-  min-width: 150px;
-  flex-shrink: 0;
-  text-align: left;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.deck-chip:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-xs);
-}
-.deck-chip.active {
-  border-color: var(--accent);
-  background: var(--accent-tint);
-}
-.deck-chip-title {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 180px;
-}
-.deck-chip.active .deck-chip-title {
-  color: var(--accent);
-}
-.deck-chip-meta {
-  font-size: 0.7rem;
-  color: var(--text-faint);
-  white-space: nowrap;
-}
-
 /* --- Content list pages (quizzes / flashcards) --------------------------- */
 
 .content-list-page {
@@ -2252,14 +1639,6 @@ button.small {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.danger-btn {
-  background: var(--danger) !important;
-  color: white !important;
-}
-.danger-btn:hover {
-  opacity: 0.9;
-}
-
 /* --- Drive (content browser) --------------------------------------------- */
 
 .drive-page {
@@ -2281,41 +1660,6 @@ button.small {
   gap: 16px;
   flex-wrap: wrap;
 }
-.drive-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-.drive-breadcrumb .crumb {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  font-size: 0.88rem;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-.drive-breadcrumb .crumb:hover {
-  color: var(--text);
-  background: var(--panel-hover);
-}
-.drive-breadcrumb .crumb.current {
-  color: var(--text);
-  font-weight: 600;
-  cursor: default;
-}
-.drive-breadcrumb .crumb.current:hover {
-  background: none;
-}
-.drive-breadcrumb .crumb-sep {
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
-
 .drive-actions {
   display: flex;
   align-items: center;
@@ -2325,12 +1669,6 @@ button.small {
   position: relative;
   display: flex;
   align-items: center;
-}
-.drive-search-icon {
-  position: absolute;
-  left: 10px;
-  color: var(--text-faint);
-  pointer-events: none;
 }
 .drive-search {
   padding: 6px 12px 6px 30px;
@@ -2478,45 +1816,6 @@ button.small {
 }
 
 /* Context menu dropdown */
-.drive-card-menu-dropdown {
-  position: absolute;
-  top: 32px;
-  right: 6px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-md);
-  padding: 4px;
-  z-index: 10;
-  min-width: 140px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.drive-card-menu-dropdown button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  background: none;
-  border: none;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.12s ease;
-}
-.drive-card-menu-dropdown button:hover {
-  background: var(--panel-hover);
-  color: var(--text);
-}
-.drive-card-menu-dropdown button.danger:hover {
-  background: var(--danger-tint);
-  color: var(--danger);
-}
-
 /* Inline rename input */
 .drive-rename-input {
   font-size: 0.82rem;
@@ -2686,46 +1985,6 @@ button.small {
   flex-wrap: wrap;
   gap: 6px;
 }
-.concepts-filter-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.concepts-filter-btn:hover {
-  color: var(--text);
-  border-color: var(--accent-tint-strong);
-}
-.concepts-filter-btn.active {
-  color: var(--accent);
-  background: var(--accent-tint);
-  border-color: var(--accent-tint-strong);
-}
-.concepts-filter-btn .count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: var(--text-faint);
-  background: var(--sidebar-bg);
-  border-radius: 9px;
-}
-.concepts-filter-btn.active .count {
-  color: var(--accent);
-  background: var(--panel);
-}
 .concepts-empty-filter {
   padding: 32px;
   text-align: center;
@@ -2758,41 +2017,7 @@ button.small {
 
 /* --- Sidebar nav (Concepts button) ---------------------------------------- */
 
-.sidebar-nav {
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.sidebar-nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 12px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  text-align: left;
-}
-.sidebar-nav-btn:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--panel);
-  border-color: var(--border);
-}
-.sidebar-nav-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
 /* Spacer pushes the profile card to the bottom of the sidebar. */
-.sidebar-spacer {
-  flex: 1;
-}
 .sidebar-upload-error {
   margin-top: 6px;
   padding: 8px 10px;
@@ -2849,28 +2074,6 @@ button.small {
   font-size: 0.78rem;
   color: var(--text-dim);
 }
-.concept-due-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--r-pill);
-  background: var(--warn-tint);
-  color: var(--warn);
-}
-.concept-blocked-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: var(--r-pill);
-  background: var(--danger-tint);
-  color: var(--danger);
-}
 .concept-prereqs {
   margin-top: 8px;
   padding-left: 20px;
@@ -2896,16 +2099,6 @@ button.small {
   gap: 6px;
   flex-wrap: wrap;
 }
-.concept-module-tag {
-  font-size: 0.68rem;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: var(--r-sm);
-  background: var(--sidebar-bg);
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-}
-
 /* --- Due badge (FSRS spaced repetition) ---------------------------------- */
 
 .due-badge {
@@ -2948,36 +2141,6 @@ button.small {
   font-size: 0.78rem;
 }
 /* Toggle between rendered PDF and extracted text. */
-.doc-view-toggle {
-  display: flex;
-  gap: 4px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--sidebar-bg);
-}
-.doc-view-toggle button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--text-dim);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.doc-view-toggle button:hover {
-  color: var(--text);
-  background: var(--panel);
-}
-.doc-view-toggle button.active {
-  color: var(--accent);
-  background: var(--panel);
-  border-color: var(--border);
-}
 /* In-app PDF viewer (react-pdf). Custom toolbar + canvas — no browser chrome. */
 .pdf-viewer {
   display: flex;
@@ -2993,28 +2156,6 @@ button.small {
   position: sticky;
   top: 0;
   z-index: 2;
-}
-.pdf-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  color: var(--text-dim);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.pdf-icon-btn:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--panel);
-  border-color: var(--border);
-}
-.pdf-icon-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
 }
 .pdf-zoom-level {
   font-size: 0.78rem;
@@ -3341,30 +2482,6 @@ button.small {
   opacity: 0.65;
 }
 
-.understanding-refresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  padding: 4px 12px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--border);
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.understanding-refresh:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.understanding-refresh:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
 .understanding-refresh-msg {
   margin-top: 8px;
   font-size: 0.75rem;
@@ -3558,20 +2675,6 @@ button.small {
   font-size: 0.95rem;
 }
 
-.module-plan-exam-chip {
-  font-size: 0.74rem;
-  font-weight: 600;
-  padding: 2px 9px;
-  border-radius: var(--r-pill);
-  background: var(--bg-inset);
-  color: var(--text-dim);
-}
-
-.module-plan-exam-chip.soon {
-  background: rgba(239, 68, 68, 0.14);
-  color: var(--danger);
-}
-
 .module-plan-date-edit {
   border: none;
   background: none;
@@ -3670,8 +2773,12 @@ button.small {
   opacity: 0.55;
 }
 
+.module-plan-item-main:hover {
+  background: var(--panel-hover);
+}
 .module-plan-item-main {
   flex: 1;
+  transition: background 0.12s;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3729,24 +2836,6 @@ button.small {
   font-size: 0.74rem;
   color: var(--text-dim);
   flex-shrink: 0;
-}
-
-.module-plan-check {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  border: none;
-  border-left: 1px solid var(--border);
-  background: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.module-plan-check.on {
-  color: var(--ok);
-  background: rgba(74, 222, 128, 0.08);
 }
 
 /* --- Semester groups (Modules page root) ------------------------------------ */
@@ -3889,6 +2978,7 @@ button.small {
 
 .file-to-module-row:hover {
   border-color: var(--accent);
+  background: var(--panel-hover);
 }
 
 .file-to-module-row.lesson {

@@ -9,21 +9,74 @@ import {
   Mic,
   UploadCloud,
   Plus,
-  ChevronRight,
   ChevronDown,
   CalendarClock,
   MoreVertical,
   Pencil,
   Trash2,
   FolderInput,
-  Loader2,
   Search,
 } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { toast } from "sonner";
 import { FileToModuleModal } from "./FileToModuleModal";
 import { ModulePlanPanel } from "./ModulePlanPanel";
 import type { Document, Lesson, Module, ModuleTree } from "../types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 /**
  * Module browser organized by semester. Shows Modules and Lessons as folder
@@ -55,8 +108,6 @@ export function ModulesPage() {
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Folder being dragged over (for visual highlight + drop logic).
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
-  // Context menu open state: { type, id } | null
-  const [menuOpen, setMenuOpen] = useState<{ type: "folder" | "doc"; id: string } | null>(null);
   // Inline rename state: { id, kind, value }
   const [renaming, setRenaming] = useState<{
     id: string;
@@ -69,6 +120,12 @@ export function ModulesPage() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   // Edit-details modal for a module (semester / exam date / title).
   const [editingModule, setEditingModule] = useState<Module | null>(null);
+  // Destructive confirm target for deletes (folder or document).
+  const [deleteTarget, setDeleteTarget] = useState<
+    | { kind: "module" | "lesson"; id: string; title: string }
+    | { kind: "doc"; id: string; title: string }
+    | null
+  >(null);
   // A picked file awaiting a module choice (root view only — inside a
   // module/lesson the context is already known).
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -87,17 +144,26 @@ export function ModulesPage() {
   const createModuleMut = useMutation({
     mutationFn: ({ title, meta }: { title: string; meta?: api.ModuleMeta }) =>
       api.createModule(title, meta),
-    onSuccess: invalidate,
+    onSuccess: (_d, { title }) => {
+      invalidate();
+      toast.success("Module created", { description: title });
+    },
   });
   const updateModuleMut = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: api.ModuleMeta & { title?: string } }) =>
       api.updateModule(id, patch),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Module updated");
+    },
   });
   const createLessonMut = useMutation({
     mutationFn: ({ moduleId, title }: { moduleId: string; title: string }) =>
       api.createLesson(moduleId, title),
-    onSuccess: invalidate,
+    onSuccess: (_d, { title }) => {
+      invalidate();
+      toast.success("Lesson created", { description: title });
+    },
   });
   const renameModuleMut = useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) =>
@@ -111,15 +177,24 @@ export function ModulesPage() {
   });
   const deleteModuleMut = useMutation({
     mutationFn: (id: string) => api.deleteModule(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Module deleted");
+    },
   });
   const deleteLessonMut = useMutation({
     mutationFn: (id: string) => api.deleteLesson(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Lesson deleted");
+    },
   });
   const deleteDocMut = useMutation({
     mutationFn: (id: string) => api.deleteDocument(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Document deleted");
+    },
   });
   const moveDocMut = useMutation({
     mutationFn: ({
@@ -131,7 +206,10 @@ export function ModulesPage() {
       lessonId?: string | null;
       moduleId?: string | null;
     }) => api.moveDocument(docId, { lessonId, moduleId }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Document moved");
+    },
   });
   const uploadMut = useMutation({
     mutationFn: ({
@@ -143,13 +221,16 @@ export function ModulesPage() {
       lessonId?: string;
       moduleId?: string;
     }) => api.uploadDocument(file, lessonId, undefined, moduleId),
-    onSuccess: invalidate,
+    onSuccess: (doc) => {
+      invalidate();
+      toast.success("Document uploaded", { description: doc.filename });
+    },
   });
 
   if (tree.isLoading) {
     return (
       <div className="loading drive-loading">
-        <Loader2 size={18} className="spinner" />
+        <Spinner className="size-[18px]" />
         Loading your modules…
       </div>
     );
@@ -340,23 +421,18 @@ export function ModulesPage() {
   }
 
   // --- Delete ---
-  function handleDeleteFolder(folder: { id: string; kind: "module" | "lesson"; title: string }) {
-    if (window.confirm(`Delete "${folder.title}"? Documents will be moved to Unfiled.`)) {
-      if (folder.kind === "module") deleteModuleMut.mutate(folder.id);
-      else deleteLessonMut.mutate(folder.id);
-    }
-  }
-  function handleDeleteDoc(doc: Document) {
-    if (window.confirm(`Delete "${doc.filename}"?`)) {
-      deleteDocMut.mutate(doc.id);
-    }
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    if (deleteTarget.kind === "module") deleteModuleMut.mutate(deleteTarget.id);
+    else if (deleteTarget.kind === "lesson") deleteLessonMut.mutate(deleteTarget.id);
+    else deleteDocMut.mutate(deleteTarget.id);
+    setDeleteTarget(null);
   }
 
   // One folder card (module or lesson) — shared by the grouped root view,
   // the lesson view, and search results.
   function renderFolderCard(f: (typeof folders)[number]) {
     const isRenaming = renaming?.id === f.id;
-    const menuForThis = menuOpen?.type === "folder" && menuOpen.id === f.id;
     return (
       <div
         key={f.id}
@@ -370,65 +446,60 @@ export function ModulesPage() {
         onDragLeave={() => onFolderDragLeave(f.id)}
         onDrop={(e) => onFolderDrop(e, f)}
       >
-        <button
-          type="button"
-          className="drive-card-menu"
-          onClick={(e) => {
-            e.stopPropagation();
-            setMenuOpen(menuForThis ? null : { type: "folder", id: f.id });
-          }}
-        >
-          <MoreVertical size={14} />
-        </button>
-        {menuForThis && (
-          <div className="drive-card-menu-dropdown" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-xs"
+              className="drive-card-menu"
+              aria-label="Folder actions"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical size={14} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
             {f.kind === "module" && (
-              <button
-                type="button"
+              <DropdownMenuItem
                 onClick={() => {
-                  setMenuOpen(null);
                   const moduleObj = data?.modules.find((m) => m.id === f.id);
                   if (moduleObj) setEditingModule(moduleObj);
                 }}
               >
                 <CalendarClock size={13} />
                 Edit details
-              </button>
+              </DropdownMenuItem>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(null);
+            <DropdownMenuItem
+              onClick={() =>
                 setRenaming({
                   id: f.id,
                   kind: f.kind,
                   value: f.title,
-                });
-              }}
+                })
+              }
             >
               <Pencil size={13} />
               Rename
-            </button>
-            <button
-              type="button"
-              className="danger"
-              onClick={() => {
-                setMenuOpen(null);
-                handleDeleteFolder(f);
-              }}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() =>
+                setDeleteTarget({ kind: f.kind, id: f.id, title: f.title })
+              }
             >
               <Trash2 size={13} />
               Delete
-            </button>
-          </div>
-        )}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div className="drive-card-icon folder-icon">
           <FolderOpen size={28} />
         </div>
         {isRenaming ? (
-          <input
+          <Input
             autoFocus
-            className="drive-rename-input"
+            className="drive-rename-input h-7 w-full text-xs"
             value={renaming.value}
             onChange={(e) =>
               setRenaming((r) => (r ? { ...r, value: e.target.value } : r))
@@ -454,40 +525,63 @@ export function ModulesPage() {
     <div className="drive-page">
       {/* Toolbar */}
       <div className="drive-toolbar">
-        <div className="drive-breadcrumb">
-          <button type="button" className="crumb" onClick={goToRoot}>
-            Modules
-          </button>
-          {currentModule && (
-            <>
-              <ChevronRight size={14} className="crumb-sep" />
-              {lessonId && currentLesson ? (
+        <Breadcrumb>
+          <BreadcrumbList className="min-w-0 gap-1">
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
                 <button
                   type="button"
-                  className="crumb"
-                  onClick={() => goToModule(currentModule.id)}
+                  className="rounded px-1 py-0.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  onClick={goToRoot}
                 >
-                  {currentModule.title}
+                  Modules
                 </button>
-              ) : (
-                <span className="crumb current">{currentModule.title}</span>
-              )}
-            </>
-          )}
-          {currentLesson && (
-            <>
-              <ChevronRight size={14} className="crumb-sep" />
-              <span className="crumb current">{currentLesson.title}</span>
-            </>
-          )}
-        </div>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            {currentModule && (
+              <>
+                <BreadcrumbSeparator className="[&>svg]:size-3.5 text-muted-foreground/50" />
+                <BreadcrumbItem>
+                  {lessonId && currentLesson ? (
+                    <BreadcrumbLink asChild>
+                      <button
+                        type="button"
+                        className="rounded px-1 py-0.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        onClick={() => goToModule(currentModule.id)}
+                      >
+                        {currentModule.title}
+                      </button>
+                    </BreadcrumbLink>
+                  ) : (
+                    <BreadcrumbPage className="px-1 text-sm font-semibold">
+                      {currentModule.title}
+                    </BreadcrumbPage>
+                  )}
+                </BreadcrumbItem>
+              </>
+            )}
+            {currentLesson && (
+              <>
+                <BreadcrumbSeparator className="[&>svg]:size-3.5 text-muted-foreground/50" />
+                <BreadcrumbItem>
+                  <BreadcrumbPage className="px-1 text-sm font-semibold">
+                    {currentLesson.title}
+                  </BreadcrumbPage>
+                </BreadcrumbItem>
+              </>
+            )}
+          </BreadcrumbList>
+        </Breadcrumb>
 
         <div className="drive-actions">
-          <div className="drive-search-wrapper">
-            <Search size={14} className="drive-search-icon" />
-            <input
+          <div className="drive-search-wrapper relative">
+            <Search
+              size={14}
+              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
               type="text"
-              className="drive-search"
+              className="drive-search h-8 w-56 pl-8 text-xs"
               placeholder="Search modules…"
               value={searchQuery}
               onChange={(e) => {
@@ -503,28 +597,29 @@ export function ModulesPage() {
               }}
             />
           </div>
-          <button
-            type="button"
-            className="ghost icon-btn"
-            title="Upload to this folder"
-            onClick={() => fileInput.current?.click()}
-            disabled={uploadMut.isPending}
-          >
-            {uploadMut.isPending ? (
-              <Loader2 size={16} className="spinner" />
-            ) : (
-              <UploadCloud size={16} />
-            )}
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInput.current?.click()}
+                disabled={uploadMut.isPending}
+                aria-label="Upload to this folder"
+              >
+                {uploadMut.isPending ? (
+                  <Spinner className="size-4" />
+                ) : (
+                  <UploadCloud size={16} />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Upload to this folder</TooltipContent>
+          </Tooltip>
           {!lessonId && (
-            <button
-              type="button"
-              className="primary drive-new-folder-btn"
-              onClick={handleNewFolder}
-            >
+            <Button className="drive-new-folder-btn" onClick={handleNewFolder}>
               <Plus size={16} />
               {lessonId ? "New lesson" : "New module"}
-            </button>
+            </Button>
           )}
           <input
             ref={fileInput}
@@ -590,7 +685,6 @@ export function ModulesPage() {
           >
             {docs.map((d) => {
               const isAudio = d.kind === "audio";
-              const menuForThis = menuOpen?.type === "doc" && menuOpen.id === d.id;
               return (
                 <div
                   key={d.id}
@@ -599,41 +693,34 @@ export function ModulesPage() {
                   onDragStart={(e) => onDocDragStart(e, d.id)}
                   onClick={() => navigate({ to: "/documents/$docId", params: { docId: d.id } })}
                 >
-                  <button
-                    type="button"
-                    className="drive-card-menu"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuOpen(menuForThis ? null : { type: "doc", id: d.id });
-                    }}
-                  >
-                    <MoreVertical size={14} />
-                  </button>
-                  {menuForThis && (
-                    <div className="drive-card-menu-dropdown" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuOpen(null);
-                          setMovingDoc(d);
-                        }}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="icon-xs"
+                        className="drive-card-menu"
+                        aria-label="Document actions"
+                        onClick={(e) => e.stopPropagation()}
                       >
+                        <MoreVertical size={14} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenuItem onClick={() => setMovingDoc(d)}>
                         <FolderInput size={13} />
                         Move to…
-                      </button>
-                      <button
-                        type="button"
-                        className="danger"
-                        onClick={() => {
-                          setMenuOpen(null);
-                          handleDeleteDoc(d);
-                        }}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() =>
+                          setDeleteTarget({ kind: "doc", id: d.id, title: d.filename })
+                        }
                       >
                         <Trash2 size={13} />
                         Delete
-                      </button>
-                    </div>
-                  )}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <div className={`drive-card-icon ${isAudio ? "audio-icon" : "doc-icon"}`}>
                     {isAudio ? <Mic size={26} /> : <FileText size={26} />}
                   </div>
@@ -700,6 +787,32 @@ export function ModulesPage() {
           }}
         />
       )}
+
+      {/* Destructive confirm for folder / document deletes */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleteTarget?.title}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.kind === "doc"
+                ? "This cannot be undone."
+                : "Documents inside will be moved to Unfiled."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={confirmDelete}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -748,19 +861,18 @@ function NewFolderModal({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal-content new-folder-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <FolderPlus size={20} />
-          <h3>{label}</h3>
-        </div>
-        {isLesson && parentTitle && (
-          <p className="new-folder-context">in {parentTitle}</p>
-        )}
-        <input
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="new-folder-modal sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FolderPlus size={20} className="text-muted-foreground" />
+            {label}
+          </DialogTitle>
+          <DialogDescription>
+            {isLesson && parentTitle ? `in ${parentTitle}` : "\u00A0"}
+          </DialogDescription>
+        </DialogHeader>
+        <Input
           autoFocus
           type="text"
           className="new-folder-input"
@@ -769,68 +881,74 @@ function NewFolderModal({
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") handleCreate();
-            if (e.key === "Escape") onClose();
           }}
         />
         {!isLesson && (
           <>
-            <div className="form-row">
-              <label className="form-label">
-                Term
-                <select value={term} onChange={(e) => setTerm(e.target.value)}>
-                  <option value="">—</option>
-                  <option value="Autumn">Autumn</option>
-                  <option value="Spring">Spring</option>
-                  <option value="Summer">Summer</option>
-                </select>
-              </label>
-              <label className="form-label">
-                Academic year
-                <select
-                  value={academicYear}
-                  onChange={(e) => setAcademicYear(e.target.value)}
+            <div className="form-row grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="form-label">Term</Label>
+                <Select value={term || "none"} onValueChange={(v) => setTerm(v === "none" ? "" : v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">—</SelectItem>
+                    <SelectItem value="Autumn">Autumn</SelectItem>
+                    <SelectItem value="Spring">Spring</SelectItem>
+                    <SelectItem value="Summer">Summer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="form-label">Academic year</Label>
+                <Select
+                  value={academicYear || "none"}
+                  onValueChange={(v) => setAcademicYear(v === "none" ? "" : v)}
                 >
-                  <option value="">—</option>
-                  {yearOptions.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">—</SelectItem>
+                    {yearOptions.map((y) => (
+                      <SelectItem key={y} value={y}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <label className="form-label">
-              Exam date (optional — paces the study plan)
-              <input
+            <div className="grid gap-1.5">
+              <Label className="form-label">
+                Exam date (optional — paces the study plan)
+              </Label>
+              <Input
                 type="date"
                 value={examDate}
                 onChange={(e) => setExamDate(e.target.value)}
               />
-            </label>
+            </div>
           </>
         )}
-        <div className="modal-actions">
-          <button type="button" className="ghost" onClick={onClose}>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className="primary"
-            onClick={handleCreate}
-            disabled={!title.trim() || isPending}
-          >
+          </Button>
+          <Button onClick={handleCreate} disabled={!title.trim() || isPending}>
             {isPending ? (
               <>
-                <Loader2 size={14} className="spinner" />
+                <Spinner className="size-3.5" />
                 Creating…
               </>
             ) : (
               "Create"
             )}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -848,51 +966,56 @@ function MoveToModal({
   onMove: (target: { lessonId?: string | null; moduleId?: string | null }) => void;
 }) {
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content move-to-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>Move "{doc.filename}"</h3>
-        <div className="move-to-list">
-          <button
-            type="button"
-            className="move-to-option"
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="move-to-modal sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Move "{doc.filename}"</DialogTitle>
+          <DialogDescription>Choose a destination</DialogDescription>
+        </DialogHeader>
+        <ScrollArea className="move-to-list -mx-2 max-h-[50vh] px-2">
+          <Button
+            variant="ghost"
+            className="move-to-option w-full justify-start gap-2 px-2.5 py-2 text-sm font-normal whitespace-normal"
             onClick={() => onMove({ lessonId: null, moduleId: null })}
           >
-            <FolderInput size={15} />
+            <FolderInput size={15} className="text-muted-foreground" />
             Unfiled
-          </button>
+          </Button>
           {tree.modules.map((m: Module) => (
             <div key={m.id} className="move-to-group">
-              <button
-                type="button"
-                className="move-to-option module-root"
+              <Button
+                variant="ghost"
+                className="move-to-option module-root w-full justify-start gap-2 px-2.5 py-2 text-sm font-normal whitespace-normal"
                 onClick={() => onMove({ moduleId: m.id })}
               >
-                <Folder size={15} />
+                <Folder size={15} className="text-muted-foreground" />
                 {m.title}
                 <span className="move-to-module-label">module root</span>
-              </button>
+              </Button>
               {m.lessons.map((l: Lesson) => (
-                <button
+                <Button
                   key={l.id}
-                  type="button"
-                  className="move-to-option sub"
+                  variant="ghost"
+                  className="move-to-option sub w-full justify-start gap-2 px-2.5 py-2 pl-6 text-sm font-normal whitespace-normal"
                   onClick={() => onMove({ lessonId: l.id })}
                 >
-                  <FolderOpen size={14} />
+                  <FolderOpen size={14} className="text-muted-foreground" />
                   {l.title}
-                </button>
+                </Button>
               ))}
               {m.lessons.length === 0 && (
                 <div className="move-to-empty">No lessons</div>
               )}
             </div>
           ))}
-        </div>
-        <button type="button" className="ghost" onClick={onClose}>
-          Cancel
-        </button>
-      </div>
-    </div>
+        </ScrollArea>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1030,16 +1153,18 @@ function SemesterGroups({
           ? groupExpanded[g.key] !== false
           : groupExpanded[g.key] === true;
         return (
-          <section key={g.key} className="semester-group">
-            <button
-              type="button"
+          <Collapsible
+            key={g.key}
+            open={expanded}
+            onOpenChange={(open) => onToggle(g.key, open)}
+            className="semester-group"
+          >
+            <CollapsibleTrigger
               className={`semester-group-header ${isCurrent ? "current" : ""}`}
-              onClick={() => onToggle(g.key, !expanded)}
             >
               <ChevronDown
                 size={14}
-                className="semester-group-chevron"
-                style={{ transform: expanded ? "" : "rotate(-90deg)" }}
+                className="semester-group-chevron transition-transform group-data-[state=closed]/collapsible:-rotate-90"
               />
               <span className="semester-group-label">{g.label}</span>
               {isCurrent && (
@@ -1048,11 +1173,11 @@ function SemesterGroups({
               <span className="semester-group-count">
                 {g.folders.length} module{g.folders.length === 1 ? "" : "s"}
               </span>
-            </button>
-            {expanded && (
+            </CollapsibleTrigger>
+            <CollapsibleContent>
               <div className="drive-grid">{g.folders.map(renderCard)}</div>
-            )}
-          </section>
+            </CollapsibleContent>
+          </Collapsible>
         );
       })}
     </div>
@@ -1096,61 +1221,74 @@ function EditModuleModal({
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Module details</h3>
-        </div>
-        <label className="form-label">
-          Title
-          <input
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Module details</DialogTitle>
+          <DialogDescription>
+            Semester and exam date pace the study plan
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-1.5">
+          <Label className="form-label">Title</Label>
+          <Input
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
-        </label>
-        <div className="form-row">
-          <label className="form-label">
-            Term
-            <select value={term} onChange={(e) => setTerm(e.target.value)}>
-              <option value="">—</option>
-              <option value="Autumn">Autumn</option>
-              <option value="Spring">Spring</option>
-              <option value="Summer">Summer</option>
-            </select>
-          </label>
-          <label className="form-label">
-            Academic year
-            <select
-              value={academicYear}
-              onChange={(e) => setAcademicYear(e.target.value)}
-            >
-              <option value="">—</option>
-              {yearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
-        <label className="form-label">
-          Exam date (paces the study plan)
-          <input
+        <div className="form-row grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label className="form-label">Term</Label>
+            <Select value={term || "none"} onValueChange={(v) => setTerm(v === "none" ? "" : v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">—</SelectItem>
+                <SelectItem value="Autumn">Autumn</SelectItem>
+                <SelectItem value="Spring">Spring</SelectItem>
+                <SelectItem value="Summer">Summer</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="form-label">Academic year</Label>
+            <Select
+              value={academicYear || "none"}
+              onValueChange={(v) => setAcademicYear(v === "none" ? "" : v)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">—</SelectItem>
+                {yearOptions.map((y) => (
+                  <SelectItem key={y} value={y}>
+                    {y}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          <Label className="form-label">Exam date (paces the study plan)</Label>
+          <Input
             type="date"
             value={examDate}
             onChange={(e) => setExamDate(e.target.value)}
           />
-        </label>
-        <div className="modal-actions">
-          <button className="ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="primary" disabled={isPending} onClick={handleSave}>
-            {isPending ? "Saving…" : "Save"}
-          </button>
         </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={isPending} onClick={handleSave}>
+            {isPending ? "Saving…" : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

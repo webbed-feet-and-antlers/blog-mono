@@ -4,9 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   CalendarDays,
   Sparkles,
-  Loader2,
   RefreshCw,
-  Check,
   Zap,
   CircleHelp,
   Layers,
@@ -17,7 +15,21 @@ import {
 import * as api from "../api/client";
 import type { PlanItem } from "../api/client";
 import { track } from "../api/track";
+import { toast } from "sonner";
 import type { Module } from "../types";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 interface Props {
   module: Module;
@@ -101,6 +113,7 @@ export function ModulePlanPanel({ module }: Props) {
       await api.generateStudyPlan(module.id, examDate);
       await queryClient.invalidateQueries({ queryKey: ["study-plan", module.id] });
       await queryClient.invalidateQueries({ queryKey: ["module-tree"] });
+      toast.success("Study plan updated");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -130,18 +143,18 @@ export function ModulePlanPanel({ module }: Props) {
           </p>
         </div>
         <div className="module-plan-empty-actions">
-          <input
+          <Input
             type="date"
-            className="module-plan-date-input"
+            className="module-plan-date-input w-36"
             aria-label="Exam date (optional)"
             onChange={(e) => {
               if (e.target.value) void handleGenerate(e.target.value);
             }}
           />
-          <button className="primary" onClick={() => handleGenerate()}>
+          <Button onClick={() => handleGenerate()}>
             <Sparkles size={14} />
             Plan this module
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -150,7 +163,7 @@ export function ModulePlanPanel({ module }: Props) {
   if (planning || (plan.isLoading && !data)) {
     return (
       <div className="module-plan module-plan-planning">
-        <Loader2 size={18} className="spinner" />
+        <Spinner className="size-[18px]" />
         <span>
           The agent is planning this module — reading your documents, mastery,
           and due concepts…
@@ -204,16 +217,17 @@ export function ModulePlanPanel({ module }: Props) {
           <CalendarDays size={15} />
           <span>Study plan</span>
           {daysToExam !== null && (
-            <span
-              className={`module-plan-exam-chip ${daysToExam <= 7 ? "soon" : ""}`}
+            <Badge
+              variant={daysToExam <= 7 ? "destructive-soft" : "secondary"}
+              className="px-2.5 py-px text-[0.74rem]"
             >
               exam in {daysToExam} day{daysToExam === 1 ? "" : "s"}
-            </span>
+            </Badge>
           )}
           {editingDate ? (
-            <input
+            <Input
               type="date"
-              className="module-plan-date-input"
+              className="module-plan-date-input h-7 w-32 text-xs"
               defaultValue={module.exam_date ?? ""}
               autoFocus
               onChange={async (e) => {
@@ -226,14 +240,14 @@ export function ModulePlanPanel({ module }: Props) {
               onBlur={() => setEditingDate(false)}
             />
           ) : (
-            <button
-              type="button"
-              className="module-plan-date-edit"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="module-plan-date-edit h-auto px-1.5 py-0.5 text-xs text-muted-foreground"
               onClick={() => setEditingDate(true)}
-              title={module.exam_date ? "Change exam date" : "Set exam date"}
             >
               {module.exam_date ?? "set exam date"}
-            </button>
+            </Button>
           )}
         </div>
         <div className="module-plan-meta">
@@ -248,27 +262,38 @@ export function ModulePlanPanel({ module }: Props) {
               </em>
             )}
           </span>
-          <button
-            type="button"
-            className="module-plan-refresh"
-            disabled={planning}
-            onClick={() => handleGenerate()}
-            title="Regenerate the plan from current module state"
-          >
-            {planning ? (
-              <Loader2 size={13} className="spinner" />
-            ) : (
-              <RefreshCw size={13} />
-            )}
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="module-plan-refresh text-muted-foreground"
+                disabled={planning}
+                onClick={() => handleGenerate()}
+                aria-label="Regenerate plan"
+              >
+                {planning ? (
+                  <Spinner className="size-[13px]" />
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Regenerate the plan from current module state</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
-      <div className="module-plan-progress-bar">
-        <div className="module-plan-progress-fill" style={{ width: `${progressPct}%` }} />
-      </div>
+      <Progress
+        value={progressPct}
+        className="module-plan-progress-bar h-1.5"
+      />
 
-      {error && <div className="error">{error}</div>}
+      {error && (
+        <Alert variant="destructive" className="mt-3">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <div className="module-plan-days">
         {[...groups.entries()].map(([offset, dayItems]) => (
@@ -307,19 +332,41 @@ export function ModulePlanPanel({ module }: Props) {
                         {item.estimate_mins}m
                       </span>
                     </button>
-                    <button
-                      type="button"
-                      className={`module-plan-check ${isDone ? "on" : ""}`}
-                      title={isDone ? (item.done_kind === "auto" ? "Done (detected automatically)" : "Mark as not done") : "Mark done"}
-                      onClick={() =>
-                        toggleItem.mutate({
-                          itemId: item.id,
-                          status: isDone ? "pending" : "done",
-                        })
-                      }
+                    <div
+                      className={cn(
+                        "flex w-9 shrink-0 items-center justify-center border-l",
+                        isDone && "bg-ok/10",
+                      )}
                     >
-                      <Check size={13} />
-                    </button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Checkbox
+                            checked={isDone}
+                            onCheckedChange={() =>
+                              toggleItem.mutate({
+                                itemId: item.id,
+                                status: isDone ? "pending" : "done",
+                              })
+                            }
+                            className={cn("size-4", isDone && "border-ok bg-ok text-white")}
+                            aria-label={
+                              isDone
+                                ? item.done_kind === "auto"
+                                  ? "Done (detected automatically)"
+                                  : "Mark as not done"
+                                : "Mark done"
+                            }
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {isDone
+                            ? item.done_kind === "auto"
+                              ? "Done (detected automatically)"
+                              : "Mark as not done"
+                            : "Mark done"}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
                   </div>
                 );
               })}

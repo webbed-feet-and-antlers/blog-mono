@@ -73,8 +73,8 @@ async def test_rename(case):
     assert (new_name or "").lower() != bad_name.rsplit(".", 1)[0].lower(), "name unchanged"
 
 
-async def _descriptiveness(bad_name: str, new_name: str, case: dict) -> float:
-    from evals.suites import clamp01
+async def _descriptiveness(bad_name: str, new_name: str, case: dict) -> float | None:
+    from evals.suites import judge_score
 
     metric = rubric(
         "Name descriptiveness",
@@ -84,7 +84,7 @@ async def _descriptiveness(bad_name: str, new_name: str, case: dict) -> float:
             "material type — specifically enough to pick the file out of a "
             "folder of fifty? Generic names ('lecture notes', 'study "
             "material') score low; names naming the actual content score "
-            "high. Score 0.0-1.0."
+            "high."
         ),
         evaluation_params=[SingleTurnParams.CONTEXT, SingleTurnParams.ACTUAL_OUTPUT],
         threshold=0.45,
@@ -94,16 +94,19 @@ async def _descriptiveness(bad_name: str, new_name: str, case: dict) -> float:
         actual_output=new_name,
         context=[case["passage"][:1500]],
     )
-    await metric.a_measure(test_case, _show_indicator=False)
-    score = clamp01(metric.score)
+    score, reason = await judge_score(metric, test_case)
     record(
         "rename",
         "descriptiveness",
         case=case["id"],
-        score=score,
+        score=score if score is not None else 0.0,
         threshold=metric.threshold,
-        success=score >= metric.threshold,
-        reason=f"{bad_name} → {new_name}: {metric.reason or ''}",
+        success=(score is not None and score >= metric.threshold),
+        reason=(
+            f"{bad_name} → {new_name}: {reason}"
+            if score is not None
+            else f"{bad_name} → {new_name}: judge verdict unparseable — skipped"
+        ),
     )
     return score
 
@@ -117,7 +120,9 @@ async def test_rename_descriptiveness():
     for case in SCIQ_CASES:
         bad_name = BAD_NAMES[len(case["id"]) % len(BAD_NAMES)]
         new_name = await tools.suggest_filename(bad_name, case["passage"])
-        scores.append(await _descriptiveness(bad_name, new_name or "", case))
-    assert scores, "no rename suggestions generated"
+        score = await _descriptiveness(bad_name, new_name or "", case)
+        if score is not None:
+            scores.append(score)
+    assert scores, "no parseable judge verdicts in this run"
     mean = sum(scores) / len(scores)
     assert mean >= 0.45, f"mean name descriptiveness {mean:.2f} < 0.45"

@@ -21,7 +21,7 @@ from evals.suites import (
     ADVANCED_MEMORY,
     NOVICE_MEMORY,
     case_ids,
-    clamp01,
+    judge_score,
     load_cases,
     quiz_chain,
     quiz_structural_ok,
@@ -69,18 +69,27 @@ async def test_quiz_structural(case):
 
 
 async def _judge_mean(suite_metric, cases, threshold, build) -> float:
-    """Run a judge metric over cases, record per-case, return the clamped mean."""
+    """Run a judge metric over cases, record per-case, return the clamped mean.
+
+    Unparseable verdicts (judge_score → None) are skipped, not zeroed."""
     scores = []
     for case in cases:
         metric, test_case = await build(case)
-        await metric.a_measure(test_case, _show_indicator=False)
-        score = clamp01(metric.score)
+        score, reason = await judge_score(metric, test_case)
+        if score is None:
+            record(
+                "quiz", suite_metric, case=case["id"], score=0.0,
+                threshold=threshold, success=False,
+                reason=f"judge verdict unparseable — skipped: {reason[:120]}",
+            )
+            continue
         scores.append(score)
         record(
             "quiz", suite_metric, case=case["id"], score=score,
             threshold=threshold, success=score >= threshold,
-            reason=metric.reason or "",
+            reason=reason,
         )
+    assert scores, f"{suite_metric}: no parseable judge verdicts in this run"
     mean = sum(scores) / len(scores)
     return mean
 
@@ -98,7 +107,7 @@ async def test_quiz_groundedness():
                 "correct answer is verifiable from the passage, and (b) exactly "
                 "one of the four options is correct — the other three must be "
                 "actually wrong, not arguably-also-right. Score = fraction of "
-                "questions that are grounded. 0.0 if most questions fail."
+                "questions that are grounded; fail hard if most questions fail."
             ),
             evaluation_params=[SingleTurnParams.CONTEXT, SingleTurnParams.ACTUAL_OUTPUT],
             threshold=threshold,
@@ -129,7 +138,8 @@ async def test_distractor_plausibility():
                 "distractors are absurd, trivially elimifiable, or obviously "
                 "joking. The metadata contains the dataset's own gold question "
                 "and expert distractors for calibration of what 'plausible' "
-                "means here. Score = overall distractor quality from 0.0 to 1.0."
+                "means here. Score = overall distractor quality, from worthless "
+                "at the bottom of the scale to expert-like at the top."
             ),
             evaluation_params=[SingleTurnParams.CONTEXT, SingleTurnParams.ACTUAL_OUTPUT],
             threshold=threshold,
@@ -197,8 +207,9 @@ async def test_personalization_shift():
                 "(90% average, knows 95% of reviewed flashcards, prefers hard). "
                 "Score how discernibly quiz B is calibrated harder than quiz A: "
                 "more application/analysis questions, more nuanced distractors, "
-                "less definitional recall. 1.0 = clearly and appropriately "
-                "harder; 0.5 = indistinguishable; 0.0 = quiz B is easier."
+                "less definitional recall — from clearly and appropriately "
+                "harder at the top of the scale, through indistinguishable in "
+                "the middle, to quiz B actually easier at the bottom."
             ),
             evaluation_params=[SingleTurnParams.INPUT],
             threshold=threshold,

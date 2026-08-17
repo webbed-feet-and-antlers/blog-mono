@@ -1,10 +1,28 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Loader2, FileText, Trash2, ChevronRight } from "lucide-react";
+import { FileText, Trash2, ChevronRight } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { toast } from "sonner";
 import type { ContentItem, TaskType } from "../types";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Props {
   type: TaskType;
@@ -29,14 +47,16 @@ export function ContentListPage({ type, title, emptyMessage }: Props) {
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => api.deleteContent(id),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["content-global", type] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["content-global", type] });
+      toast.success(`${type === "quiz" ? "Quiz" : "Deck"} deleted`);
+    },
   });
 
   if (items.isLoading) {
     return (
       <div className="loading content-list-loading">
-        <Loader2 size={18} className="spinner" />
+        <Spinner className="size-[18px]" />
         Loading {title.toLowerCase()}…
       </div>
     );
@@ -75,39 +95,36 @@ export function ContentListPage({ type, title, emptyMessage }: Props) {
       </div>
 
       {/* Delete confirmation */}
-      {confirmId && (
-        <div className="modal-backdrop" onClick={() => setConfirmId(null)}>
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <Trash2 size={20} className="text-warning" />
-              <h3>Delete this {type === "quiz" ? "quiz" : "deck"}?</h3>
-            </div>
-            <p>This cannot be undone.</p>
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setConfirmId(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="primary danger-btn"
-                onClick={() => {
-                  deleteMut.mutate(confirmId);
-                  setConfirmId(null);
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertDialog
+        open={confirmId !== null}
+        onOpenChange={(open) => !open && setConfirmId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex-left flex items-center gap-2">
+              <Trash2 size={20} className="text-warn" />
+              Delete this {type === "quiz" ? "quiz" : "deck"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setConfirmId(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (confirmId) deleteMut.mutate(confirmId);
+                setConfirmId(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -152,17 +169,23 @@ function ContentCard({
         });
       }}
     >
-      <button
-        type="button"
-        className="drive-card-menu"
-        title={`Delete ${type}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-      >
-        <Trash2 size={14} />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="icon-xs"
+            className="drive-card-menu"
+            aria-label={`Delete ${type}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Trash2 size={14} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Delete {type}</TooltipContent>
+      </Tooltip>
       <div className="drive-card-icon doc-icon">
         <FileText size={24} />
       </div>

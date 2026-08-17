@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
 import type { QuizContent, QuizQuestion } from "../types";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 
 interface Props {
   contentId: string;
@@ -82,84 +87,101 @@ export function QuizView({ contentId, content }: Props) {
   return (
     <div>
       {submitted && attempt && (
-        <div className="score-banner">
-          <div className={`score-ring ${passed ? "pass" : "fail"}`}>
+        <Card className="mb-6 flex flex-row items-center gap-5 px-7 py-6">
+          <div
+            className={`flex size-16 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white ${
+              passed ? "bg-ok" : "bg-destructive"
+            }`}
+          >
             {scorePct}%
           </div>
-          <div className="score-info">
-            <div className="score-label">Your Score</div>
-            <div className="score-detail">
+          <div>
+            <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Your Score
+            </div>
+            <div className="text-2xl font-bold tracking-tight">
               {attempt.correct_count}/{attempt.total_count} correct
             </div>
-            <div className="score-msg">
+            <div className="text-sm text-muted-foreground">
               {passed
                 ? "Nice work! You've got a solid grasp of this. 🎉"
                 : "Keep studying — you're getting there. 💪"}
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {content.questions.map((q: QuizQuestion, qi: number) => {
         const picked = answers[q.id];
         const correctIdx = q.answer_idx;
         return (
-          <div className="quiz-q" key={q.id}>
-            <div className="prompt">
-              <span className="q-num">{qi + 1}.</span>
+          <Card key={q.id} className="mb-3.5 gap-0 px-6 py-5">
+            <div className="mb-4 flex gap-2 text-[0.98rem] font-semibold">
+              <span className="shrink-0 text-primary">{qi + 1}.</span>
               <span>{q.prompt}</span>
             </div>
             {q.options.map((opt, oi) => {
-              let cls = "quiz-opt";
-              if (submitted) {
-                if (oi === correctIdx) cls += " correct";
-                else if (oi === picked) cls += " wrong";
-              } else if (oi === picked) {
-                cls += " selected";
-              }
+              const isCorrect = submitted && oi === correctIdx;
+              const isWrong = submitted && oi === picked && oi !== correctIdx;
+              const isSelected = !submitted && oi === picked;
               return (
-                <button
+                <Button
                   key={oi}
-                  className={cls}
+                  variant="outline"
+                  className={cn(
+                    "mb-2 h-auto w-full justify-start gap-3 px-3.5 py-2.5 text-left font-normal text-[0.92rem] whitespace-normal shadow-none last:mb-0",
+                    isSelected && "border-primary bg-accent",
+                    isCorrect && "border-ok bg-ok-tint",
+                    isWrong && "border-destructive bg-danger-tint",
+                  )}
                   onClick={() => select(q, oi)}
                   disabled={submitted}
                 >
-                  <span className="opt-badge">{LETTERS[oi]}</span>
+                  <span
+                    className={cn(
+                      "flex size-[26px] shrink-0 items-center justify-center rounded-md bg-secondary text-xs font-semibold text-muted-foreground",
+                      isSelected && "bg-primary text-primary-foreground",
+                      isCorrect && "bg-ok text-white",
+                      isWrong && "bg-destructive text-white",
+                    )}
+                  >
+                    {LETTERS[oi]}
+                  </span>
                   <span>{opt}</span>
-                </button>
+                </Button>
               );
             })}
             {submitted && (
-              <div
-                className={`quiz-explanation ${
-                  picked === correctIdx ? "correct-exp" : "wrong-exp"
-                }`}
+              <Alert
+                className={cn(
+                  "mt-3.5 rounded-md border-0 border-l-[3px] bg-muted",
+                  picked === correctIdx ? "border-l-ok" : "border-l-destructive",
+                )}
               >
                 {picked === correctIdx ? (
-                  <Check size={16} className="exp-icon ok" />
+                  <Check className="text-ok!" />
                 ) : (
-                  <X size={16} className="exp-icon bad" />
+                  <X className="text-destructive!" />
                 )}
-                <span>
+                <AlertDescription className="text-[0.88rem] text-muted-foreground">
                   {picked === correctIdx ? "Correct. " : "Not quite. "}
                   {q.explanation}
-                </span>
-              </div>
+                </AlertDescription>
+              </Alert>
             )}
-          </div>
+          </Card>
         );
       })}
 
       {!submitted && (
-        <button
-          className="primary"
-          style={{ marginTop: 8 }}
+        <Button
+          className="mt-2"
           disabled={Object.keys(answers).length < content.questions.length}
           onClick={() => submit.mutate(answers)}
         >
           {submit.isPending ? (
             <>
-              <Loader2 size={16} className="spinner" />
+              <Spinner className="size-4" />
               Submitting…
             </>
           ) : (
@@ -168,12 +190,14 @@ export function QuizView({ contentId, content }: Props) {
               {Object.keys(answers).length}/{content.questions.length} answered)
             </>
           )}
-        </button>
+        </Button>
       )}
       {submit.isError && (
-        <div className="error">
-          Submit failed: {(submit.error as Error).message}
-        </div>
+        <Alert variant="destructive" className="mt-3">
+          <AlertDescription>
+            Submit failed: {(submit.error as Error).message}
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );

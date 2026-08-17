@@ -17,9 +17,9 @@ from evals.suites import (
     ADVANCED_MEMORY,
     NOVICE_MEMORY,
     case_ids,
-    clamp01,
     deck_structural_ok,
     flashcard_chain,
+    judge_score,
     load_cases,
 )
 
@@ -131,8 +131,7 @@ async def test_deck_quality_rubric():
                 "TRIVIAL — cards test understanding that transfers, not "
                 "word-order or filler recognition; (4) VARIANT QUALITY — the two "
                 "variants of a card test the same knowledge from genuinely "
-                "different angles rather than rewording the same cloze. Score "
-                "0.0-1.0 overall."
+                "different angles rather than rewording the same cloze."
             ),
             evaluation_params=[SingleTurnParams.CONTEXT, SingleTurnParams.ACTUAL_OUTPUT],
             threshold=threshold,
@@ -142,17 +141,18 @@ async def test_deck_quality_rubric():
             actual_output=_render_deck(deck),
             context=[case["passage"]],
         )
-        await metric.a_measure(test_case, _show_indicator=False)
-        score = clamp01(metric.score)
-        scores.append(score)
+        score, reason = await judge_score(metric, test_case)
+        if score is not None:
+            scores.append(score)
         record(
             "flashcards",
             "quality_rubric",
             case=case["id"],
-            score=score,
+            score=score if score is not None else 0.0,
             threshold=threshold,
-            success=score >= threshold,
-            reason=metric.reason or "",
+            success=(score is not None and score >= threshold),
+            reason=reason if score is not None
+            else f"judge verdict unparseable — skipped: {reason[:120]}",
         )
     assert scores, "no decks generated at all"
     mean = sum(scores) / len(scores)
@@ -181,8 +181,9 @@ async def test_application_style_shift():
                 "application-style over definition cards). Score how well deck B "
                 "avoids re-testing definitions the learner already knows and "
                 "instead asks the knowledge to be applied, compared, or used in "
-                "a new situation. 1.0 = clearly more application-oriented; 0.5 "
-                "= indistinguishable; 0.0 = deck B is more definitional."
+                "a new situation — from clearly more application-oriented at "
+                "the top of the scale, through indistinguishable in the middle, "
+                "to deck B more definitional at the bottom."
             ),
             evaluation_params=[SingleTurnParams.INPUT],
             threshold=threshold,
@@ -194,17 +195,18 @@ async def test_application_style_shift():
                 f"DECK B (knows 95% of cards):\n{_render_deck(advanced_deck)}"
             )
         )
-        await metric.a_measure(test_case, _show_indicator=False)
-        score = clamp01(metric.score)
-        scores.append(score)
+        score, reason = await judge_score(metric, test_case)
+        if score is not None:
+            scores.append(score)
         record(
             "flashcards",
             "application_style_shift",
             case=case["id"],
-            score=score,
+            score=score if score is not None else 0.0,
             threshold=threshold,
-            success=score >= threshold,
-            reason=metric.reason or "",
+            success=(score is not None and score >= threshold),
+            reason=reason if score is not None
+            else f"judge verdict unparseable — skipped: {reason[:120]}",
         )
     assert scores, "no decks generated at all"
     mean = sum(scores) / len(scores)

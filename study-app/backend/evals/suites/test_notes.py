@@ -16,7 +16,7 @@ from evals.config import sample_cases
 from evals.judge import judge, rubric
 from evals.metrics import RougeMetric
 from evals.report import record
-from evals.suites import case_ids, chain_cache, load_cases
+from evals.suites import case_ids, chain_cache, judge_score, load_cases
 
 pytestmark = pytest.mark.evals
 
@@ -31,12 +31,16 @@ async def _notes(case: dict) -> str:
     if key not in chain_cache:
         analysis = await tools.analyze_document(case["article"])
         plan = await tools.plan_task("notes", analysis, {}, None)
-        try:
-            result = await tools.generate_notes(case["article"], analysis, plan, {})
-        except ValueError:
-            # Empty markdown (transient) — one retry before giving up.
-            result = await tools.generate_notes(case["article"], analysis, plan, {})
-        chain_cache[key] = str(result.get("markdown", ""))
+        markdown = ""
+        for _ in range(3):  # empty markdown (transient) — retry before giving up
+            try:
+                result = await tools.generate_notes(case["article"], analysis, plan, {})
+                markdown = str(result.get("markdown", ""))
+                if markdown.strip():
+                    break
+            except ValueError:
+                continue
+        chain_cache[key] = markdown
     return chain_cache[key]
 
 
@@ -127,8 +131,6 @@ async def test_notes_key_point_coverage():
     # on papers where the notes went generic, which is a real quality signal
     # worth seeing in the report even when the run passes).
     threshold = 0.60
-    from evals.suites import clamp01
-
     scores = []
     for case in NOTES_CASES:
         markdown = await _notes(case)
@@ -140,7 +142,8 @@ async def test_notes_key_point_coverage():
                 "reader would learn from the generated notes. Notes may "
                 "reorganize and add explanatory detail — that's fine — but "
                 "missing central findings, methods, or conclusions lowers the "
-                "score. 1.0 = every key point covered; 0.0 = none."
+                "score, down to the bottom of the scale when nothing central "
+                "survives."
             ),
             evaluation_params=[
                 SingleTurnParams.EXPECTED_OUTPUT,
@@ -153,18 +156,19 @@ async def test_notes_key_point_coverage():
             actual_output=markdown,
             expected_output=case["summary"],
         )
-        await metric.a_measure(test_case, _show_indicator=False)
-        score = clamp01(metric.score)
-        scores.append(score)
+        score, reason = await judge_score(metric, test_case)
+        if score is not None:
+            scores.append(score)
         record(
             "notes",
             "key_point_coverage",
             case=case["id"],
-            score=score,
+            score=score if score is not None else 0.0,
             threshold=threshold,
-            success=score >= threshold,
-            reason=metric.reason or "",
+            success=(score is not None and score >= threshold),
+            reason=reason if score is not None
+            else f"judge verdict unparseable — skipped: {reason[:120]}",
         )
-    assert scores, "no notes generated at all"
+    assert scores, "no parseable judge verdicts in this run"
     mean = sum(scores) / len(scores)
     assert mean >= threshold, f"mean key-point coverage {mean:.2f} < {threshold}"

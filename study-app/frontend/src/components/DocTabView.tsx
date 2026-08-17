@@ -6,7 +6,6 @@ import {
   CircleHelp,
   Layers,
   Sparkles,
-  Loader2,
   Trash2,
   FileUp,
   Wand2,
@@ -15,12 +14,24 @@ import {
 } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
+import { toast } from "sonner";
 import type { ContentItem, TaskType, TabId } from "../types";
 import { NotesView } from "./NotesView";
 import { QuizView } from "./QuizView";
 import { FlashcardView } from "./FlashcardView";
 import { DocumentView } from "./DocumentView";
 import { ConceptListView } from "./ConceptListView";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Module-level flag set by the recommendation panel to signal that generation
 // should auto-trigger when DocTabView mounts. Cleaner than a URL search param.
@@ -44,9 +55,17 @@ export function DocTabView() {
   const tab = (parts[3] as TabId) ?? "document";
 
   const [hint, setHint] = useState("");
-  const [generating, setGenerating] = useState(false);
+  // Which tab is currently generating (null = none). Generation is scoped
+  // per tab so the loader only shows on the tab that started it: switching
+  // tabs mid-generation keeps the stream running in the background while
+  // other tabs render their content normally; returning to the generating
+  // tab shows its loader again until the stream finishes.
+  const [generatingTab, setGeneratingTab] = useState<TaskType | null>(null);
   const [genStatus, setGenStatus] = useState<string | null>(null);
-  const [genError, setGenError] = useState<string | null>(null);
+  const [genError, setGenError] = useState<{ tab: string; message: string } | null>(
+    null,
+  );
+  const generating = generatingTab === tab;
   // Which generated item is selected (null = latest). Only relevant when a
   // document has multiple decks/quizzes/notes versions.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -118,7 +137,10 @@ export function DocTabView() {
     if (!docId || tab === "document" || tab === "concepts") return;
     // Guard: don't generate from an audio doc that hasn't been transcribed yet.
     if (doc.data?.transcription_status === "pending" || doc.data?.transcription_status === "transcribing") {
-      setGenError("Transcription still in progress — please wait for it to complete.");
+      setGenError({
+        tab,
+        message: "Transcription still in progress — please wait for it to complete.",
+      });
       return;
     }
     track("generation.requested", {
@@ -127,7 +149,9 @@ export function DocTabView() {
       hint: hint.trim().slice(0, 200) || null,
       trigger,
     });
-    setGenerating(true);
+    // `tab` is captured in this closure, so the stream below keeps writing
+    // to the tab that started it even if the user navigates to another one.
+    setGeneratingTab(tab as TaskType);
     setGenStatus("Reading the document…");
     setGenError(null);
 
@@ -146,12 +170,13 @@ export function DocTabView() {
           queryClient.invalidateQueries({ queryKey: ["learner-profile"] });
           queryClient.invalidateQueries({ queryKey: ["proactive-decks"] });
           queryClient.invalidateQueries({ queryKey: ["recommend"] });
+          toast.success(`${tab === "flashcards" ? "Deck" : tab} generated`);
         },
-        onError: (message) => setGenError(message),
+        onError: (message) => setGenError({ tab, message }),
       },
     );
 
-    setGenerating(false);
+    setGeneratingTab(null);
     setGenStatus(null);
   }
 
@@ -181,13 +206,9 @@ export function DocTabView() {
         </div>
         <h2>Document not found</h2>
         <p>It may have been deleted, or the link is broken.</p>
-        <button
-          type="button"
-          className="primary"
-          onClick={() => navigate({ to: "/modules" })}
-        >
+        <Button className="mt-5" onClick={() => navigate({ to: "/modules" })}>
           Back to modules
-        </button>
+        </Button>
       </div>
     );
   }
@@ -219,29 +240,30 @@ export function DocTabView() {
         />
       )}
 
-      <div className="tabs">
-        {TABS.map((t) => {
-          const Icon = t.icon;
-          return (
-            <button
-              key={t.id}
-              className={`tab ${tab === t.id ? "active" : ""}`}
-              onClick={() => {
-                if (tab !== t.id) {
-                  track("tab.switched", { document_id: docId, from: tab, to: t.id });
-                }
-                navigate({
-                  to: "/documents/$docId/$tab",
-                  params: { docId, tab: t.id },
-                });
-              }}
-            >
-              <Icon size={16} />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <Tabs
+        value={tab}
+        onValueChange={(v) => {
+          if (v !== tab) {
+            track("tab.switched", { document_id: docId, from: tab, to: v });
+            navigate({
+              to: "/documents/$docId/$tab",
+              params: { docId, tab: v as TabId },
+            });
+          }
+        }}
+      >
+        <TabsList className="tabs">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            return (
+              <TabsTrigger key={t.id} value={t.id} className="gap-1.5">
+                <Icon size={16} />
+                {t.label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </Tabs>
 
       {/* Document tab: show source text */}
       {tab === "document" && doc.data && <DocumentView doc={doc.data} />}
@@ -253,7 +275,7 @@ export function DocTabView() {
       {tab !== "document" && tab !== "concepts" && (
         <>
           <div className="generate-bar">
-            <input
+            <Input
               className="hint-input"
               placeholder={
                 tab === "quiz"
@@ -266,14 +288,10 @@ export function DocTabView() {
               onChange={(e) => setHint(e.target.value)}
               disabled={generating}
             />
-            <button
-              className="primary"
-              disabled={generating}
-              onClick={() => handleGenerate()}
-            >
+            <Button disabled={generating} onClick={() => handleGenerate()}>
               {generating ? (
                 <>
-                  <Loader2 size={16} className="spinner" />
+                  <Spinner className="size-4" />
                   Generating…
                 </>
               ) : (
@@ -282,25 +300,35 @@ export function DocTabView() {
                   Generate {tab}
                 </>
               )}
-            </button>{" "}
+            </Button>{" "}
             {selected && !generating && (
-              <button
-                className="danger"
-                title="Delete selected"
-                onClick={() => removeContent.mutate(selected.id)}
-              >
-                <Trash2 size={15} />
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="danger-ghost"
+                    size="icon"
+                    onClick={() => removeContent.mutate(selected.id)}
+                    aria-label="Delete selected"
+                  >
+                    <Trash2 size={15} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Delete selected</TooltipContent>
+              </Tooltip>
             )}
           </div>
 
-          {genError && (
-            <div className="error">Generation failed: {genError}</div>
+          {genError?.tab === tab && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>
+                Generation failed: {genError.message}
+              </AlertDescription>
+            </Alert>
           )}
 
           {generating && (
             <div className="loading">
-              <Loader2 size={18} className="spinner" />
+              <Spinner className="size-[18px]" />
               <div className="gen-status">{genStatus}</div>
             </div>
           )}
@@ -308,32 +336,40 @@ export function DocTabView() {
           {/* Version picker — shown when the document has multiple versions
               of this content type (e.g. several flashcard decks). */}
           {!generating && items.length > 1 && (
-            <div className="deck-picker">
+            <ToggleGroup
+              type="single"
+              value={selected?.id}
+              onValueChange={(v) => {
+                const item = items.find((i) => i.id === v);
+                if (item) {
+                  setSelectedId(item.id);
+                  track("deck.version_selected", {
+                    document_id: docId,
+                    content_id: item.id,
+                    type: item.type,
+                  });
+                }
+              }}
+              className="deck-picker justify-start gap-2 overflow-x-auto"
+            >
               {items.map((item) => {
                 const meta = itemMeta(item);
-                const active = selected?.id === item.id;
                 return (
-                  <button
+                  <ToggleGroupItem
                     key={item.id}
-                    type="button"
-                    className={`deck-chip ${active ? "active" : ""}`}
-                    onClick={() => {
-                      setSelectedId(item.id);
-                      track("deck.version_selected", {
-                        document_id: docId,
-                        content_id: item.id,
-                        type: item.type,
-                      });
-                    }}
+                    value={item.id}
+                    className="h-auto min-w-[150px] flex-col items-start gap-0.5 rounded-md border px-3.5 py-2 text-left font-normal shadow-none data-[state=on]:border-primary data-[state=on]:bg-accent"
                   >
-                    <span className="deck-chip-title">{meta.title}</span>
-                    <span className="deck-chip-meta">
+                    <span className="max-w-[180px] truncate text-[0.8rem] font-semibold data-[state=on]:text-primary">
+                      {meta.title}
+                    </span>
+                    <span className="text-[0.7rem] text-muted-foreground">
                       {meta.count} · {timeAgo(item.created_at)}
                     </span>
-                  </button>
+                  </ToggleGroupItem>
                 );
               })}
-            </div>
+            </ToggleGroup>
           )}
 
           {!generating && selected && <ContentRender item={selected} />}
@@ -387,8 +423,7 @@ function ProactiveBanner({
           {title} · {cardCount} cards targeting your weak areas
         </div>
       </div>
-      <button
-        className="primary"
+      <Button
         onClick={() => {
           try {
             localStorage.setItem(seenKey, "1");
@@ -402,7 +437,7 @@ function ProactiveBanner({
       >
         Review now
         <ArrowRight size={15} />
-      </button>
+      </Button>
     </div>
   );
 }

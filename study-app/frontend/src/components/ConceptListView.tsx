@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Zap, Lock, ArrowUp } from "lucide-react";
 import * as api from "../api/client";
 import type { ConceptWithGraph } from "../types";
+import { Badge } from "@/components/ui/badge";
 
 /**
  * Shows the agent's concept knowledge graph + mastery model as a structured
@@ -82,18 +83,21 @@ export function ConceptRow({
         </span>
         <span className="concept-label">{label}</span>
         {c.due && (
-          <span className="concept-due-badge">
+          <Badge variant="warning" className="gap-0.5 px-2 py-px text-[0.68rem]">
             <Zap size={11} />
             {c.due_in_days !== null && c.due_in_days < -1
               ? `${Math.abs(Math.round(c.due_in_days))}d overdue`
               : "due"}
-          </span>
+          </Badge>
         )}
         {c.prerequisite_blocked && (
-          <span className="concept-blocked-badge">
+          <Badge
+            variant="destructive-soft"
+            className="gap-0.5 px-2 py-px text-[0.68rem]"
+          >
             <Lock size={11} />
             prereq needed
-          </span>
+          </Badge>
         )}
       </div>
 
@@ -126,7 +130,13 @@ export function ConceptRow({
       {c.modules.length > 0 && (
         <div className="concept-modules">
           {c.modules.map((m) => (
-            <span key={m} className="concept-module-tag">{m}</span>
+            <Badge
+              key={m}
+              variant="outline"
+              className="rounded-md px-2 py-px text-[0.68rem] font-medium text-muted-foreground"
+            >
+              {m}
+            </Badge>
           ))}
         </div>
       )}

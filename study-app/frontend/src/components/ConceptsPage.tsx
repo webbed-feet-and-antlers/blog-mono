@@ -1,7 +1,17 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Zap, Loader2 } from "lucide-react";
+import { Zap } from "lucide-react";
 import * as api from "../api/client";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConceptRow } from "./ConceptListView";
 import { ConceptDetailModal } from "./ConceptDetailModal";
 
@@ -30,7 +40,6 @@ export function ConceptsPage({ onStudySession }: Props) {
   if (concepts.isLoading) {
     return (
       <div className="loading concepts-loading">
-        <Loader2 size={18} className="spinner" />
         Loading concepts…
       </div>
     );
@@ -109,42 +118,46 @@ export function ConceptsPage({ onStudySession }: Props) {
       </div>
 
       {counts.due > 0 && (
-        <button
-          type="button"
-          className="primary concepts-study-cta"
-          onClick={onStudySession}
-        >
+        <Button className="concepts-study-cta" onClick={onStudySession}>
           <Zap size={16} />
           Study {counts.due} due {counts.due === 1 ? "concept" : "concepts"}
-        </button>
+        </Button>
       )}
 
       <div className="concepts-filter-bar">
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            className={`concepts-filter-btn ${filter === f.key ? "active" : ""}`}
-            onClick={() => setFilter(f.key)}
-          >
-            {f.label}
-            <span className="count">{f.count}</span>
-          </button>
-        ))}
+        <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterKey)}>
+          <TabsList>
+            {filters.map((f) => (
+              <TabsTrigger key={f.key} value={f.key} className="gap-1.5">
+                {f.label}
+                <Badge
+                  variant="secondary"
+                  className="px-1.5 py-0 text-[0.68rem] tabular-nums"
+                >
+                  {f.count}
+                </Badge>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         {moduleNames.length > 0 && (
-          <select
-            className="concepts-module-select"
-            value={moduleFilter ?? ""}
-            onChange={(e) => setModuleFilter(e.target.value || null)}
+          <Select
+            value={moduleFilter ?? "all"}
+            onValueChange={(v) => setModuleFilter(v === "all" ? null : v)}
           >
-            <option value="">All modules</option>
-            {moduleNames.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="concepts-module-select w-48">
+              <SelectValue placeholder="All modules" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All modules</SelectItem>
+              {moduleNames.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 

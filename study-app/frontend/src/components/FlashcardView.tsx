@@ -10,6 +10,9 @@ import {
 import * as api from "../api/client";
 import { track } from "../api/track";
 import type { FlashcardContent } from "../types";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 
 interface Props {
   contentId: string;
@@ -100,17 +103,15 @@ export function FlashcardView({ contentId, content }: Props) {
   return (
     <div className="card-deck">
       {isProactive && (
-        <div className="deck-origin-pill">
+        <Badge className="mb-3.5 gap-1.5 bg-accent px-2.5 py-1 text-[0.72rem] text-primary">
           <Sparkles size={13} />
           Agent-prepared review
-        </div>
+        </Badge>
       )}
-      <div className="card-progress">
-        <div
-          className="card-progress-fill"
-          style={{ width: `${progressPct}%` }}
-        />
-      </div>
+      <Progress
+        value={progressPct}
+        className="h-1.5 max-w-[580px] bg-secondary [&_[data-slot=progress-indicator]]:bg-ok"
+      />
 
       <div className="flashcard-scene">
         <div
@@ -143,29 +144,41 @@ export function FlashcardView({ contentId, content }: Props) {
       </div>
 
       <div className="card-nav">
-        <button className="icon-btn ghost" onClick={prev} disabled={index === 0}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={prev}
+          disabled={index === 0}
+          aria-label="Previous card"
+        >
           <ChevronLeft size={20} />
-        </button>
+        </Button>
         <span className="card-counter">
           {index + 1} / {content.cards.length}
         </span>
-        <button className="icon-btn ghost" onClick={next} disabled={isLast}>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={next}
+          disabled={isLast}
+          aria-label="Next card"
+        >
           <ChevronRight size={20} />
-        </button>
+        </Button>
       </div>
 
       <div className="card-nav">
-        <button onClick={() => markKnown(false)}>
+        <Button variant="outline" onClick={() => markKnown(false)}>
           <RotateCcw size={15} />
           Still learning
-        </button>
-        <button className="primary" onClick={() => markKnown(true)}>
+        </Button>
+        <Button onClick={() => markKnown(true)}>
           <Check size={16} />
           I know this
-        </button>
+        </Button>
       </div>
 
-      <div className="card-counter" style={{ marginTop: 4 }}>
+      <div className="card-counter mt-1">
         {knownCount} of {content.cards.length} mastered
       </div>
     </div>

@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
-import { ZoomIn, ZoomOut, Loader2, AlertCircle } from "lucide-react";
+import { ZoomIn, ZoomOut, AlertCircle } from "lucide-react";
 import { track } from "../api/track";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Configure the PDF.js worker. With Vite, importing the worker entry as a
 // URL string lets the bundler emit it as an asset and gives us a stable
@@ -84,25 +87,27 @@ export function PdfViewer({ url, filename, docId }: Props) {
   return (
     <div className="pdf-viewer">
       <div className="pdf-toolbar">
-        <button
-          type="button"
-          className="pdf-icon-btn"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 text-muted-foreground"
           onClick={zoomOut}
           disabled={scale <= MIN_SCALE}
           aria-label="Zoom out"
         >
           <ZoomOut size={16} />
-        </button>
+        </Button>
         <span className="pdf-zoom-level">{Math.round(scale * 100)}%</span>
-        <button
-          type="button"
-          className="pdf-icon-btn"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7 text-muted-foreground"
           onClick={zoomIn}
           disabled={scale >= MAX_SCALE}
           aria-label="Zoom in"
         >
           <ZoomIn size={16} />
-        </button>
+        </Button>
 
         <span className="pdf-filename" title={filename}>
           {filename}
@@ -116,16 +121,18 @@ export function PdfViewer({ url, filename, docId }: Props) {
           onLoadError={onDocumentLoadError}
           loading={
             <div className="pdf-loading">
-              <Loader2 size={20} className="spinner" />
+              <Spinner className="size-5" />
               Loading document…
             </div>
           }
         >
           {error ? (
-            <div className="error pdf-error">
-              <AlertCircle size={16} />
-              Could not display this PDF: {error}
-            </div>
+            <Alert variant="destructive" className="m-4">
+              <AlertCircle />
+              <AlertDescription>
+                Could not display this PDF: {error}
+              </AlertDescription>
+            </Alert>
           ) : (
             <div className="pdf-pages">
               {Array.from({ length: numPages }, (_, i) => (
