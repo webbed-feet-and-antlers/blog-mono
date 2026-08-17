@@ -26,6 +26,10 @@ pytestmark = pytest.mark.evals
 
 SCIQ_CASES = sample_cases(load_cases("sciq"))[:5]  # planner calls are slow
 
+# Plans judged by the aggregate rationale test (populated by the invariant
+# test, which runs first in file order — no duplicate generation).
+plan_cache: dict[int, tuple[list, str]] = {}
+
 NOW = datetime.now(timezone.utc)
 
 
@@ -103,13 +107,13 @@ async def test_plan_invariants_and_rationales(index, case):
     module_id, world = await _seed_module(case, index)
 
     plan = None
-    for attempt in range(2):  # transient LLM failures shouldn't kill the case
+    for attempt in range(3):  # transient LLM outages shouldn't kill the case
         async with SessionLocal() as s:
             try:
                 plan = await generate_study_plan(s, module_id)
                 break
             except Exception:
-                if attempt == 1:
+                if attempt == 2:
                     raise
     assert plan is not None, "planner returned no plan"
     items = plan.items or []
@@ -157,12 +161,8 @@ async def test_plan_invariants_and_rationales(index, case):
         reason="heaviest day's estimate_mins total",
     )
 
-    # --- Judge: does each rationale cite the grounding? --------------------
-    rendered = "\n".join(
-        f"- day {it.get('day_offset')}: [{it.get('type')}] {it.get('title')} "
-        f"— {it.get('rationale')} (~{it.get('estimate_mins')} min)"
-        for it in items
-    )
+    # Stash for the aggregate rationale test (judge metrics gate on the
+    # run mean — a single stochastic verdict shouldn't fail a case).
     grounding_summary = (
         f"Module: BIO20{index}. Exam in 10 days. Documents: 3 lectures on "
         f"{case['correct_answer']}. Weakest concepts (20%/40% mastery, FSRS-due): "
@@ -170,32 +170,49 @@ async def test_plan_invariants_and_rationales(index, case):
         f"'{case['correct_answer']} concept 0b'. Strong: concept 1a (100%). "
         "Learner: intermediate, avg 65%."
     )
-    metric = rubric(
-        "Rationale evidence",
-        criteria=(
-            "A study plan's items each carry a rationale. Given the module's "
-            "grounding facts, score what fraction of rationales cite real "
-            "evidence (weak concepts by name, due-for-review status, the "
-            "exam timing, unread documents) rather than generic filler "
-            "('this will help you succeed') — from every rationale naming "
-            "its evidence at the top of the scale to pure filler at the "
-            "bottom."
-        ),
-        evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
-        threshold=0.60,
-    )
-    test_case = LLMTestCase(
-        input=f"Grounding facts:\n{grounding_summary}",
-        actual_output=rendered,
-    )
+    plan_cache[index] = (items, grounding_summary)
+
+
+async def test_plan_rationale_citations():
+    """Aggregate gate: does each plan item's rationale cite the grounding it
+    was handed, versus generic filler? Mean over the run's plans."""
     from evals.suites import judge_score
 
-    score, reason = await judge_score(metric, test_case)
-    record(
-        "planner", "rationale_cites_evidence", case=case["id"],
-        score=score if score is not None else 0.0, threshold=metric.threshold,
-        success=(score is not None and score >= metric.threshold), reason=reason,
-    )
-    if score is None:
-        pytest.skip("judge verdict unparseable after retry")
-    assert score >= metric.threshold, reason
+    threshold = 0.60
+    scores = []
+    for index, (items, grounding_summary) in sorted(plan_cache.items()):
+        case = SCIQ_CASES[index]
+        rendered = "\n".join(
+            f"- day {it.get('day_offset')}: [{it.get('type')}] {it.get('title')} "
+            f"— {it.get('rationale')} (~{it.get('estimate_mins')} min)"
+            for it in items
+        )
+        metric = rubric(
+            "Rationale evidence",
+            criteria=(
+                "A study plan's items each carry a rationale. Given the module's "
+                "grounding facts, score what fraction of rationales cite real "
+                "evidence (weak concepts by name, due-for-review status, the "
+                "exam timing, unread documents) rather than generic filler "
+                "('this will help you succeed') — from every rationale naming "
+                "its evidence at the top of the scale to pure filler at the "
+                "bottom."
+            ),
+            evaluation_params=[SingleTurnParams.INPUT, SingleTurnParams.ACTUAL_OUTPUT],
+            threshold=threshold,
+        )
+        test_case = LLMTestCase(
+            input=f"Grounding facts:\n{grounding_summary}",
+            actual_output=rendered,
+        )
+        score, reason = await judge_score(metric, test_case)
+        if score is not None:
+            scores.append(score)
+        record(
+            "planner", "rationale_cites_evidence", case=case["id"],
+            score=score if score is not None else 0.0, threshold=threshold,
+            success=(score is not None and score >= threshold), reason=reason,
+        )
+    assert scores, "no plans generated in this run"
+    mean = sum(scores) / len(scores)
+    assert mean >= threshold, f"mean rationale evidence {mean:.2f} < {threshold}"

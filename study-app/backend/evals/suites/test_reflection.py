@@ -269,7 +269,6 @@ async def test_reflection_faithfulness(db):
     from sqlalchemy import delete
 
     from app.agent import reflection
-    from app.db import SessionLocal, init_db
     from app.models import AgentMemory, UserActivity
 
     from evals.suites import judge_score
@@ -277,11 +276,11 @@ async def test_reflection_faithfulness(db):
     threshold = 0.45
     scores = []
     for archetype, seed in ARCHETYPES.items():
-        await init_db()
-        async with SessionLocal() as s:  # fresh world per archetype
-            await s.execute(delete(AgentMemory).where(AgentMemory.scope == "user"))
-            await s.execute(delete(UserActivity))
-            await s.commit()
+        # Fresh world per archetype — wiped through THIS session (a second
+        # SessionLocal would deadlock on SQLite's single writer).
+        await db.execute(delete(AgentMemory).where(AgentMemory.scope == "user"))
+        await db.execute(delete(UserActivity))
+        await db.commit()
         allowed_numbers = await seed(db)
 
         payload = None

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Mic,
+  MicOff,
   Square,
   ArrowLeft,
   FileText,
@@ -26,6 +27,7 @@ import * as api from "../api/client";
 import { track } from "../api/track";
 import { toast } from "sonner";
 import { FileToModuleModal, type FilingTarget } from "./FileToModuleModal";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,6 +61,7 @@ interface SlideTimestampState {
 }
 
 const DRAFT_KEY = "study_app_recording_draft";
+const METER_SEGMENTS = 24;
 
 export function RecordPage() {
   const navigate = useNavigate();
@@ -92,6 +95,14 @@ export function RecordPage() {
   const [saving, setSaving] = useState(false);
   const [isFullscreenSlide, setIsFullscreenSlide] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
+  // Set when getUserMedia fails on start (permission denied / no mic) so the
+  // failed click is surfaced instead of silently doing nothing.
+  const [micError, setMicError] = useState<string | null>(null);
+  // Set while the "add to module" prompt is open — the recording keeps
+  // running until a choice is made, so nothing is lost on Skip/close.
+  const [filingPrompt, setFilingPrompt] = useState(false);
+  // Briefly notes when a previous session's title/notes were restored
+  const [draftRestored, setDraftRestored] = useState(false);
 
   // Restore draft on mount
   useEffect(() => {
@@ -101,6 +112,7 @@ export function RecordPage() {
         const draft = JSON.parse(saved);
         if (draft.title) setTitle(draft.title);
         if (draft.notes) setNotes(draft.notes);
+        if (draft.title || draft.notes) setDraftRestored(true);
       }
     } catch {
       // ignore JSON errors
@@ -153,6 +165,18 @@ export function RecordPage() {
         return;
       }
 
+      // Escape exits slide full view. Skip while a modal is open — Radix
+      // handles Esc for those and closing both at once feels broken.
+      if (
+        e.key === "Escape" &&
+        isFullscreenSlide &&
+        !filingPrompt &&
+        !showLeaveModal
+      ) {
+        setIsFullscreenSlide(false);
+        return;
+      }
+
       if (isTyping) return;
 
       if (e.key === "ArrowRight" || e.key === "PageDown") {
@@ -166,7 +190,7 @@ export function RecordPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentSlide, slideCount, elapsedSec, notes]);
+  }, [currentSlide, slideCount, elapsedSec, notes, isFullscreenSlide, filingPrompt, showLeaveModal]);
 
   async function handleSlidesUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -179,6 +203,10 @@ export function RecordPage() {
       setCurrentSlide(1);
     } catch (err) {
       console.error("Slide upload failed:", err);
+      toast.error("Couldn't upload slides", {
+        description:
+          "Make sure the file is a valid PDF or PowerPoint deck, then try again.",
+      });
     }
     setUploadingSlides(false);
   }
@@ -239,17 +267,25 @@ export function RecordPage() {
   }
 
   async function handleStartRecording() {
-    startPromiseRef.current = start();
+    setMicError(null);
+    const startPromise = start();
+    startPromiseRef.current = startPromise;
+    // The start promise only rejects before recording begins (mic permission
+    // denied, no input device) — a running recorder always resolves on stop.
+    startPromise.catch((err) => {
+      console.error("Failed to start recording:", err);
+      startPromiseRef.current = null;
+      setMicError(
+        "Microphone unavailable — check this site's microphone permission in your browser settings, then try again."
+      );
+    });
     // Post initial baseline timestamp for slide 1 at 0s
     recordSlideTimestamp(1);
   }
 
-  // Set while the "add to module" prompt is open — the recording keeps
-  // running until a choice is made, so nothing is lost on Skip/close.
-  const [filingPrompt, setFilingPrompt] = useState(false);
-
   function handleStopAndSave() {
-    if (!startPromiseRef.current) return;
+    // Guard against saving an empty recording (nothing recorded yet).
+    if (!startPromiseRef.current || elapsedSec < 1) return;
     setFilingPrompt(true);
   }
 
@@ -315,8 +351,21 @@ export function RecordPage() {
     (t) => t.slide_number === currentSlide
   );
 
+  const litSegments = Math.round(
+    ((isPaused ? 0 : audioLevel) / 100) * METER_SEGMENTS
+  );
+
   return (
     <div className={`record-page ${isFullscreenSlide ? "fullscreen-active" : ""}`}>
+      {/* State changes announced once per transition (not every timer tick) */}
+      <span className="sr-only" aria-live="polite">
+        {isRecording && !isPaused
+          ? "Recording"
+          : isPaused
+            ? "Recording paused"
+            : "Recording stopped"}
+      </span>
+
       {/* Header Bar */}
       <div className="record-header">
         <Tooltip>
@@ -364,81 +413,120 @@ export function RecordPage() {
         )}
       </div>
 
-      {/* Recording Display & Audio Level Visualizer */}
-      <div className="record-timer-bar">
-        <div className="record-timer">
-          {isRecording && <div className="recording-pulse" />}
-          {isPaused && <div className="recording-pulse paused" />}
-          <span
-            className={`timer-text ${
-              isRecording ? "recording" : isPaused ? "paused" : ""
-            }`}
+      {/* Mic-start failure (permission denied / no input device) */}
+      {micError && (
+        <Alert variant="destructive" className="record-mic-alert">
+          <MicOff />
+          <AlertTitle>Couldn't start recording</AlertTitle>
+          <AlertDescription>{micError}</AlertDescription>
+          <button
+            className="alert-dismiss"
+            onClick={() => setMicError(null)}
+            aria-label="Dismiss"
           >
-            {formatTime(elapsedSec)}
-          </span>
-          {isPaused && <span className="paused-badge">PAUSED</span>}
-        </div>
-
-        {/* Audio Level Visualizer Bar */}
-        {(isRecording || isPaused) && (
-          <div className="audio-meter-bar" title={`Microphone input level: ${audioLevel}%`}>
-            <div
-              className={`audio-meter-fill ${isPaused ? "paused" : ""}`}
-              style={{ width: `${isPaused ? 0 : audioLevel}%` }}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Main Recording Action Buttons */}
-      <div className="record-controls">
-        {!isRecording && !isPaused ? (
-          <button className="record-big-btn" onClick={handleStartRecording}>
-            <Mic size={24} />
-            Start recording
+            <X size={14} />
           </button>
-        ) : (
-          <div className="recording-action-group">
-            {isRecording ? (
-              <button
-                className="record-action-btn pause-btn"
-                onClick={() => { track("recording.paused", { duration_secs: elapsedSec }); pause(); }}
-                title="Pause recording"
-              >
-                <Pause size={20} />
-                Pause
-              </button>
-            ) : (
-              <button
-                className="record-action-btn resume-btn"
-                onClick={resume}
-                title="Resume recording"
-              >
-                <Play size={20} />
-                Resume
-              </button>
-            )}
+        </Alert>
+      )}
 
-            <button
-              className="record-big-btn recording"
-              onClick={handleStopAndSave}
-              disabled={saving}
+      {/* Sticky transport: status/timer + level meter + controls in one row.
+          Only rendered while a session is live — the idle state has its own
+          hero CTA below. */}
+      {(isRecording || isPaused) && (
+        <div className="record-transport" role="region" aria-label="Recording controls">
+          <div className="record-timer">
+            {/* Note: isRecording stays true while paused (see useRecorder),
+                so paused-state checks must come first. */}
+            <div className={`recording-pulse ${isPaused ? "paused" : ""}`} />
+            <span
+              className={`timer-text ${isPaused ? "paused" : "recording"}`}
+              role="timer"
             >
-              {saving ? (
-                <>
-                  <Spinner className="size-6" />
-                  Saving…
-                </>
-              ) : (
-                <>
-                  <Square size={22} />
-                  Stop & save
-                </>
-              )}
-            </button>
+              {formatTime(elapsedSec)}
+            </span>
+            {isPaused && <span className="paused-badge">PAUSED</span>}
           </div>
-        )}
-      </div>
+
+          {/* Segmented level meter (decorative, driven by audioLevel) */}
+          <div
+            className="audio-meter"
+            title={`Microphone input level: ${audioLevel}%`}
+            aria-hidden="true"
+          >
+            {Array.from({ length: METER_SEGMENTS }, (_, i) => (
+              <span
+                key={i}
+                className={`meter-seg ${
+                  i < litSegments ? (i >= METER_SEGMENTS - 4 ? "hot" : "on") : ""
+                }`}
+              />
+            ))}
+          </div>
+
+          <div className="transport-actions">
+            {isPaused ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 rounded-full border-ok/30 bg-ok/10 px-4 text-ok hover:bg-ok/20 hover:text-ok"
+                    onClick={resume}
+                  >
+                    <Play size={16} />
+                    Resume
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Resume recording</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 rounded-full px-4"
+                    onClick={() => {
+                      track("recording.paused", { duration_secs: elapsedSec });
+                      pause();
+                    }}
+                  >
+                    <Pause size={16} />
+                    Pause
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Pause recording</TooltipContent>
+              </Tooltip>
+            )}
+            <Button
+              size="sm"
+              className="h-9 rounded-full bg-destructive px-5 text-white shadow-[0_4px_14px_rgba(220,38,38,0.28)] hover:bg-destructive/90"
+              onClick={handleStopAndSave}
+              disabled={saving || elapsedSec < 1}
+            >
+              {saving ? <Spinner className="size-4" /> : <Square size={15} />}
+              {saving ? "Saving…" : "Stop & save"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Idle: calm hero — the timer only appears once a session is live */}
+      {!isRecording && !isPaused && (
+        <div className="record-idle-hero">
+          <Button
+            size="lg"
+            className="h-[52px] rounded-full px-8 text-base shadow-[var(--shadow-accent)]"
+            onClick={handleStartRecording}
+          >
+            <Mic size={22} />
+            Start recording
+          </Button>
+          <p className="idle-hint">
+            Upload slides to follow along live — notes are saved as you type.
+          </p>
+        </div>
+      )}
 
       {/* Main Workspace Body */}
       <div className="record-body">
@@ -545,8 +633,8 @@ export function RecordPage() {
                     {Array.from({ length: slideCount }, (_, i) => i + 1).map((n) => {
                       const isPosted = slideTimestamps.some((t) => t.slide_number === n);
                       return (
-                        <SelectItem key={n} value={String(n)}>
-                          Slide {n} / {slideCount} {isPosted ? "✓" : ""}
+                        <SelectItem key={n} value={String(n)} data-posted={isPosted || undefined}>
+                          Slide {n} / {slideCount}
                         </SelectItem>
                       );
                     })}
@@ -569,29 +657,33 @@ export function RecordPage() {
                 </Tooltip>
 
                 {/* Explicit Post Slide Button */}
-                <button
-                  className={`post-slide-btn ${currentSlideTimestamp ? "posted" : ""}`}
-                  onClick={postCurrentSlide}
-                  title={
-                    currentSlideTimestamp
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      className={`post-slide-btn ${currentSlideTimestamp ? "posted" : ""}`}
+                      onClick={postCurrentSlide}
+                    >
+                      {currentSlideTimestamp ? (
+                        <>
+                          <Check size={14} />
+                          Posted @ {formatTime(Math.round(currentSlideTimestamp.audio_seconds))} (Update)
+                        </>
+                      ) : (
+                        <>
+                          <Bookmark size={14} />
+                          Post Slide {currentSlide} @ {formatTime(elapsedSec)}
+                        </>
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {currentSlideTimestamp
                       ? `Slide ${currentSlide} is posted @ ${formatTime(
                           Math.round(currentSlideTimestamp.audio_seconds)
-                        )}. Click to update timestamp to ${formatTime(elapsedSec)}.`
-                      : `Post Slide ${currentSlide} timestamp at ${formatTime(elapsedSec)} (Cmd+P)`
-                  }
-                >
-                  {currentSlideTimestamp ? (
-                    <>
-                      <Check size={14} />
-                      Posted @ {formatTime(Math.round(currentSlideTimestamp.audio_seconds))} (Update)
-                    </>
-                  ) : (
-                    <>
-                      <Bookmark size={14} />
-                      Post Slide {currentSlide} @ {formatTime(elapsedSec)}
-                    </>
-                  )}
-                </button>
+                        )}. Click to update to ${formatTime(elapsedSec)}.`
+                      : `Post Slide ${currentSlide} timestamp at ${formatTime(elapsedSec)}`}
+                  </TooltipContent>
+                </Tooltip>
               </div>
 
               {/* Posted Slide Timestamps Bar */}
@@ -631,7 +723,20 @@ export function RecordPage() {
         {!isFullscreenSlide && (
           <div className="record-notes">
             <div className="notes-header-bar">
-              <span className="notes-label">Lecture Notes</span>
+              <div className="notes-header-left">
+                <span className="notes-label">Lecture Notes</span>
+                {draftRestored && (
+                  <span className="draft-restored">
+                    Draft restored from your last session
+                    <button
+                      onClick={() => setDraftRestored(false)}
+                      aria-label="Dismiss draft notice"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                )}
+              </div>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -652,12 +757,30 @@ export function RecordPage() {
             <Textarea
               ref={notesTextareaRef}
               className="notes-textarea"
-              placeholder="Type lecture notes here... Use [Cmd+T] to insert timestamp or [Cmd+P] to post current slide."
+              placeholder="Type lecture notes here…"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
         )}
+      </div>
+
+      {/* Keyboard shortcut hints */}
+      <div className="record-shortcuts" aria-hidden="true">
+        <span>
+          <kbd>←</kbd>
+          <kbd>→</kbd> preview slides
+        </span>
+        <span className="shortcut-sep" />
+        <span>
+          <kbd>⌘</kbd>
+          <kbd>P</kbd> post slide timestamp
+        </span>
+        <span className="shortcut-sep" />
+        <span>
+          <kbd>⌘</kbd>
+          <kbd>T</kbd> insert note timestamp
+        </span>
       </div>
 
       {/* Confirmation Leave Modal */}

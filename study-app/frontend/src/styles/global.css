@@ -114,10 +114,13 @@ textarea:focus-visible,
 }
 
 /* Focused, full-screen experiences (record / lecture / study): no sidebar,
-   the page component owns its width and padding. */
+   the page component owns its width and padding. Height-constrained so this
+   element is the scroller (lets the record transport bar stick, and keeps
+   overflow scrolling contained instead of spilling to the document). */
 .main.main-focused {
   padding: 0;
   max-width: none;
+  height: 100%;
 }
 
 .brand-clickable {
@@ -751,6 +754,29 @@ textarea:focus-visible,
 
 /* --- Record page (dedicated recording UI) -------------------------------- */
 
+.record-mic-alert {
+  margin-bottom: 16px;
+}
+.record-mic-alert .alert-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.record-mic-alert .alert-dismiss:hover {
+  opacity: 1;
+  background: var(--danger-tint);
+}
+
 .record-page {
   max-width: 960px;
   margin: 0 auto;
@@ -785,22 +811,35 @@ textarea:focus-visible,
   color: var(--text-faint);
 }
 
-.record-timer-bar {
+/* Sticky transport row shown while a session is live: status + timer,
+   segmented level meter, and pause/stop controls all in one band so the
+   slides/notes workspace keeps the vertical space. */
+.record-transport {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
   margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-sm);
 }
 .record-timer {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
+  min-width: 92px;
 }
 .recording-pulse {
-  width: 14px;
-  height: 14px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   background: var(--danger);
   animation: pulse 1.2s ease-in-out infinite;
@@ -810,10 +849,10 @@ textarea:focus-visible,
   animation: none;
 }
 .timer-text {
-  font-size: 2.6rem;
+  font-size: 1.45rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   color: var(--text-dim);
 }
 .timer-text.recording {
@@ -833,89 +872,51 @@ textarea:focus-visible,
   text-transform: uppercase;
 }
 
-.audio-meter-bar {
-  width: 220px;
-  height: 6px;
+/* Segmented LED level meter */
+.audio-meter {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 120px;
+  max-width: 340px;
+  height: 18px;
+}
+.meter-seg {
+  flex: 1;
+  max-width: 6px;
+  height: 18px;
+  border-radius: 2px;
   background: var(--border);
-  border-radius: var(--r-pill);
-  overflow: hidden;
-  position: relative;
+  transition: background 0.08s linear;
 }
-.audio-meter-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--ok) 0%, #3b82f6 70%, var(--danger) 100%);
-  border-radius: var(--r-pill);
-  transition: width 0.08s ease-out;
+.meter-seg.on {
+  background: var(--ok);
 }
-.audio-meter-fill.paused {
-  width: 0% !important;
+.meter-seg.hot {
+  background: var(--danger);
 }
 
-.record-controls {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 28px;
-}
-.recording-action-group {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.record-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 22px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.record-action-btn:hover {
-  background: var(--panel-hover);
-  border-color: var(--border-strong);
-}
-.record-action-btn.pause-btn:hover {
-  color: var(--warn);
-  border-color: rgba(217, 119, 6, 0.4);
-}
-.record-action-btn.resume-btn {
-  background: rgba(22, 163, 74, 0.1);
-  color: var(--ok);
-  border-color: rgba(22, 163, 74, 0.3);
-}
-.record-action-btn.resume-btn:hover {
-  background: rgba(22, 163, 74, 0.2);
-}
-
-.record-big-btn {
+.transport-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 32px;
-  font-size: 1.05rem;
-  font-weight: 600;
-  border-radius: var(--r-pill);
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  box-shadow: var(--shadow-accent);
-  transition: background 0.15s, transform 0.05s;
+  margin-left: auto;
 }
-.record-big-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
+
+/* Idle hero: centered start CTA + quiet supporting line */
+.record-idle-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
 }
-.record-big-btn.recording {
-  background: var(--danger);
-  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.28);
-}
-.record-big-btn.recording:hover:not(:disabled) {
-  filter: brightness(1.1);
+.idle-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-faint);
+  text-align: center;
 }
 
 .record-body {
@@ -1035,9 +1036,11 @@ textarea:focus-visible,
   padding: 5px 8px;
   cursor: pointer;
 }
-.slide-jump-select option {
-  background: var(--panel);
-  color: var(--text);
+/* Slides that already have a posted timestamp stand out in the jump list
+   (rendered in the Radix portal, hence the data-slot selector). */
+[data-slot="select-item"][data-posted] {
+  color: var(--accent);
+  font-weight: 600;
 }
 .slide-counter {
   font-size: 0.88rem;
@@ -1148,11 +1151,83 @@ textarea:focus-visible,
   display: flex;
   flex-direction: column;
 }
+
+/* Keyboard shortcut hint strip under the workspace */
+.record-shortcuts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 22px;
+  font-size: 0.75rem;
+  color: var(--text-faint);
+}
+.record-shortcuts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.record-shortcuts .shortcut-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.record-shortcuts kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+}
 .notes-header-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+.notes-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.draft-restored {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-faint);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: 2px 6px 2px 10px;
+  white-space: nowrap;
+}
+.draft-restored button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+.draft-restored button:hover {
+  background: var(--panel-hover);
+  color: var(--text);
 }
 .notes-label {
   font-size: 0.78rem;
@@ -1699,7 +1774,7 @@ textarea:focus-visible,
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-faint);
-  margin: 8px 0 4px;
+  margin: 16px 0 8px;
 }
 
 /* Card grid */
@@ -2843,43 +2918,46 @@ textarea:focus-visible,
 .semester-groups {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin-bottom: 8px;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
+/* Quiet disclosure row — no box. The cards below are the boxes; a bordered
+   pill header stacked on bordered cards reads as clutter. Current semester
+   is signalled by the indigo tag + accent label, not a filled bar. */
 .semester-group-header {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-inset);
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
   color: inherit;
   font: inherit;
   cursor: pointer;
   text-align: left;
+  transition: background 0.12s ease;
 }
 
 .semester-group-header:hover {
-  border-color: var(--accent);
+  background: var(--panel-hover);
 }
 
-.semester-group-header.current {
-  border-color: var(--accent);
-  background: var(--accent-tint);
+.semester-group-header.current .semester-group-label {
+  color: var(--accent);
 }
 
 .semester-group-chevron {
   flex-shrink: 0;
-  opacity: 0.6;
+  opacity: 0.55;
   transition: transform 0.15s ease;
 }
 
 .semester-group-label {
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .semester-group-tag {
@@ -2895,6 +2973,11 @@ textarea:focus-visible,
   margin-left: auto;
   font-size: 0.78rem;
   color: var(--text-dim);
+}
+
+/* Cards breathe below their section header */
+.semester-group .drive-grid {
+  margin-top: 10px;
 }
 
 /* --- Shared form fields (modals) --------------------------------------------- */

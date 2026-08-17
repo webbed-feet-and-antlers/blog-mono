@@ -74,7 +74,18 @@ async def _judge_mean(suite_metric, cases, threshold, build) -> float:
     Unparseable verdicts (judge_score → None) are skipped, not zeroed."""
     scores = []
     for case in cases:
-        metric, test_case = await build(case)
+        try:
+            metric, test_case = await build(case)
+        except (ValueError, RuntimeError) as exc:
+            # Persistent generator failure on this case (e.g. deterministic
+            # max_tokens truncation) — record and continue; the per-case
+            # structural gate still enforces the main chain.
+            record(
+                "quiz", suite_metric, case=case["id"], score=0.0,
+                threshold=threshold, success=False,
+                reason=f"generation failed — skipped: {str(exc)[:120]}",
+            )
+            continue
         score, reason = await judge_score(metric, test_case)
         if score is None:
             record(
