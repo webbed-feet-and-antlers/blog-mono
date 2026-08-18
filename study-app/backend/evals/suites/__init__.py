@@ -3,19 +3,55 @@
 Suites are pytest files marked `@pytest.mark.evals`. They call the REAL
 production functions and record every (case, metric) observation into the
 report — a red suite means a metric crossed its threshold.
+
+Per-case work runs CONCURRENTLY (bounded by EVALS_CONCURRENCY): the
+generation tools are pure async functions with no DB, and the OpenAI
+client pools connections — the sequential loops were the only thing
+making a full run cost an evening.
 """
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 
 import pytest
 
-from evals.config import DATA_DIR
+from evals.config import DATA_DIR, EVALS_CONCURRENCY
 
 # The generation chain is expensive (3 LLM calls/case); several metric tests
 # grade the SAME output, so results are cached per case for the session.
 chain_cache: dict[str, tuple] = {}
+
+# analyze_document is memory-independent — one analysis per passage serves
+# every chain kind (quiz/flashcards/notes) and every memory variant.
+_analysis_cache: dict[str, dict] = {}
+
+
+async def analysis_for(document_text: str) -> dict:
+    """analyze_document memoized by text hash, shared across all chains."""
+    from app.agent import tools
+
+    key = hashlib.sha1(document_text.encode()).hexdigest()[:16]
+    if key not in _analysis_cache:
+        _analysis_cache[key] = await tools.analyze_document(document_text)
+    return _analysis_cache[key]
+
+
+async def gather_bounded(factories, limit: int | None = None):
+    """Run coroutine factories concurrently under EVALS_CONCURRENCY.
+
+    Factories (not coroutines) so creation happens inside the semaphore —
+    a thousand pending create() calls would otherwise all start together.
+    Returns results in input order; exceptions propagate like gather."""
+    sem = asyncio.Semaphore(limit or EVALS_CONCURRENCY)
+
+    async def run(factory):
+        async with sem:
+            return await factory()
+
+    return await asyncio.gather(*(run(f) for f in factories))
 
 
 def load_cases(name: str) -> list[dict]:
@@ -70,12 +106,13 @@ ADVANCED_MEMORY = {
 async def quiz_chain(case_id: str, document_text: str, memory: dict) -> tuple:
     """analyze → plan → generate_quiz, the same three LLM calls the LangGraph
     pipeline makes. Cached per case_id (namespaced — quiz and flashcard
-    chains share the cache dict and must never see each other's results)."""
+    chains share the cache dict and must never see each other's results).
+    The analysis is shared across chains via analysis_for()."""
     from app.agent import tools
 
     key = f"quiz:{case_id}"
     if key not in chain_cache:
-        analysis = await tools.analyze_document(document_text)
+        analysis = await analysis_for(document_text)
         plan = await tools.plan_task("quiz", analysis, memory, None)
         quiz = None
         for _ in range(3):  # transient JSON failures from the generator
@@ -95,7 +132,7 @@ async def flashcard_chain(case_id: str, document_text: str, memory: dict) -> tup
 
     key = f"flashcards:{case_id}"
     if key not in chain_cache:
-        analysis = await tools.analyze_document(document_text)
+        analysis = await analysis_for(document_text)
         plan = await tools.plan_task("flashcards", analysis, memory, None)
         deck = await tools.generate_flashcards(document_text, analysis, plan, memory)
         if not deck.get("cards"):

@@ -7,6 +7,9 @@ concept-tag accuracy, personalization adherence (novice vs advanced seeded
 memory). Judge-scored metrics gate on the run's MEAN, not per-case: judge
 scores are stochastic, and a single harsh verdict shouldn't fail an
 otherwise-good run (per-case scores stay in the report either way).
+
+Chains and judge calls run concurrently (gather_bounded, EVALS_CONCURRENCY)
+— the generation tools are pure async functions with no DB.
 """
 
 from __future__ import annotations
@@ -20,7 +23,8 @@ from evals.report import record
 from evals.suites import (
     ADVANCED_MEMORY,
     NOVICE_MEMORY,
-    case_ids,
+    chain_cache,
+    gather_bounded,
     judge_score,
     load_cases,
     quiz_chain,
@@ -46,58 +50,69 @@ def _render_quiz(quiz: dict) -> str:
     return "\n".join(lines)
 
 
+async def _warm_bare():
+    """Generate all bare-case chains concurrently (memoized in chain_cache)."""
+    await gather_bounded(
+        [
+            (lambda c=case: quiz_chain(c["id"], c["passage"], {}))
+            for case in SCIQ_CASES
+        ]
+    )
+
+
 # --- Structure (the validate node's rules, before anything persists) ----------
 
 
-@pytest.mark.parametrize("case", SCIQ_CASES, ids=case_ids)
-async def test_quiz_structural(case):
-    _, _, quiz = await quiz_chain(case["id"], case["passage"], {})
-    ok, why = quiz_structural_ok(quiz)
-    record(
-        "quiz",
-        "structural_pass",
-        case=case["id"],
-        score=1.0 if ok else 0.0,
-        threshold=1.0,
-        success=ok,
-        reason=why,
-    )
-    assert ok, why
+async def test_quiz_structural():
+    await _warm_bare()
+    problems: list[str] = []
+    for case in SCIQ_CASES:
+        _, _, quiz = chain_cache[f"quiz:{case['id']}"]
+        ok, why = quiz_structural_ok(quiz)
+        record(
+            "quiz",
+            "structural_pass",
+            case=case["id"],
+            score=1.0 if ok else 0.0,
+            threshold=1.0,
+            success=ok,
+            reason=why,
+        )
+        if not ok:
+            problems.append(f"{case['id']}: {why}")
+    assert not problems, problems
 
 
 # --- Judge metrics: aggregate-gated (mean over the run's cases) ---------------
 
 
 async def _judge_mean(suite_metric, cases, threshold, build) -> float:
-    """Run a judge metric over cases, record per-case, return the clamped mean.
+    """Judge all cases CONCURRENTLY, record per-case, return the clamped mean.
 
     Unparseable verdicts (judge_score → None) are skipped, not zeroed."""
-    scores = []
-    for case in cases:
+    async def one(case):
         try:
             metric, test_case = await build(case)
         except (ValueError, RuntimeError) as exc:
             # Persistent generator failure on this case (e.g. deterministic
             # max_tokens truncation) — record and continue; the per-case
             # structural gate still enforces the main chain.
-            record(
-                "quiz", suite_metric, case=case["id"], score=0.0,
-                threshold=threshold, success=False,
-                reason=f"generation failed — skipped: {str(exc)[:120]}",
-            )
-            continue
+            return case, None, f"generation failed — skipped: {str(exc)[:120]}"
         score, reason = await judge_score(metric, test_case)
         if score is None:
-            record(
-                "quiz", suite_metric, case=case["id"], score=0.0,
-                threshold=threshold, success=False,
-                reason=f"judge verdict unparseable — skipped: {reason[:120]}",
-            )
-            continue
-        scores.append(score)
+            return case, None, f"judge verdict unparseable — skipped: {reason[:120]}"
+        return case, score, reason
+
+    results = await gather_bounded(
+        [(lambda c=case: one(c)) for case in cases]
+    )
+    scores = []
+    for case, score, reason in results:
+        if score is not None:
+            scores.append(score)
         record(
-            "quiz", suite_metric, case=case["id"], score=score,
-            threshold=threshold, success=score >= threshold,
+            "quiz", suite_metric, case=case["id"], score=score or 0.0,
+            threshold=threshold, success=(score is not None and score >= threshold),
             reason=reason,
         )
     assert scores, f"{suite_metric}: no parseable judge verdicts in this run"
@@ -107,9 +122,10 @@ async def _judge_mean(suite_metric, cases, threshold, build) -> float:
 
 async def test_quiz_groundedness():
     threshold = 0.80
+    await _warm_bare()
 
     async def build(case):
-        _, _, quiz = await quiz_chain(case["id"], case["passage"], {})
+        _, _, quiz = chain_cache[f"quiz:{case['id']}"]
         metric = rubric(
             "Quiz groundedness",
             criteria=(
@@ -136,9 +152,10 @@ async def test_quiz_groundedness():
 
 async def test_distractor_plausibility():
     threshold = 0.65
+    await _warm_bare()
 
     async def build(case):
-        _, _, quiz = await quiz_chain(case["id"], case["passage"], {})
+        _, _, quiz = chain_cache[f"quiz:{case['id']}"]
         metric = rubric(
             "Distractor plausibility",
             criteria=(
@@ -173,9 +190,10 @@ async def test_distractor_plausibility():
 
 async def test_concept_tag_accuracy():
     threshold = 0.70
+    await _warm_bare()
 
     async def build(case):
-        _, _, quiz = await quiz_chain(case["id"], case["passage"], {})
+        _, _, quiz = chain_cache[f"quiz:{case['id']}"]
         metric = rubric(
             "Concept-tag accuracy",
             criteria=(
@@ -202,13 +220,18 @@ async def test_concept_tag_accuracy():
 async def test_personalization_shift():
     threshold = 0.55
 
+    # Warm both memory variants for the first 5 cases concurrently.
+    variants = []
+    for case in SCIQ_CASES[:5]:
+        variants.append((f"{case['id']}::novice", case["passage"], NOVICE_MEMORY))
+        variants.append((f"{case['id']}::advanced", case["passage"], ADVANCED_MEMORY))
+    await gather_bounded(
+        [(lambda p=pair: quiz_chain(*p)) for pair in variants]
+    )
+
     async def build(case):
-        _, _, novice_quiz = await quiz_chain(
-            f"{case['id']}::novice", case["passage"], NOVICE_MEMORY
-        )
-        _, _, advanced_quiz = await quiz_chain(
-            f"{case['id']}::advanced", case["passage"], ADVANCED_MEMORY
-        )
+        _, _, novice_quiz = chain_cache[f"quiz:{case['id']}::novice"]
+        _, _, advanced_quiz = chain_cache[f"quiz:{case['id']}::advanced"]
         metric = rubric(
             "Personalization adherence",
             criteria=(

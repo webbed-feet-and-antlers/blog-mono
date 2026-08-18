@@ -20,6 +20,11 @@ from evals.config import BASELINES_DIR, REPORTS_DIR
 
 RECORDS: list[dict] = []
 
+# Per-suite wall-clock seconds, accumulated by the conftest test-duration
+# hook — runtime is a metric like any other: the slowest suite should be
+# visible in every report.
+SUITE_SECONDS: dict[str, float] = {}
+
 
 def record(
     suite: str,
@@ -86,12 +91,27 @@ def flush_reports() -> Path | None:
         agg = _aggregate(rows)
         (run_dir / f"{suite}.json").write_text(
             json.dumps(
-                {"suite": suite, "run": ts, "metrics": agg}, indent=2
+                {
+                    "suite": suite,
+                    "run": ts,
+                    "runtime_secs": round(SUITE_SECONDS.get(suite, 0.0), 1),
+                    "metrics": agg,
+                },
+                indent=2,
             )
         )
         summary[suite] = agg
     (run_dir / "summary.json").write_text(
-        json.dumps({"run": ts, "suites": summary}, indent=2)
+        json.dumps(
+            {
+                "run": ts,
+                "runtime_secs": {
+                    s: round(v, 1) for s, v in sorted(SUITE_SECONDS.items())
+                },
+                "suites": summary,
+            },
+            indent=2,
+        )
     )
     latest = REPORTS_DIR / "latest"
     if latest.exists():
@@ -125,7 +145,12 @@ def _write_markdown(run_dir: Path) -> None:
         data = json.loads(suite_json.read_text())
         suite = data["suite"]
         baseline = _baseline_for(suite)
-        lines += [f"## {suite}", "", "| metric | mean | n | baseline | Δ |", "|---|---|---|---|---|"]
+        runtime = data.get("runtime_secs")
+        runtime_note = f" ({runtime/60:.0f}m)" if runtime else ""
+        lines += [
+            f"## {suite}{runtime_note}", "",
+            "| metric | mean | n | baseline | Δ |", "|---|---|---|---|---|",
+        ]
         for metric, agg in data["metrics"].items():
             base_cell, delta_cell = "—", "—"
             if baseline and metric in baseline.get("metrics", {}):

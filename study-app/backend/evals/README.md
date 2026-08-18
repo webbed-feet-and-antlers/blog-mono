@@ -13,26 +13,42 @@ No users needed: learner-dependent features are evaluated by **replay** —
 real Duolingo review traces through our FSRS wrapper, real EdNet
 interaction logs through the recommendation engine.
 
-## Running
+## Running — three tiers
 
 ```sh
 task study-app:evals-prepare   # one-time dataset download (see below)
-task study-app:evals           # run every suite (LLM calls; see runtime)
+task study-app:evals-gate      # fast tier (~10 min): every suite at EVALS_N=3
+task study-app:evals           # full run (~30 min): every suite at EVALS_N=10
 ```
 
 Or directly: `uv run python -m evals.data` then `uv run pytest evals/ -m evals`.
 
+**What to run when:**
+- **Iterating on one feature** — run just its suite (fastest inner loop):
+  `uv run pytest evals/suites/test_quiz.py -m evals`
+- **After any product change** — `task study-app:evals-gate`. Small-N cases are
+  a seeded *subset* of the full run's cases, so gate numbers roll up coherently
+  into full-run trends. Means over 3 cases are noisier — a marginal gate
+  failure warrants a full run before concluding regression.
+- **Before promoting baselines** — `task study-app:evals` (the full N=10 run).
+
+Knobs:
 - `EVALS_N` caps cases per suite (default 10). Results live in
-  `evals/reports/<run>/`, the rendered table in `evals/EVALS.md`, and each
-  run's numbers are diffed against the committed `evals/reports/baselines/`.
+  `evals/reports/<run>/`, the rendered table in `evals/EVALS.md` (with
+  per-suite runtime), and each run's numbers are diffed against the committed
+  `evals/reports/baselines/`.
+- `EVALS_CONCURRENCY` (default 4) caps in-flight LLM calls. The generation
+  suites run their chains and judge calls concurrently — the tools are pure
+  async functions with no DB — which is what keeps a full run around half an
+  hour instead of an evening. Raise it if your OpenRouter limits allow.
 - Promote the latest run to the new baseline after an intentional change:
   `uv run python -m evals.report --promote` (commit `reports/baselines/`).
 - The suites are stochastic (generation at temperature 0.2–0.4, judges at
   temperature 0): a single marginal failure usually warrants a re-run; the
   report keeps every number either way.
-- Runtime at the default N: ~1.5–2.5 hours end to end, dominated by
-  generation suites (~6 LLM calls per case through OpenRouter). The
-  deterministic suites (`fsrs`, `recommend`, `session`) run in minutes.
+- The deterministic suites (`fsrs`, `recommend`, `session`) make no LLM calls
+  and run in minutes; `planner` and `reflection` touch the DB and stay
+  sequential.
 
 ## Suites
 

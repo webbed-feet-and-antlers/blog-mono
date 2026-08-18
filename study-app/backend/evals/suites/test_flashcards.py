@@ -3,6 +3,9 @@ passages. No public flashcard benchmark exists, so this suite pairs
 deterministic structure/distinctness checks with a Matuschak-style judge
 rubric (atomic, source-grounded, no shallow variations) plus the
 personalization axis (application-style when the learner knows ~everything).
+
+Judge-scored metrics gate on the run's mean; chains and judge calls run
+concurrently (gather_bounded) — the generation tools touch no DB.
 """
 
 from __future__ import annotations
@@ -16,9 +19,9 @@ from evals.report import record
 from evals.suites import (
     ADVANCED_MEMORY,
     NOVICE_MEMORY,
-    case_ids,
-    deck_structural_ok,
+    chain_cache,
     flashcard_chain,
+    gather_bounded,
     judge_score,
     load_cases,
 )
@@ -59,51 +62,62 @@ def _variant_distinctness(deck: dict) -> float:
     return distinct / len(cards)
 
 
-# --- Structure: ≥3 cards, 2 variants each, non-empty (the validate node) ------
-
-
-@pytest.mark.parametrize("case", SCIQ_CASES, ids=case_ids)
-async def test_deck_structural(case):
-    _, _, deck = await flashcard_chain(case["id"], case["passage"], {})
-    ok, why = deck_structural_ok(deck)
-    record(
-        "flashcards",
-        "structural_pass",
-        case=case["id"],
-        score=1.0 if ok else 0.0,
-        threshold=1.0,
-        success=ok,
-        reason=why,
+async def _warm_bare():
+    await gather_bounded(
+        [
+            (lambda c=case: flashcard_chain(c["id"], c["passage"], {}))
+            for case in SCIQ_CASES
+        ]
     )
-    assert ok, why
 
 
-# --- Variant distinctness (deterministic) --------------------------------------
+# --- Structure + distinctness (deterministic; the validate node's rules) ------
 
 
-@pytest.mark.parametrize("case", SCIQ_CASES, ids=case_ids)
-async def test_variant_distinctness(case):
-    _, _, deck = await flashcard_chain(case["id"], case["passage"], {})
-    cards = deck.get("cards") or []
-    if not cards:
-        # Empty deck already fails the structural gate; don't cascade.
+async def test_deck_structural_and_distinctness():
+    from evals.suites import deck_structural_ok
+
+    await _warm_bare()
+    problems: list[str] = []
+    for case in SCIQ_CASES:
+        _, _, deck = chain_cache[f"flashcards:{case['id']}"]
+        ok, why = deck_structural_ok(deck)
         record(
-            "flashcards", "variant_distinctness", case=case["id"],
-            score=0.0, threshold=0.80, success=False,
-            reason="empty deck — generation failed",
+            "flashcards",
+            "structural_pass",
+            case=case["id"],
+            score=1.0 if ok else 0.0,
+            threshold=1.0,
+            success=ok,
+            reason=why,
         )
-        pytest.skip("empty deck — generation failed")
-    score = _variant_distinctness(deck)
-    record(
-        "flashcards",
-        "variant_distinctness",
-        case=case["id"],
-        score=score,
-        threshold=0.80,
-        success=score >= 0.80,
-        reason="fraction of cards with non-duplicate variant phrasings",
-    )
-    assert score >= 0.80, f"only {score:.0%} of cards have distinct variants"
+        if not ok:
+            problems.append(f"{case['id']}: {why}")
+
+        cards = deck.get("cards") or []
+        if not cards:
+            # Empty deck already fails the structural gate; don't cascade.
+            record(
+                "flashcards", "variant_distinctness", case=case["id"],
+                score=0.0, threshold=0.80, success=False,
+                reason="empty deck — generation failed",
+            )
+            continue
+        score = _variant_distinctness(deck)
+        record(
+            "flashcards",
+            "variant_distinctness",
+            case=case["id"],
+            score=score,
+            threshold=0.80,
+            success=score >= 0.80,
+            reason="fraction of cards with non-duplicate variant phrasings",
+        )
+        if score < 0.80:
+            problems.append(
+                f"{case['id']}: only {score:.0%} of cards have distinct variants"
+            )
+    assert not problems, problems
 
 
 # --- Judge rubric: atomic, grounded, not shallow (aggregate-gated) -------------
@@ -111,16 +125,12 @@ async def test_variant_distinctness(case):
 
 async def test_deck_quality_rubric():
     threshold = 0.60  # regression floor; observed mean 0.86 (min 0.40)
-    scores = []
-    for case in SCIQ_CASES:
-        _, _, deck = await flashcard_chain(case["id"], case["passage"], {})
+    await _warm_bare()
+
+    async def one(case):
+        _, _, deck = chain_cache[f"flashcards:{case['id']}"]
         if not deck.get("cards"):
-            record(
-                "flashcards", "quality_rubric", case=case["id"],
-                score=0.0, threshold=threshold, success=False,
-                reason="empty deck — generation failed",
-            )
-            continue
+            return case, None, "empty deck — generation failed"
         metric = rubric(
             "Flashcard quality",
             criteria=(
@@ -142,17 +152,19 @@ async def test_deck_quality_rubric():
             context=[case["passage"]],
         )
         score, reason = await judge_score(metric, test_case)
+        return case, score, reason
+
+    results = await gather_bounded([(lambda c=case: one(c)) for case in SCIQ_CASES])
+    scores = []
+    for case, score, reason in results:
         if score is not None:
             scores.append(score)
         record(
-            "flashcards",
-            "quality_rubric",
-            case=case["id"],
+            "flashcards", "quality_rubric", case=case["id"],
             score=score if score is not None else 0.0,
             threshold=threshold,
             success=(score is not None and score >= threshold),
-            reason=reason if score is not None
-            else f"judge verdict unparseable — skipped: {reason[:120]}",
+            reason=reason,
         )
     assert scores, "no decks generated at all"
     mean = sum(scores) / len(scores)
@@ -164,14 +176,16 @@ async def test_deck_quality_rubric():
 
 async def test_application_style_shift():
     threshold = 0.50  # regression floor; observed mean 0.82 (min 0.10)
-    scores = []
+
+    variants = []
     for case in SCIQ_CASES[:5]:
-        _, _, novice_deck = await flashcard_chain(
-            f"{case['id']}::novice", case["passage"], NOVICE_MEMORY
-        )
-        _, _, advanced_deck = await flashcard_chain(
-            f"{case['id']}::advanced", case["passage"], ADVANCED_MEMORY
-        )
+        variants.append((f"{case['id']}::novice", case["passage"], NOVICE_MEMORY))
+        variants.append((f"{case['id']}::advanced", case["passage"], ADVANCED_MEMORY))
+    await gather_bounded([(lambda p=pair: flashcard_chain(*p)) for pair in variants])
+
+    async def one(case):
+        _, _, novice_deck = chain_cache[f"flashcards:{case['id']}::novice"]
+        _, _, advanced_deck = chain_cache[f"flashcards:{case['id']}::advanced"]
         metric = rubric(
             "Application-style shift",
             criteria=(
@@ -196,17 +210,21 @@ async def test_application_style_shift():
             )
         )
         score, reason = await judge_score(metric, test_case)
+        return case, score, reason
+
+    results = await gather_bounded(
+        [(lambda c=case: one(c)) for case in SCIQ_CASES[:5]]
+    )
+    scores = []
+    for case, score, reason in results:
         if score is not None:
             scores.append(score)
         record(
-            "flashcards",
-            "application_style_shift",
-            case=case["id"],
+            "flashcards", "application_style_shift", case=case["id"],
             score=score if score is not None else 0.0,
             threshold=threshold,
             success=(score is not None and score >= threshold),
-            reason=reason if score is not None
-            else f"judge verdict unparseable — skipped: {reason[:120]}",
+            reason=reason,
         )
     assert scores, "no decks generated at all"
     mean = sum(scores) / len(scores)

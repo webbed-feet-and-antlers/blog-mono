@@ -44,6 +44,22 @@ async def db():
         yield session
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_call(item):
+    """Attribute each test's wall-clock to the suite(s) it recorded into —
+    per-suite runtime lands in the report, so the slowest suite is always
+    identifiable."""
+    import time as _time
+
+    start = _time.monotonic()
+    n0 = len(report.RECORDS)
+    yield
+    elapsed = _time.monotonic() - start
+    suites = {r["suite"] for r in report.RECORDS[n0:]}
+    for s in suites:
+        report.SUITE_SECONDS[s] = report.SUITE_SECONDS.get(s, 0.0) + elapsed
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Aggregate the run's recorded metrics into evals/reports/ + EVALS.md."""
     report.flush_reports()
