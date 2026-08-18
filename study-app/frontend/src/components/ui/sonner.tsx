@@ -7,10 +7,16 @@ import {
 } from "lucide-react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 
+import { useTheme } from "../../theme"
+
 const Toaster = ({ ...props }: ToasterProps) => {
+  // Follow the app theme — the old hardcoded "light" left dark apps with
+  // blinding white toasts.
+  const { resolved } = useTheme()
+
   return (
     <Sonner
-      theme="light"
+      theme={resolved}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,
@@ -21,10 +27,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       style={
         {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
+          "--normal-bg": "var(--panel)",
+          "--normal-text": "var(--text)",
           "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
+          "--border-radius": "var(--r-md)",
         } as React.CSSProperties
       }
       {...props}

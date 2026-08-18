@@ -9,12 +9,24 @@ import {
   UploadCloud,
   CircleHelp,
   Layers,
+  Check,
+  Monitor,
+  Moon,
+  Sun,
 } from "lucide-react";
 import * as api from "../api/client";
 import { track } from "../api/track";
 import { toast } from "sonner";
+import { useTheme, type ThemeMode } from "../theme";
 import { FileToModuleModal } from "./FileToModuleModal";
 import { ProfileCard } from "./ProfileCard";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
@@ -254,8 +266,11 @@ export function AppSidebar({
         onChange={(e) => handleFiles(e.target.files)}
       />
 
-      {/* Profile pinned to the bottom */}
+      {/* Profile pinned to the bottom; theme switch above it */}
       <SidebarFooter>
+        <div className="mb-1 flex justify-end px-1">
+          <ThemeToggle />
+        </div>
         <ProfileCard />
       </SidebarFooter>
 
@@ -263,5 +278,49 @@ export function AppSidebar({
         <FileToModuleModal noun="document" onSelect={uploadWith} />
       )}
     </SidebarRoot>
+  );
+}
+
+const THEME_OPTIONS: { value: ThemeMode; label: string; icon: typeof Sun }[] = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "system", label: "System", icon: Monitor },
+];
+
+/** Light / Dark / System switcher in the sidebar footer. */
+function ThemeToggle() {
+  const { mode, setMode } = useTheme();
+  const ActiveIcon =
+    mode === "dark" ? Moon : mode === "light" ? Sun : Monitor;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground"
+          aria-label="Change theme"
+        >
+          <ActiveIcon size={15} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" side="top">
+        {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+          <DropdownMenuItem
+            key={value}
+            onClick={() => {
+              if (value !== mode) {
+                setMode(value);
+                track("theme.changed", { mode: value });
+              }
+            }}
+          >
+            <Icon size={13} />
+            {label}
+            {mode === value && <Check size={13} className="ml-auto" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
