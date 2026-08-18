@@ -18,6 +18,7 @@ import {
   Search,
 } from "lucide-react";
 import * as api from "../api/client";
+import { groupModulesBySemester } from "../lib/semesters";
 import { track } from "../api/track";
 import { toast } from "sonner";
 import { FileToModuleModal } from "./FileToModuleModal";
@@ -95,6 +96,10 @@ export function ModulesPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   // Track which doc is being dragged (ref, not state — no re-render needed).
   const draggedDocId = useRef<string | null>(null);
+  // OS-file drag overlay: depth counter so enter/leave on child elements
+  // doesn't flicker; > 0 means a desktop file drag is over the page.
+  const fileDragDepth = useRef(0);
+  const [fileDragOver, setFileDragOver] = useState(false);
 
   // Read navigation depth from the URL search params.
   const search = useRouterState({
@@ -400,12 +405,59 @@ export function ModulesPage() {
       moveDocMut.mutate({ docId, moduleId: folder.id });
     }
   }
-  function onUnfiledDrop(e: React.DragEvent) {
+
+  // --- Desktop-file drag & drop (upload into the current folder) ---
+  // Internal doc-drags never carry the "Files" type, so these handlers and
+  // the folder-card handlers above stay out of each other's way.
+
+  function hasFileDrag(e: React.DragEvent): boolean {
+    return e.dataTransfer.types.includes("Files");
+  }
+  function onPageDragEnter(e: React.DragEvent) {
+    if (!hasFileDrag(e)) return;
     e.preventDefault();
-    setDragOverFolder(null);
-    const docId = draggedDocId.current;
-    draggedDocId.current = null;
-    if (docId) moveDocMut.mutate({ docId, lessonId: null });
+    fileDragDepth.current += 1;
+    setFileDragOver(true);
+  }
+  function onPageDragOver(e: React.DragEvent) {
+    // Without preventDefault the browser would navigate to the dropped file.
+    if (!hasFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+  function onPageDragLeave() {
+    if (fileDragDepth.current === 0) return;
+    fileDragDepth.current -= 1;
+    if (fileDragDepth.current === 0) setFileDragOver(false);
+  }
+  function onPageFileDrop(e: React.DragEvent) {
+    if (!hasFileDrag(e)) return;
+    e.preventDefault();
+    fileDragDepth.current = 0;
+    setFileDragOver(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length === 0) return;
+    track("modules.drop_uploaded", {
+      count: files.length,
+      where: lessonId ? "lesson" : moduleId ? "module" : "root",
+    });
+    if (moduleId || lessonId) {
+      // Inside a folder — the drop target is unambiguous.
+      for (const file of files) {
+        uploadMut.mutate({
+          file,
+          lessonId: lessonId ?? undefined,
+          moduleId: !lessonId ? moduleId : undefined,
+        });
+      }
+    } else if (files.length === 1) {
+      // Root view — ask where it should go (same flow as the toolbar button).
+      setPendingFile(files[0]);
+    } else {
+      // Multiple files at root: the filing prompt is single-file, so they
+      // land unfiled and can be moved from each doc's kebab menu.
+      for (const file of files) uploadMut.mutate({ file });
+    }
   }
 
   // --- Rename save ---
@@ -522,7 +574,13 @@ export function ModulesPage() {
   }
 
   return (
-    <div className="drive-page">
+    <div
+      className="drive-page"
+      onDragEnter={onPageDragEnter}
+      onDragOver={onPageDragOver}
+      onDragLeave={onPageDragLeave}
+      onDrop={onPageFileDrop}
+    >
       {/* Toolbar */}
       <div className="drive-toolbar">
         <Breadcrumb>
@@ -574,6 +632,21 @@ export function ModulesPage() {
         </Breadcrumb>
 
         <div className="drive-actions">
+          {currentModule && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setEditingModule(currentModule)}
+                  aria-label="Edit module details"
+                >
+                  <CalendarClock size={16} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Edit module details</TooltipContent>
+            </Tooltip>
+          )}
           <div className="drive-search-wrapper relative">
             <Search
               size={14}
@@ -676,13 +749,10 @@ export function ModulesPage() {
           <h2 className="drive-section-title">
             {isSearching ? "Results" : "Documents"}
           </h2>
-          <div
-            className={`drive-grid ${moduleId && !lessonId && !isSearching ? "unfiled-drop-zone" : ""}`}
-            onDragOver={(e) => {
-              if (draggedDocId.current) e.preventDefault();
-            }}
-            onDrop={onUnfiledDrop}
-          >
+          {/* Dropping a dragged doc on empty grid space does nothing —
+              un-filing is an explicit choice in the Move dialog, not a
+              side effect of a slightly mis-aimed drop. */}
+          <div className="drive-grid">
             {docs.map((d) => {
               const isAudio = d.kind === "audio";
               return (
@@ -691,6 +761,12 @@ export function ModulesPage() {
                   className="drive-card doc"
                   draggable
                   onDragStart={(e) => onDocDragStart(e, d.id)}
+                  onDragEnd={() => {
+                    // Clear on cancelled drags too — a stale draggedDocId
+                    // made later drops act on a doc nobody was dragging.
+                    draggedDocId.current = null;
+                    setDragOverFolder(null);
+                  }}
                   onClick={() => navigate({ to: "/documents/$docId", params: { docId: d.id } })}
                 >
                   <DropdownMenu>
@@ -813,6 +889,21 @@ export function ModulesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Desktop-file drag overlay — shown while a file drag is over the page */}
+      {fileDragOver && (
+        <div className="drive-drop-overlay" aria-hidden="true">
+          <div className="drive-drop-label">
+            <UploadCloud size={22} />
+            Drop to upload
+            {(lessonId && currentLesson?.title) || currentModule?.title
+              ? ` to “${
+                  (lessonId && currentLesson?.title) || currentModule?.title
+                }”`
+              : ""}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -965,6 +1056,13 @@ function MoveToModal({
   onClose: () => void;
   onMove: (target: { lessonId?: string | null; moduleId?: string | null }) => void;
 }) {
+  // The doc's current home — shown with a "Current" marker and not clickable.
+  const homeModuleId = doc.lesson_id
+    ? tree.modules.find((m) => m.lessons.some((l) => l.id === doc.lesson_id))?.id
+    : (doc.module_id ?? null);
+  const homeLessonId = doc.lesson_id ?? null;
+  const groups = groupModulesBySemester(tree.modules);
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="move-to-modal sm:max-w-md">
@@ -975,37 +1073,54 @@ function MoveToModal({
         <ScrollArea className="move-to-list -mx-2 max-h-[50vh] px-2">
           <Button
             variant="ghost"
+            disabled={!homeModuleId}
             className="move-to-option w-full justify-start gap-2 px-2.5 py-2 text-sm font-normal whitespace-normal"
             onClick={() => onMove({ lessonId: null, moduleId: null })}
           >
             <FolderInput size={15} className="text-muted-foreground" />
             Unfiled
+            {!homeModuleId && <span className="move-to-current-badge">Current</span>}
           </Button>
-          {tree.modules.map((m: Module) => (
-            <div key={m.id} className="move-to-group">
-              <Button
-                variant="ghost"
-                className="move-to-option module-root w-full justify-start gap-2 px-2.5 py-2 text-sm font-normal whitespace-normal"
-                onClick={() => onMove({ moduleId: m.id })}
-              >
-                <Folder size={15} className="text-muted-foreground" />
-                {m.title}
-                <span className="move-to-module-label">module root</span>
-              </Button>
-              {m.lessons.map((l: Lesson) => (
-                <Button
-                  key={l.id}
-                  variant="ghost"
-                  className="move-to-option sub w-full justify-start gap-2 px-2.5 py-2 pl-6 text-sm font-normal whitespace-normal"
-                  onClick={() => onMove({ lessonId: l.id })}
-                >
-                  <FolderOpen size={14} className="text-muted-foreground" />
-                  {l.title}
-                </Button>
+          {groups.map((g) => (
+            <div key={g.key} className="move-to-group">
+              <div className="move-to-group-title">
+                {g.label}
+                {g.isCurrent && (
+                  <span className="semester-group-tag">This semester</span>
+                )}
+              </div>
+              {g.modules.map((m: Module) => (
+                <div key={m.id}>
+                  <Button
+                    variant="ghost"
+                    disabled={homeModuleId === m.id && !homeLessonId}
+                    className="move-to-option module-root w-full justify-start gap-2 px-2.5 py-2 text-sm font-normal whitespace-normal"
+                    onClick={() => onMove({ moduleId: m.id })}
+                  >
+                    <Folder size={15} className="text-muted-foreground" />
+                    {m.title}
+                    <span className="move-to-module-label">module root</span>
+                    {homeModuleId === m.id && !homeLessonId && (
+                      <span className="move-to-current-badge">Current</span>
+                    )}
+                  </Button>
+                  {m.lessons.map((l: Lesson) => (
+                    <Button
+                      key={l.id}
+                      variant="ghost"
+                      disabled={homeLessonId === l.id}
+                      className="move-to-option sub w-full justify-start gap-2 px-2.5 py-2 pl-6 text-sm font-normal whitespace-normal"
+                      onClick={() => onMove({ lessonId: l.id })}
+                    >
+                      <FolderOpen size={14} className="text-muted-foreground" />
+                      {l.title}
+                      {homeLessonId === l.id && (
+                        <span className="move-to-current-badge">Current</span>
+                      )}
+                    </Button>
+                  ))}
+                </div>
               ))}
-              {m.lessons.length === 0 && (
-                <div className="move-to-empty">No lessons</div>
-              )}
             </div>
           ))}
         </ScrollArea>

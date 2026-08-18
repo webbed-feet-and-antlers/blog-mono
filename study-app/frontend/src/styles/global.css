@@ -2005,6 +2005,43 @@ textarea:focus-visible,
   color: var(--text-faint);
   font-style: italic;
 }
+.move-to-current-badge {
+  margin-left: auto;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+/* Desktop-file drag overlay on the modules page */
+.drive-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(2px);
+  border: 2px dashed var(--accent);
+  pointer-events: none;
+}
+.drive-drop-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-radius: var(--r-lg, 14px);
+  background: var(--panel, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  box-shadow: var(--shadow-accent, 0 8px 24px rgba(0, 0, 0, 0.18));
+  font-size: 0.95rem;
+  font-weight: 600;
+}
 
 /* New folder modal */
 .new-folder-modal {
