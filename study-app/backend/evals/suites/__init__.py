@@ -113,16 +113,16 @@ async def quiz_chain(case_id: str, document_text: str, memory: dict) -> tuple:
     key = f"quiz:{case_id}"
     if key not in chain_cache:
         analysis = await analysis_for(document_text)
-        plan = await tools.plan_task("quiz", analysis, memory, None)
         quiz = None
         for _ in range(3):  # transient JSON failures from the generator
             try:
+                plan = await tools.plan_task("quiz", analysis, memory, None)
                 quiz = await tools.generate_quiz(document_text, analysis, plan, memory)
                 break
             except ValueError:
                 continue
         if quiz is None:
-            raise RuntimeError(f"generate_quiz failed for {case_id} after 3 attempts")
+            raise RuntimeError(f"quiz chain failed for {case_id} after 3 attempts")
         chain_cache[key] = (analysis, plan, quiz)
     return chain_cache[key]
 
@@ -133,14 +133,20 @@ async def flashcard_chain(case_id: str, document_text: str, memory: dict) -> tup
     key = f"flashcards:{case_id}"
     if key not in chain_cache:
         analysis = await analysis_for(document_text)
-        plan = await tools.plan_task("flashcards", analysis, memory, None)
-        deck = await tools.generate_flashcards(document_text, analysis, plan, memory)
-        if not deck.get("cards"):
-            # Transient empty generation — one retry before recording the
-            # failure (the prod validate node would reject an empty deck).
-            deck = await tools.generate_flashcards(
-                document_text, analysis, plan, memory
-            )
+        deck = None
+        for _ in range(3):
+            try:
+                plan = await tools.plan_task("flashcards", analysis, memory, None)
+                deck = await tools.generate_flashcards(document_text, analysis, plan, memory)
+                if deck.get("cards"):
+                    break
+                # Transient empty generation — retry (the prod validate node
+                # would reject an empty deck).
+                deck = None
+            except ValueError:
+                continue
+        if deck is None:
+            raise RuntimeError(f"flashcard chain failed for {case_id} after 3 attempts")
         chain_cache[key] = (analysis, plan, deck)
     return chain_cache[key]
 

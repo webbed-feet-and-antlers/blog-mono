@@ -7,6 +7,8 @@ production prompt demands evidence, so we check it).
 
 from __future__ import annotations
 
+import asyncio
+
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -115,6 +117,9 @@ async def test_plan_invariants_and_rationales(index, case):
             except Exception:
                 if attempt == 2:
                     raise
+                # Back off between outer attempts so a provider-side
+                # rate-limit storm (empty responses) can clear first.
+                await asyncio.sleep(5 * (attempt + 1))
     assert plan is not None, "planner returned no plan"
     items = plan.items or []
     assert items, "plan has no items"

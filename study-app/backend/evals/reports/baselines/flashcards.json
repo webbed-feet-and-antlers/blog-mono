@@ -1,0 +1,41 @@
+{
+  "suite": "flashcards",
+  "run": "20260818T234439Z",
+  "runtime_secs": 845.2,
+  "metrics": {
+    "application_style_shift": {
+      "mean": 0.96,
+      "min": 0.9,
+      "n": 5,
+      "threshold": 0.5,
+      "failures": []
+    },
+    "quality_rubric": {
+      "mean": 0.74,
+      "min": 0.5,
+      "n": 10,
+      "threshold": 0.6,
+      "failures": [
+        {
+          "case": "sciq-89",
+          "score": 0.5,
+          "reason": "All cards ask single focused questions (ATOMIC) and answers are directly supported by the passage (GROUNDED). However, many cards test trivial recognition of wording (e.g., 'Why is oxygen essential for life?' back: 'It is a gas that is essential for life.') or filler (e.g., 'What is the source of oxygen for breathing under normal conditions?' back: 'The atmosphere.') rather than meaningful understanding (NOT TRIVIAL). Variants often reword the same cloze deletion without testing from genuinely d"
+        }
+      ]
+    },
+    "structural_pass": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "variant_distinctness": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 0.8,
+      "failures": []
+    }
+  }
+}

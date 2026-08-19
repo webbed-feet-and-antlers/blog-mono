@@ -314,9 +314,15 @@ async def suggest_filename(current_filename: str, text: str) -> str | None:
                 "excerpt of the document's content, return ONLY JSON: "
                 '{"new_name": string | null}. '
                 "new_name is a concise descriptive title (3-8 words, Title Case, "
-                "no file extension, no quotes) that identifies what this "
-                "document is about — e.g. 'Photosynthesis Lecture Notes', "
-                "'Cell Biology Chapter 4', 'MIT Science Writing Seminar 20'. "
+                "no file extension, no quotes) that identifies BOTH what the "
+                "document covers AND what kind of material it is — the topic "
+                "plus the material type (lecture, lecture notes, chapter "
+                "summary, problem set, lab report, seminar slides, textbook "
+                "chapter, review sheet, …) as evident from the content — "
+                "e.g. 'Photosynthesis Lecture Notes', 'Cell Biology Chapter "
+                "4 Summary', 'MIT Science Writing Seminar 20 Slides'. "
+                "A topic alone is not enough: 'Glycolysis' is a bad name, "
+                "'Glycolysis Lecture Notes' is a good one. "
                 "Return null if the current filename (ignoring its extension) "
                 "is already clear and descriptive."
             ),

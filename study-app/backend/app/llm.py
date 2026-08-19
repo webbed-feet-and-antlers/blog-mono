@@ -43,14 +43,16 @@ async def chat(
     json_mode: bool = False,
     temperature: float = 0.3,
     max_tokens: int | None = None,
-    retries: int = 2,
+    retries: int = 4,
     model: str | None = None,
 ) -> str:
     """Run a chat completion and return the assistant's text content.
 
     Retries on empty responses (a common transient failure on cheap/free LLM
     endpoints like OpenRouter's free tier — the model returns "" on rate limits
-    or timeouts). Backs off 1s, then 2s. `model` optionally overrides
+    or timeouts). Exponential backoff: 1s, 2s, 4s, 8s — rate-limit storms on
+    the free tier can outlast the old linear 1s/2s windows, so the curve now
+    spans ~15s across five attempts. `model` optionally overrides
     settings.openrouter_model for a single call (the evals judge uses this).
     """
     client = _get_client()
@@ -90,7 +92,7 @@ async def chat(
                 exc,
             )
         if attempt < retries:
-            await _asyncio.sleep(1.0 * (attempt + 1))
+            await _asyncio.sleep(min(8.0, 2.0 ** attempt))
 
     if last_exc:
         raise last_exc

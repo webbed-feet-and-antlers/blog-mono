@@ -1,0 +1,28 @@
+{
+  "suite": "reflection",
+  "run": "20260818T234439Z",
+  "runtime_secs": 214.6,
+  "metrics": {
+    "faithfulness": {
+      "mean": 0.8667,
+      "min": 0.6,
+      "n": 3,
+      "threshold": 0.45,
+      "failures": []
+    },
+    "format_clamps": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 3,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "numbers_grounded": {
+      "mean": 0.8677,
+      "min": 0.714,
+      "n": 3,
+      "threshold": 0.7,
+      "failures": []
+    }
+  }
+}

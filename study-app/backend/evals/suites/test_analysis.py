@@ -31,7 +31,7 @@ RACE_CASES = sample_cases(load_cases("race"))
 async def _warm():
     await gather_bounded(
         [(lambda c=case: analysis_for(c["text"])) for case in ALCPL_CASES]
-        + [(lambda c=case: analysis_for(c["passage"])) for c in RACE_CASES]
+        + [(lambda c=case: analysis_for(c["passage"])) for case in RACE_CASES]
     )
 
 

@@ -1,0 +1,51 @@
+{
+  "suite": "planner",
+  "run": "20260819T084757Z",
+  "runtime_secs": 908.6,
+  "metrics": {
+    "invariants_pass": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 5,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "max_daily_minutes": {
+      "mean": 45.0,
+      "min": 40.0,
+      "n": 5,
+      "threshold": null,
+      "failures": []
+    },
+    "rationale_cites_evidence": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 5,
+      "threshold": 0.6,
+      "failures": []
+    },
+    "weak_engaged_early": {
+      "mean": 0.4,
+      "min": 0.0,
+      "n": 5,
+      "threshold": 0.6,
+      "failures": [
+        {
+          "case": "sciq-114",
+          "score": 0.0,
+          "reason": "0 review items in first 2 days"
+        },
+        {
+          "case": "sciq-281",
+          "score": 0.0,
+          "reason": "0 review items in first 2 days"
+        },
+        {
+          "case": "sciq-228",
+          "score": 0.0,
+          "reason": "0 review items in first 2 days"
+        }
+      ]
+    }
+  }
+}

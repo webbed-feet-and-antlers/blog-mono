@@ -1,0 +1,54 @@
+{
+  "suite": "quiz",
+  "run": "20260818T234439Z",
+  "runtime_secs": 1363.0,
+  "metrics": {
+    "concept_tag_accuracy": {
+      "mean": 0.96,
+      "min": 0.7,
+      "n": 10,
+      "threshold": 0.7,
+      "failures": []
+    },
+    "distractor_plausibility": {
+      "mean": 0.85,
+      "min": 0.0,
+      "n": 10,
+      "threshold": 0.65,
+      "failures": [
+        {
+          "case": "sciq-281",
+          "score": 0.0,
+          "reason": "judge verdict unparseable \u2014 skipped: The distractors are well-aligned with the evaluation steps: they are plausible near-misses relevant to quantum mechanics"
+        }
+      ]
+    },
+    "groundedness": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 0.8,
+      "failures": []
+    },
+    "personalization_shift": {
+      "mean": 0.8,
+      "min": 0.0,
+      "n": 5,
+      "threshold": 0.55,
+      "failures": [
+        {
+          "case": "sciq-281",
+          "score": 0.0,
+          "reason": "judge verdict unparseable \u2014 skipped: Quiz B has a higher proportion of application/analysis questions (e.g., calculating possible quantum numbers, identifyin"
+        }
+      ]
+    },
+    "structural_pass": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 1.0,
+      "failures": []
+    }
+  }
+}

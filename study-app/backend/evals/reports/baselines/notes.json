@@ -1,0 +1,46 @@
+{
+  "suite": "notes",
+  "run": "20260818T234439Z",
+  "runtime_secs": 368.8,
+  "metrics": {
+    "faithfulness": {
+      "mean": 0.9971,
+      "min": 0.9714,
+      "n": 10,
+      "threshold": 0.75,
+      "failures": []
+    },
+    "key_point_coverage": {
+      "mean": 0.69,
+      "min": 0.0,
+      "n": 10,
+      "threshold": 0.6,
+      "failures": [
+        {
+          "case": "pubmed-12",
+          "score": 0.0,
+          "reason": "The Actual Output provides extensive background on quality concepts in healthcare but fails to capture the specific study details from the Expected Output. Key missing points include: the definition of quality gap, the study's aim to determine women's viewpoints in Isfahan, the cross-sectional design with 1280 participants, the five measured dimensions (tangible, confidence, responsiveness, assurance, sympathy), the statistical methods (t-test, chi-square), the results showing controversy across"
+        },
+        {
+          "case": "pubmed-140",
+          "score": 0.0,
+          "reason": "The Actual Output provides detailed methodological notes but completely omits the central findings, methods, and conclusions from the Expected Output, such as the role of the circadian clock, the identification and function of the evening complex (ELF3, ELF4, LUX), its regulation of PIF4/PIF5, and the molecular basis for circadian gating of hypocotyl growth. A reader would learn none of these key points."
+        }
+      ]
+    },
+    "rouge1_recall_vs_abstract": {
+      "mean": 0.023,
+      "min": 0.0091,
+      "n": 10,
+      "threshold": null,
+      "failures": []
+    },
+    "structure_pass": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 1.0,
+      "failures": []
+    }
+  }
+}

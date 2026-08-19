@@ -1,0 +1,49 @@
+{
+  "suite": "rename",
+  "run": "20260819T084757Z",
+  "runtime_secs": 64.3,
+  "metrics": {
+    "descriptiveness": {
+      "mean": 0.46,
+      "min": 0.4,
+      "n": 10,
+      "threshold": 0.45,
+      "failures": [
+        {
+          "case": "sciq-432",
+          "score": 0.4,
+          "reason": "a3f9c2e1b8d7.pdf \u2192 Plasma Membrane Structure Notes: The output identifies the topic as 'Plasma Membrane Structure' but does not specify a material type beyond generic 'Notes'. It lacks detail to distinguish among 50 similar documents, and it does not incorporate specific context details like cholesterol or proteins."
+        },
+        {
+          "case": "sciq-432",
+          "score": 0.4,
+          "reason": "a3f9c2e1b8d7.pdf \u2192 Plasma Membrane Structure Notes: The output identifies a specific topic (plasma membrane structure) but does not specify a material type beyond generic 'Notes'. The context provides specific details (cholesterol, proteins assisting transport) that are not reflected or generalized in the filename, making it less distinguishable among many similar documents."
+        },
+        {
+          "case": "sciq-432",
+          "score": 0.4,
+          "reason": "a3f9c2e1b8d7.pdf \u2192 Plasma Membrane Structure Notes: The output identifies a specific topic (plasma membrane structure) but fails to specify a material type, only using 'Notes' which is too generic. It does not distinguish among similar files and is not a clear improvement over the context, which already details membrane components."
+        },
+        {
+          "case": "sciq-432",
+          "score": 0.4,
+          "reason": "a3f9c2e1b8d7.pdf \u2192 Plasma Membrane Structure Notes: The output identifies a specific topic (plasma membrane structure) but does not specify a material type (e.g., summary, diagram). It uses generic 'Notes', which is insufficient to distinguish among 50 similar documents. The context details about cholesterol and proteins are not reflected or generalized in the filename."
+        }
+      ]
+    },
+    "gate_recall": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "rule_pass": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 1.0,
+      "failures": []
+    }
+  }
+}

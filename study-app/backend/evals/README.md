@@ -43,6 +43,12 @@ Knobs:
   hour instead of an evening. Raise it if your OpenRouter limits allow.
 - Promote the latest run to the new baseline after an intentional change:
   `uv run python -m evals.report --promote` (commit `reports/baselines/`).
+  Promotion copies per-suite files, so it *merges*: re-running one suite and
+  promoting refreshes only that suite's baseline. Note `reports/latest/`
+  holds only the most recent pytest run's suites — after a partial re-run,
+  copy the untouched suites' JSONs from the last full run's timestamped
+  directory into `latest/` first, or EVALS.md and the baselines will
+  silently lose them.
 - The suites are stochastic (generation at temperature 0.2–0.4, judges at
   temperature 0): a single marginal failure usually warrants a re-run; the
   report keeps every number either way.
@@ -124,6 +130,17 @@ are the honest starting point for improving the product:
    Criteria must describe anchors *qualitatively* ("top of the scale =
    fully covered"), and `judge_score()` retries/skips unparseable
    verdicts instead of clamping them to 0. (`evals/suites/__init__.py`.)
+8. **Renamed files lost their material type.** The descriptiveness judge
+   scored names like "Cellular Respiration" as half-done — "identifies
+   the topic but does not clearly specify the material type". Fixed in
+   production: `suggest_filename` now requires topic **plus** material
+   type (lecture notes, chapter summary, problem set…). (`rename` suite.)
+9. **Free-tier empty-response storms outlast linear backoff.** Under full
+   -N concurrency, OpenRouter's free tier occasionally returns empty
+   responses long enough to exhaust the old 1s/2s retry window (a planner
+   case died this way while passing standalone). `chat()` now backs off
+   exponentially (1/2/4/8s across five attempts) and the planner suite
+   sleeps between outer attempts. (`app/llm.py`, `evals/suites/test_planner.py`.)
 
 Judge-scored metrics gate on the run's **mean**, not per-case: judge scores
 are stochastic, and a single harsh (or numerically erratic — judges
