@@ -20,42 +20,42 @@ The core organisational structure is modules, and these are intended to map to a
 
 You can upload content that can either be a document attached to the module in general, like that module's recommended textbook, or as part of a lesson, where it might be the lecture slides or professor's notes. Lessons are essentially just a grouping of documents and recordings associated with a lesson or lecture.
 
-![The modules page, grouped by semester with the current term expanded](/screenshots/modules.png)
+![The modules page, grouped by semester with the current term expanded](/screenshots/study-app-agent/modules.png)
 
 **Uploads.** You drop in whatever content you get on the course - slide decks, Word documents, spreadsheets, PDFs, etc. The app converts them into a viewable format, and if appropriate, renames them to what it is actually about; `619ab3.pdf` means nothing to you, so will be renamed to something sensible. The content is automatically analysed, a concept list and prerequisite graph are generated from the content. This then feeds downstream features. If the content includes new concepts, a flashcard deck gets automatically generated and fed into the global flashcard spaced repetition system.
 
 For each module, we automatically generate and update a study plan to help structure the learning for the student. If they complete a task, we routinely check and can automatically tick off completed items without them needing to remember to update it. As the module/course progresses, the student will record more lectures and upload more content throughout the semester; the system therefore will update the study plan routinely to incorporate these changes.
 
-![Inside a module: the agent-written study plan on top, documents and lessons below](/screenshots/module-view.png)
+![Inside a module: the agent-written study plan on top, documents and lessons below](/screenshots/study-app-agent/module-view.png)
 
-![In the module, you can organise lessons and files](/screenshots/module-files.png)
+![In the module, you can organise lessons and files](/screenshots/study-app-agent/module-files.png)
 
 **Generation.** Every document offers a variety of views on top of it - notes, quizzes, and flashcards, with optional hints to steer their generation. You can also view the concepts that are detected in the document. If you regenerate any of them, we stack versions and allow the student to pick, rather than overwriting them. This allows you to create multiple quizzes or flashcard decks from the same content. Quizzes are classic four-option multiple-choice quizzes; flashcard concepts carry two or three phrasings to encourage the student to learn the underlying concept instead of memorising the specific card.
 
-![A generated quiz on a lecture document, one tab among the document's materials](/screenshots/document-quiz.png)
+![A generated quiz on a lecture document, one tab among the document's materials](/screenshots/study-app-agent/document-quiz.png)
 
 **Lectures.** The recording page puts slides on one side and notes on the other; notes you type are timestamped and linked with the audio. You can record with a microphone, the audio of a browser tab playing an online lecture, or both. When you stop, the audio is automatically transcribed and flows through the same pipeline as an upload. The recording, slides, transcript, and notes are grouped as one lecture and can be associated with and organised into a module. This flow allows a student to collect all the content from lectures over a semester and then have appropriate study materials ambiently served to them, and their learning tracked to inform future generated material.
 
-![The lecture recording page: slide preview, timestamped notes, source picker](/screenshots/record.png)
+![The lecture recording page: slide preview, timestamped notes, source picker](/screenshots/study-app-agent/record.png)
 
 **Studying.** Concepts you are about to forget, ranked by predicted recall, mixed with new material at a ratio that keeps the student in an ideal level of desirable difficulty with approximately 70–85% accuracy. This helps learning stick as students are getting positive affirmation and encouragement and stay engaged, since getting 80% right gives them the required dopamine hits; however, that 20% they get wrong will stretch them, ensuring they aren’t wasting their time and not actually learning. Every answer updates a per-concept competency level and a spaced-repetition schedule, so the next session is built from everything before it.
 
-![A composed study session — review and new cards, flip to answer, self-grade](/screenshots/study.png)
+![A composed study session — review and new cards, flip to answer, self-grade](/screenshots/study-app-agent/study.png)
 
 **The visible model.** We surface a dashboard with a list of all the concepts, recall probabilities, with filters for weak/due/mastered concepts. Each concept opens a view showing all the documents, quiz questions, and flashcards the concept is mentioned in. The profile card lets users see how the agent sees them: a narrative profile the agent wrote about them based on their behaviour - when you study, how fast you answer, what you abandon, what you ace and what you struggle with. This profile and data are used to tailor all the generated content to you.
 
-![The concepts dashboard: predicted recall per concept, due and weak filters](/screenshots/concepts.png)
+![The concepts dashboard: predicted recall per concept, due and weak filters](/screenshots/study-app-agent/concepts.png)
 
-!["How the agent sees you": the agent's narrative profile, written from the behaviour ledger](/screenshots/mirror.png)
+!["How the agent sees you": the agent's narrative profile, written from the behaviour ledger](/screenshots/study-app-agent/mirror.png)
 
-!["Chart and statistics of what the user studies and where they are struggling, this is used as knowledge for the agent](/screenshots/mirror-data.png)
+!["Chart and statistics of what the user studies and where they are struggling, this is used as knowledge for the agent](/screenshots/study-app-agent/mirror-data.png)
 
 **What to do next.** The home page recommends what is likely to be the next focus for the user. Each suggestion includes a reference (e.g. "You recall Chlorophyll slowly, ~34s avg — a targeted quiz would tighten that"), and carries today's item from the relevant study plans. We collect the exam dates for the study plans to pace the plan toward the exam, and the plan automatically updates as new content arrives. Taking the suggested quiz checks off the plan item by itself. When you upload content, we prompt you to organise content eagerly and prevent you from becoming disorganised. You can manually move content between modules in one step.
 
-![The home page: recommendations that cite their evidence and today's plan item](/screenshots/home.png)
+![The home page: recommendations that cite their evidence and today's plan item](/screenshots/study-app-agent/home.png)
 
 We also have a dark mode for the app.
-![The concepts dashboard in dark mode](/screenshots/concepts-dark.png)
+![The concepts dashboard in dark mode](/screenshots/study-app-agent/concepts-dark.png)
 
 None of this is a chat interface. There is no prompt box anywhere. The agent's work (scheduling, generating, ranking, narrating) surfaces as ordinary UI. A user may never know it is a unified AI agent as the engine of the product. All this could have been achieved with isolated features, but as we add features and they impact each other, it would become a spaghetti-like mess. We also wanted the product to learn and grow with the user, personalising all the features and parts to them, understanding the student, how they learn and what they struggle with. We believe the best form of education is a great human tutor who can tailor the education to you; this is trying to replicate some of what makes that work so well.
 
