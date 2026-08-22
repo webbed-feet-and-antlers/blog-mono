@@ -31,6 +31,18 @@ SAMPLE_SEED = 42
 # under OpenRouter rate limits (the empty-response retry absorbs bursts).
 EVALS_CONCURRENCY = max(1, int(os.environ.get("EVALS_CONCURRENCY", "4")))
 
+# Which prepared dataset split the suites draw from (see evals.data):
+#   train — scratch pool for exploratory runs and any future fitting
+#   val   — the everyday pool: gate/full runs + committed baselines
+#   test  — held-out overfitting check; run rarely, never tune against it
+# Nothing in the harness fits parameters, so "overfitting" here means tuning
+# prompts/gates against a fixed sample — the val-vs-test gap is the signal.
+EVALS_SPLIT = os.environ.get("EVALS_SPLIT", "val")
+if EVALS_SPLIT not in ("train", "val", "test"):
+    raise SystemExit(
+        f"EVALS_SPLIT must be train, val, or test — got {EVALS_SPLIT!r}"
+    )
+
 
 def case_limit(default: int = 25) -> int:
     """Cases per suite, from EVALS_N (via settings.evals_n)."""

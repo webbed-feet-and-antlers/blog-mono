@@ -13,6 +13,13 @@ the /api/recommend endpoint uses — then score the policy two ways:
      how many did the learner actually FAIL on their next attempt within
      7 days — versus a random-concept baseline. This is the offline proxy
      for "does the recommender point at what needs work?"
+
+     Scored as a per-user macro average: a pooled (micro) rate lets one
+     heavy user dominate the number, and the old 60-decision-point cap
+     made WHICH users dominate depend on subject_id sort order. Report-only
+     (not gated): on the original development cohort the engine showed zero
+     lift, and on a redrawn cohort the signal inverts — the weakness
+     heuristic does not generalize across cohorts (README finding #10).
 """
 
 from __future__ import annotations
@@ -22,7 +29,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from evals.config import DATA_DIR
+from evals.config import DATA_DIR, EVALS_SPLIT
 from evals.report import record
 
 pytestmark = pytest.mark.evals
@@ -51,10 +58,12 @@ def _replay() -> dict:
 
     engine_mod = _sys.modules["app.recommend.engine"]  # module, not the singleton
 
-    users_path = DATA_DIR / "ednet_sample.parquet"
+    users_path = DATA_DIR / f"ednet_{EVALS_SPLIT}.parquet"
     questions_path = DATA_DIR / "ednet_questions.parquet"
     if not users_path.exists():
-        pytest.fail("ednet parquets missing — run `uv run python -m evals.data ednet`")
+        pytest.fail(
+            f"{users_path} missing — run `uv run python -m evals.data ednet`"
+        )
 
     qdf = pd.read_parquet(questions_path)
     # question_id → its first tag = a synthetic "concept".
@@ -75,10 +84,14 @@ def _replay() -> dict:
     targeted, targeted_failed = 0, 0
     random_targets, random_failed = 0, 0
     empty_primary = 0
+    # Per-user tallies — precision is macro-averaged so one heavy learner
+    # can't dominate the pooled rate.
+    user_stats: dict[str, dict] = {}
 
-    for subject, udf in df.groupby("subject_id", sort=True):
-        if decided_points >= 60:
+    for i, (subject, udf) in enumerate(df.groupby("subject_id", sort=True)):
+        if i >= MAX_USERS:
             break
+        u_t, u_tf, u_rt, u_rf = 0, 0, 0, 0
         udf = udf.sort_values("timestamp")
         states: dict[str, dict] = {}     # concept → fsrs state dict
         counts: dict[str, tuple] = {}    # concept → (seen, correct)
@@ -157,19 +170,23 @@ def _replay() -> dict:
                     if targets:
                         for t in targets:
                             targeted += 1
+                            u_t += 1
                             nxt = _next_attempt(future, qmap, t, row.timestamp,
                                                 window_ms=7 * 86400 * 1000)
                             if nxt is False:
                                 targeted_failed += 1
+                                u_tf += 1
                     # Random-concept baseline over the same world.
                     pool = list(states.keys())
                     if pool:
                         r_concept = rng.choice(pool)
                         random_targets += 1
+                        u_rt += 1
                         nxt = _next_attempt(future, qmap, r_concept, row.timestamp,
                                             window_ms=7 * 86400 * 1000)
                         if nxt is False:
                             random_failed += 1
+                            u_rf += 1
 
             # --- Advance the scheduler with this answer. ---
             st = states.get(concept)
@@ -194,6 +211,10 @@ def _replay() -> dict:
             seen, k = counts.get(concept, (0, 0))
             counts[concept] = (seen + 1, k + (1 if correct else 0))
             last_day = day
+        user_stats[str(subject)] = {
+            "targeted": u_t, "targeted_failed": u_tf,
+            "random_targets": u_rt, "random_failed": u_rf,
+        }
 
     _REPLAY = {
         "decided_points": decided_points,
@@ -204,6 +225,7 @@ def _replay() -> dict:
         "targeted_failed": targeted_failed,
         "random_targets": random_targets,
         "random_failed": random_failed,
+        "user_stats": user_stats,
     }
     return _REPLAY
 
@@ -265,32 +287,46 @@ async def test_recommend_policy_on_real_traces():
             f"FSRS review missing from slate in {1 - slate_ok:.0%} of backlogs"
         )
 
-    # 3. Weakness precision vs random (report + soft gate: never worse).
+    # 3. Weakness precision vs random — per-user macro average, report-only.
+    # Gating this was wrong twice over: the pooled rate let one heavy user
+    # dominate, and the "never worse than random" claim itself turned out
+    # to be cohort-specific (zero lift on the development cohort, inverted
+    # on a redrawn one — README finding #10).
+    stats = data["user_stats"]
+    eng_users = [v for v in stats.values() if v["targeted"] > 0]
+    rnd_users = [v for v in stats.values() if v["random_targets"] > 0]
     eng_prec = (
-        data["targeted_failed"] / data["targeted"]
-        if data["targeted"] else None
+        sum(v["targeted_failed"] / v["targeted"] for v in eng_users) / len(eng_users)
+        if eng_users else None
     )
     rnd_prec = (
-        data["random_failed"] / data["random_targets"]
-        if data["random_targets"] else None
+        sum(v["random_failed"] / v["random_targets"] for v in rnd_users)
+        / len(rnd_users)
+        if rnd_users else None
     )
     if eng_prec is not None and rnd_prec is not None:
         lift = eng_prec - rnd_prec
         record(
             "recommend", "engine_target_precision", case="ednet-replay",
             score=eng_prec, threshold=None, success=None,
-            reason=f"{data['targeted_failed']}/{data['targeted']} targeted failed next",
+            reason=(
+                f"macro over {len(eng_users)} users "
+                f"(pooled {data['targeted_failed']}/{data['targeted']})"
+            ),
         )
         record(
             "recommend", "random_target_precision", case="ednet-replay",
             score=rnd_prec, threshold=None, success=None,
-            reason=f"{data['random_failed']}/{data['random_targets']} random failed next",
+            reason=(
+                f"macro over {len(rnd_users)} users "
+                f"(pooled {data['random_failed']}/{data['random_targets']})"
+            ),
         )
         record(
             "recommend", "weakness_precision_lift", case="ednet-replay",
-            score=lift, threshold=-0.02, success=lift >= -0.02,
-            reason="engine-targeted vs random-targeted failure precision",
-        )
-        assert lift >= -0.02, (
-            f"engine targets are weaker than random ({eng_prec:.3f} vs {rnd_prec:.3f})"
+            score=lift, threshold=None, success=None,
+            reason=(
+                "engine-targeted vs random-targeted failure precision "
+                "(macro); cohort-dependent — do not tune against"
+            ),
         )

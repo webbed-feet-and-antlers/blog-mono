@@ -13,12 +13,13 @@ No users needed: learner-dependent features are evaluated by **replay** —
 real Duolingo review traces through our FSRS wrapper, real EdNet
 interaction logs through the recommendation engine.
 
-## Running — three tiers
+## Running — four tiers
 
 ```sh
 task study-app:evals-prepare   # one-time dataset download (see below)
 task study-app:evals-gate      # fast tier (~10 min): every suite at EVALS_N=3
-task study-app:evals           # full run (~30 min): every suite at EVALS_N=10
+task study-app:evals           # full run (~1h): every suite at EVALS_N=10
+task study-app:evals-heldout   # rare held-out check on the test split
 ```
 
 Or directly: `uv run python -m evals.data` then `uv run pytest evals/ -m evals`.
@@ -30,13 +31,49 @@ Or directly: `uv run python -m evals.data` then `uv run pytest evals/ -m evals`.
   a seeded *subset* of the full run's cases, so gate numbers roll up coherently
   into full-run trends. Means over 3 cases are noisier — a marginal gate
   failure warrants a full run before concluding regression.
-- **Before promoting baselines** — `task study-app:evals` (the full N=10 run).
+- **Before promoting baselines** — `task study-app:evals` (the full N=10 run
+  on the val split), then an `evals-heldout` pass to confirm the numbers
+  generalize beyond the tuning sample.
+
+## Splits & overfitting
+
+Every dataset big enough is split once at prepare time into **train / val /
+test** pools (seeded, disjoint; the replay datasets split by whole user so no
+learner spans a split). Suites draw from the `EVALS_SPLIT` pool — `val` by
+default.
+
+Nothing in this harness fits parameters: the generation suites drive prompt-
+based LLM calls, FSRS runs its default (externally-fit) parameters, and the
+recommendation replay exercises an untrained policy. The overfitting risk is
+therefore not parametric — it's **tuning prompts and gate thresholds against
+the same fixed sample until it passes**. The splits catch exactly that:
+
+- **train** — scratch pool for exploratory runs (`EVALS_SPLIT=train`), and the
+  correct pool for any future fitting (FSRS parameters, bandit weights — the
+  fsrs suite already estimates its constant baseline here).
+- **val** — the everyday pool: gate/full runs and every committed baseline.
+  Promoting a non-val run is refused by `python -m evals.report --promote`.
+- **test** — held out. `task study-app:evals-heldout` runs it rarely; its
+  results are never tuned against and never promoted. A healthy system shows
+  val ≈ test; a val-vs-test gap means the features (or the gates) were tuned
+  to the val sample.
+
+AL-CPL is 4 courses — too small to split, so it ships as one pool used by
+every split (there is no held-out prerequisite-graph check).
+
+Prepared pools are capped at prepare time (SciQ 150, RACE 200, notes 120,
+Duolingo 120 users, EdNet 60 users) — the suites draw at most ~25 cases per
+run, so every split pool stays far larger than the draw. The full HF cache
+(a few GB) is only needed while preparing; afterwards it can be deleted, and
+`evals/data/manifest.json` (sha256 per file) verifies the prepared data
+without re-downloading.
 
 Knobs:
 - `EVALS_N` caps cases per suite (default 10). Results live in
   `evals/reports/<run>/`, the rendered table in `evals/EVALS.md` (with
-  per-suite runtime), and each run's numbers are diffed against the committed
-  `evals/reports/baselines/`.
+  per-suite runtime + split), and each run's numbers are diffed against the
+  committed `evals/reports/baselines/`.
+- `EVALS_SPLIT` picks the dataset split (train/val/test, default val).
 - `EVALS_CONCURRENCY` (default 4) caps in-flight LLM calls. The generation
   suites run their chains and judge calls concurrently — the tools are pure
   async functions with no DB — which is what keeps a full run around half an
@@ -141,6 +178,17 @@ are the honest starting point for improving the product:
    case died this way while passing standalone). `chat()` now backs off
    exponentially (1/2/4/8s across five attempts) and the planner suite
    sleeps between outer attempts. (`app/llm.py`, `evals/suites/test_planner.py`.)
+10. **The recommender's "zero lift" was a replay artifact — it's negative.**
+    Two measurement flaws hid this: the pooled precision let one heavy
+    learner dominate, and the 60-decision-point cap only ever replayed the
+    first few users in subject_id order. Scoring a full per-user macro
+    average over a whole split shows the engine's weakness-targeting below
+    random on *every* split (macro lift −0.03 to −0.06): the FSRS-due
+    "weak" concepts it targets fail less often next than random concepts
+    do. The lift metric is now macro-averaged and report-only; the
+    structural gates (never-empty primary, due backlog keeps review on the
+    slate) remain gated. Fixing the engine's weakness signal is open work.
+    (`recommend` suite.)
 
 Judge-scored metrics gate on the run's **mean**, not per-case: judge scores
 are stochastic, and a single harsh (or numerically erratic — judges

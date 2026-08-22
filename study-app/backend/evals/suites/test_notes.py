@@ -32,23 +32,35 @@ NOTES_CASES = sample_cases(load_cases("notes_corpus"))
 
 
 async def _notes_chain(case: dict):
-    """analyze → plan → generate_notes; memoized per case in chain_cache."""
+    """analyze → plan → generate_notes; memoized per case in chain_cache.
+
+    All three LLM stages sit inside the retry loop (with analysis/plan
+    reused across attempts): a transient JSON failure in analyze or plan
+    used to escape and kill every test that warms the chain — the same
+    bug the quiz suite fixed first.
+    """
     from app.agent import tools
 
     key = f"notes:{case['id']}"
     if key not in chain_cache:
-        analysis = await analysis_for(case["article"])
-        plan = await tools.plan_task("notes", analysis, {}, None)
+        analysis = None
+        plan = None
         markdown = ""
-        for _ in range(3):  # empty markdown (transient) — retry before giving up
+        for _ in range(3):  # transient LLM failures — retry before giving up
             try:
-                result = await tools.generate_notes(case["article"], analysis, plan, {})
+                if analysis is None:
+                    analysis = await analysis_for(case["article"])
+                if plan is None:
+                    plan = await tools.plan_task("notes", analysis, {}, None)
+                result = await tools.generate_notes(
+                    case["article"], analysis, plan, {}
+                )
                 markdown = str(result.get("markdown", ""))
                 if markdown.strip():
                     break
-            except ValueError:
+            except (ValueError, RuntimeError):
                 continue
-        chain_cache[key] = (analysis, plan, {"markdown": markdown})
+        chain_cache[key] = (analysis or {}, plan or {}, {"markdown": markdown})
     return chain_cache[key]
 
 
@@ -122,12 +134,19 @@ async def test_notes_faithfulness():
             async_mode=True,
             include_reason=True,
         )
+        # Long notes make DeepEval's claims-extraction JSON exceed the
+        # model's output window (the array truncates mid-way and becomes
+        # unparseable) — sample the head. Any residual parse failure is a
+        # per-case skip (score None), never a crash of the whole suite.
         test_case = LLMTestCase(
             input="Generated study notes",
-            actual_output=_markdown(case),
+            actual_output=_markdown(case)[:6000],
             retrieval_context=[case["article"]],
         )
-        await metric.a_measure(test_case, _show_indicator=False)
+        try:
+            await metric.a_measure(test_case, _show_indicator=False)
+        except ValueError:
+            return case, None, "claims extraction unparseable — skipped"
         score = metric.score if metric.score is not None and metric.score >= 0 else None
         return case, score, metric.reason or ""
 

@@ -1,33 +1,44 @@
 {
   "suite": "rename",
-  "run": "20260819T084757Z",
-  "runtime_secs": 64.3,
+  "run": "20260819T111804Z",
+  "split": "val",
+  "runtime_secs": 56.9,
   "metrics": {
     "descriptiveness": {
-      "mean": 0.46,
-      "min": 0.4,
+      "mean": 0.45,
+      "min": 0.2,
       "n": 10,
       "threshold": 0.45,
       "failures": [
         {
-          "case": "sciq-432",
-          "score": 0.4,
-          "reason": "a3f9c2e1b8d7.pdf \u2192 Plasma Membrane Structure Notes: The output identifies the topic as 'Plasma Membrane Structure' but does not specify a material type beyond generic 'Notes'. It lacks detail to distinguish among 50 similar documents, and it does not incorporate specific context details like cholesterol or proteins."
+          "case": "sciq-33",
+          "score": 0.2,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output is a generic name ('Ecology Lecture Notes') that lacks specificity about the document's content or material type, failing to distinguish it among similar files despite the detailed context provided."
         },
         {
-          "case": "sciq-432",
-          "score": 0.4,
-          "reason": "a3f9c2e1b8d7.pdf \u2192 Plasma Membrane Structure Notes: The output identifies a specific topic (plasma membrane structure) but does not specify a material type beyond generic 'Notes'. The context provides specific details (cholesterol, proteins assisting transport) that are not reflected or generalized in the filename, making it less distinguishable among many similar documents."
+          "case": "sciq-33",
+          "score": 0.3,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic as 'Ecology' but uses the generic label 'Lecture Notes' without specifying a unique focus or material type, making it insufficiently detailed for easy identification among many similar files."
         },
         {
-          "case": "sciq-432",
+          "case": "sciq-33",
           "score": 0.4,
-          "reason": "a3f9c2e1b8d7.pdf \u2192 Plasma Membrane Structure Notes: The output identifies a specific topic (plasma membrane structure) but fails to specify a material type, only using 'Notes' which is too generic. It does not distinguish among similar files and is not a clear improvement over the context, which already details membrane components."
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
         },
         {
-          "case": "sciq-432",
+          "case": "sciq-33",
           "score": 0.4,
-          "reason": "a3f9c2e1b8d7.pdf \u2192 Plasma Membrane Structure Notes: The output identifies a specific topic (plasma membrane structure) but does not specify a material type (e.g., summary, diagram). It uses generic 'Notes', which is insufficient to distinguish among 50 similar documents. The context details about cholesterol and proteins are not reflected or generalized in the filename."
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
+        },
+        {
+          "case": "sciq-33",
+          "score": 0.4,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
+        },
+        {
+          "case": "sciq-33",
+          "score": 0.4,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
         }
       ]
     },

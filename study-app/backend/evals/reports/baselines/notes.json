@@ -1,36 +1,42 @@
 {
   "suite": "notes",
-  "run": "20260818T234439Z",
-  "runtime_secs": 368.8,
+  "run": "20260819T130528Z",
+  "split": "val",
+  "runtime_secs": 679.7,
   "metrics": {
     "faithfulness": {
-      "mean": 0.9971,
-      "min": 0.9714,
+      "mean": 0.979,
+      "min": 0.9286,
       "n": 10,
       "threshold": 0.75,
       "failures": []
     },
     "key_point_coverage": {
-      "mean": 0.69,
+      "mean": 0.6,
       "min": 0.0,
       "n": 10,
       "threshold": 0.6,
       "failures": [
         {
-          "case": "pubmed-12",
+          "case": "pubmed-83",
           "score": 0.0,
-          "reason": "The Actual Output provides extensive background on quality concepts in healthcare but fails to capture the specific study details from the Expected Output. Key missing points include: the definition of quality gap, the study's aim to determine women's viewpoints in Isfahan, the cross-sectional design with 1280 participants, the five measured dimensions (tangible, confidence, responsiveness, assurance, sympathy), the statistical methods (t-test, chi-square), the results showing controversy across"
+          "reason": "The Actual Output covers the definition of cardiorenal syndrome, the five types (including Type 4), the link between CKD and increased cardiovascular morbidity/mortality, and the involvement of both traditional and CKD-related factors in pathogenesis. However, it lacks explicit mention of the specific cardiac and vascular pathologies (left ventricular hypertrophy, myocardial fibrosis, vascular calcification) and the note about therapeutic interventions being underutilized and awaiting confirmati"
         },
         {
-          "case": "pubmed-140",
-          "score": 0.0,
-          "reason": "The Actual Output provides detailed methodological notes but completely omits the central findings, methods, and conclusions from the Expected Output, such as the role of the circadian clock, the identification and function of the evening complex (ELF3, ELF4, LUX), its regulation of PIF4/PIF5, and the molecular basis for circadian gating of hypocotyl growth. A reader would learn none of these key points."
+          "case": "pubmed-101",
+          "score": 0.4,
+          "reason": "The generated notes capture the central proposal of a novel prebiotic pathway for 2-deoxynucleotides, the analogy between glycolaldehyde/mercaptoacetaldehyde and serine/cysteine, the formation of 2-aminothiazole from mercaptoacetaldehyde and cyanamide, and the potential for a one-pot reaction with 2-aminooxazole. However, it omits the key demonstration of the 3-component C\u2013C bond-forming reaction leading to masked 2-thiosugars tethered to purine precursors and the subsequent desulfurization step"
+        },
+        {
+          "case": "pubmed-48",
+          "score": 0.4,
+          "reason": "The generated notes include extensive methodological details, demographics, and pregnancy outcome categories, but they do not explicitly state the core finding that the birth defect prevalence and fetal loss in maternal prospective cases were comparable to background rates, which is the central conclusion of the reference summary. The notes mention the comparison indirectly in the conclusion section, but the key point about the need for safety data for pregnant women traveling to malarious areas"
         }
       ]
     },
     "rouge1_recall_vs_abstract": {
-      "mean": 0.023,
-      "min": 0.0091,
+      "mean": 0.0284,
+      "min": 0.0075,
       "n": 10,
       "threshold": null,
       "failures": []

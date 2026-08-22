@@ -1,24 +1,25 @@
 {
   "suite": "analysis",
-  "run": "20260818T234439Z",
-  "runtime_secs": 195.0,
+  "run": "20260819T105549Z",
+  "split": "val",
+  "runtime_secs": 149.6,
   "metrics": {
     "concept_f1": {
-      "mean": 0.6245,
-      "min": 0.4762,
+      "mean": 0.6052,
+      "min": 0.3846,
       "n": 4,
       "threshold": 0.3,
       "failures": []
     },
     "difficulty_accuracy": {
-      "mean": 0.5,
-      "min": 0.0,
+      "mean": 1.0,
+      "min": 1.0,
       "n": 10,
       "threshold": null,
       "failures": []
     },
     "prereq_edge_recall": {
-      "mean": 0.0081,
+      "mean": 0.01,
       "min": 0.0,
       "n": 4,
       "threshold": null,

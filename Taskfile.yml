@@ -91,13 +91,19 @@ tasks:
       - "VIRTUAL_ENV= uv run python -m evals.data"
 
   study-app:evals-gate:
-    desc: "Fast eval tier (~10 min): all suites at EVALS_N=3 — smoke-check AI quality after product changes. Small-N cases are a seeded subset of the full run's set"
+    desc: "Fast eval tier (~10 min): all suites at EVALS_N=3 on the val split — smoke-check AI quality after product changes. Small-N cases are a seeded subset of the full run's set"
     dir: study-app/backend
     cmds:
       - "EVALS_N=3 VIRTUAL_ENV= uv run pytest evals/ -m evals -rA --tb=short"
 
   study-app:evals:
-    desc: "Run the AI-feature eval suites (needs study-app:evals-prepare first; EVALS_N caps cases/suite; EVALS_CONCURRENCY caps in-flight LLM calls, default 4)"
+    desc: "Run the AI-feature eval suites on the val split (needs study-app:evals-prepare first; EVALS_N caps cases/suite; EVALS_CONCURRENCY caps in-flight LLM calls, default 4)"
     dir: study-app/backend
     cmds:
       - "VIRTUAL_ENV= uv run pytest evals/ -m evals -rA --tb=short"
+
+  study-app:evals-heldout:
+    desc: "Rare held-out check on the test split (EVALS_SPLIT=test, EVALS_N=10): catches sample-overfitting. Never tune against these results; a val-vs-test gap means prompts/gates were tuned to the val sample. Run before promoting baselines or publishing metric claims"
+    dir: study-app/backend
+    cmds:
+      - "EVALS_SPLIT=test VIRTUAL_ENV= uv run pytest evals/ -m evals -rA --tb=short"

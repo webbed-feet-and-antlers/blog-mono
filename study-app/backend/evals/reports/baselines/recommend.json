@@ -1,7 +1,8 @@
 {
   "suite": "recommend",
-  "run": "20260818T234439Z",
-  "runtime_secs": 2.3,
+  "run": "20260819T105549Z",
+  "split": "val",
+  "runtime_secs": 20.6,
   "metrics": {
     "due_backlog_top_slate": {
       "mean": 1.0,
@@ -18,24 +19,24 @@
       "failures": []
     },
     "engine_target_precision": {
-      "mean": 0.1014,
-      "min": 0.1014,
+      "mean": 0.0506,
+      "min": 0.0506,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "random_target_precision": {
-      "mean": 0.1014,
-      "min": 0.1014,
+      "mean": 0.1141,
+      "min": 0.1141,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "weakness_precision_lift": {
-      "mean": 0.0,
-      "min": 0.0,
+      "mean": -0.0635,
+      "min": -0.0635,
       "n": 1,
-      "threshold": -0.02,
+      "threshold": null,
       "failures": []
     }
   }

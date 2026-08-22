@@ -37,7 +37,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from evals.config import DATA_DIR
+from evals.config import DATA_DIR, EVALS_SPLIT
 from evals.metrics import auc, brier, log_loss, majority_accuracy
 from evals.report import record
 
@@ -65,10 +65,10 @@ def _replay() -> dict:
         retrievability,
     )
 
-    path = DATA_DIR / "duolingo_sample.parquet"
+    path = DATA_DIR / f"duolingo_{EVALS_SPLIT}.parquet"
     if not path.exists():
         pytest.fail(
-            "duolingo_sample.parquet missing — run `uv run python -m evals.data duolingo`"
+            f"{path} missing — run `uv run python -m evals.data duolingo`"
         )
 
     df = pd.read_parquet(
@@ -163,15 +163,41 @@ def _replay() -> dict:
     return _REPLAY
 
 
+def _train_baseline() -> float:
+    """Mean recall over TRAIN users' scorable sessions — the constant
+    predictor's probability, estimated out-of-sample."""
+    import pandas as pd
+
+    path = DATA_DIR / "duolingo_train.parquet"
+    if not path.exists():
+        pytest.fail(
+            f"{path} missing — run `uv run python -m evals.data duolingo`"
+        )
+    df = pd.read_parquet(
+        path, columns=["p_recall", "delta", "history_seen"]
+    )
+    mask = (df["history_seen"] >= WARMUP_SEEN) & (
+        df["delta"] >= MIN_DELTA_DAYS * 86400
+    )
+    df = df[mask]
+    assert len(df) > 0, "train split has no scorable sessions"
+    return float((df["p_recall"] >= 0.5).mean())
+
+
 async def test_fsrs_calibration():
     data = _replay()
     power, exp_p, outcomes = data["power"], data["exp"], data["outcomes"]
-    assert len(outcomes) >= 5000, (
-        f"only {len(outcomes)} replayable observations — check the sample"
+    assert len(outcomes) >= 500, (
+        f"only {len(outcomes)} replayable observations — check the sample "
+        "(per split expect ~800-1500: only ~26% of scorable sessions carry "
+        "a warm FSRS state with a valid pre-update retrievability)"
     )
 
     n = len(outcomes)
-    mean_p = sum(outcomes) / n
+    # Constant baseline estimated on TRAIN users only — the honest version of
+    # the running-mean predictor (the old code computed it on its own eval
+    # set, which is in-sample for this baseline).
+    mean_p = _train_baseline()
     constant_preds = [mean_p] * n
 
     metrics = {

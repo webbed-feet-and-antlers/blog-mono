@@ -16,7 +16,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from evals.config import BASELINES_DIR, REPORTS_DIR
+from evals.config import BASELINES_DIR, EVALS_SPLIT, REPORTS_DIR
 
 RECORDS: list[dict] = []
 
@@ -94,6 +94,7 @@ def flush_reports() -> Path | None:
                 {
                     "suite": suite,
                     "run": ts,
+                    "split": EVALS_SPLIT,
                     "runtime_secs": round(SUITE_SECONDS.get(suite, 0.0), 1),
                     "metrics": agg,
                 },
@@ -105,6 +106,7 @@ def flush_reports() -> Path | None:
         json.dumps(
             {
                 "run": ts,
+                "split": EVALS_SPLIT,
                 "runtime_secs": {
                     s: round(v, 1) for s, v in sorted(SUITE_SECONDS.items())
                 },
@@ -147,8 +149,11 @@ def _write_markdown(run_dir: Path) -> None:
         baseline = _baseline_for(suite)
         runtime = data.get("runtime_secs")
         runtime_note = f" ({runtime/60:.0f}m)" if runtime else ""
+        split_note = f", {data.get('split', 'val')}" if runtime else (
+            f"({data.get('split', 'val')})"
+        )
         lines += [
-            f"## {suite}{runtime_note}", "",
+            f"## {suite}{runtime_note}{split_note}", "",
             "| metric | mean | n | baseline | Δ |", "|---|---|---|---|---|",
         ]
         for metric, agg in data["metrics"].items():
@@ -174,19 +179,28 @@ def main() -> None:
         help="copy reports/latest/*.json → reports/baselines/ (commit these)",
     )
     args = parser.parse_args()
+    latest = REPORTS_DIR / "latest"
+    if not latest.exists():
+        raise SystemExit("no reports/latest/ — run the evals first")
     if args.promote:
-        latest = REPORTS_DIR / "latest"
-        if not latest.exists():
-            raise SystemExit("no reports/latest/ — run the evals first")
+        summary_path = latest / "summary.json"
+        split = (
+            json.loads(summary_path.read_text()).get("split", "val")
+            if summary_path.exists()
+            else "val"
+        )
+        if split != "val":
+            raise SystemExit(
+                f"refusing to promote: reports/latest is a '{split}'-split run. "
+                "Held-out numbers must never become the tuning target — "
+                "re-run on the val split (the default) and promote that."
+            )
         BASELINES_DIR.mkdir(parents=True, exist_ok=True)
         for f in latest.glob("*.json"):
             if f.name != "summary.json":
                 shutil.copy(f, BASELINES_DIR / f.name)
         print(f"baselines updated from {latest}")
     else:
-        latest = REPORTS_DIR / "latest"
-        if not latest.exists():
-            raise SystemExit("no reports/latest/ — run the evals first")
         _write_markdown(latest)
         print(f"EVALS.md regenerated from {latest}")
 

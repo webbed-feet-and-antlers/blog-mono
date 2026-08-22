@@ -1,7 +1,8 @@
 {
   "suite": "planner",
-  "run": "20260819T084757Z",
-  "runtime_secs": 908.6,
+  "run": "20260819T122004Z",
+  "split": "val",
+  "runtime_secs": 1386.5,
   "metrics": {
     "invariants_pass": {
       "mean": 1.0,
@@ -11,8 +12,8 @@
       "failures": []
     },
     "max_daily_minutes": {
-      "mean": 45.0,
-      "min": 40.0,
+      "mean": 46.0,
+      "min": 35.0,
       "n": 5,
       "threshold": null,
       "failures": []
@@ -31,17 +32,17 @@
       "threshold": 0.6,
       "failures": [
         {
-          "case": "sciq-114",
+          "case": "sciq-140",
           "score": 0.0,
           "reason": "0 review items in first 2 days"
         },
         {
-          "case": "sciq-281",
+          "case": "sciq-142",
           "score": 0.0,
           "reason": "0 review items in first 2 days"
         },
         {
-          "case": "sciq-228",
+          "case": "sciq-48",
           "score": 0.0,
           "reason": "0 review items in first 2 days"
         }

@@ -54,14 +54,21 @@ async def gather_bounded(factories, limit: int | None = None):
     return await asyncio.gather(*(run(f) for f in factories))
 
 
-def load_cases(name: str) -> list[dict]:
-    """Load a prepared dataset (see evals.data). Fails with a pointer to the
-    prepare task if missing."""
-    path = DATA_DIR / f"{name}.jsonl"
+def load_cases(name: str, split: str | None = None) -> list[dict]:
+    """Load a prepared dataset (see evals.data). JSONL datasets are split
+    train/val/test at prepare time; the active split defaults to EVALS_SPLIT.
+    Fails with a pointer to the prepare task if missing."""
+    from evals.config import EVALS_SPLIT
+
+    split = split or EVALS_SPLIT
+    path = DATA_DIR / f"{name}_{split}.jsonl"
+    if not path.exists() and (DATA_DIR / f"{name}.jsonl").exists():
+        # Unsplit dataset (AL-CPL ships 4 courses — one pool, no held-out).
+        path = DATA_DIR / f"{name}.jsonl"
     if not path.exists():
         pytest.fail(
             f"{path} not found — run `task study-app:evals-prepare` "
-            "(or `uv run python -m evals.data {name}`)"
+            f"(or `uv run python -m evals.data {name}`)"
         )
     return [json.loads(line) for line in path.read_text().splitlines() if line]
 
