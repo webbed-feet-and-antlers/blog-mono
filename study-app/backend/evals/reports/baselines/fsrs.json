@@ -1,0 +1,92 @@
+{
+  "suite": "fsrs",
+  "run": "20260819T105549Z",
+  "split": "val",
+  "runtime_secs": 9.8,
+  "metrics": {
+    "constant_auc": {
+      "mean": 0.5,
+      "min": 0.5,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "constant_brier": {
+      "mean": 0.0791,
+      "min": 0.0791,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "exp_approx_auc": {
+      "mean": 0.5272,
+      "min": 0.5272,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "exp_approx_brier": {
+      "mean": 0.6049,
+      "min": 0.6049,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "exp_approx_logloss": {
+      "mean": 1.9545,
+      "min": 1.9545,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "finding_rate_vs_fsrs_auc": {
+      "mean": 0.0309,
+      "min": 0.0309,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "fsrs_power_auc": {
+      "mean": 0.5284,
+      "min": 0.5284,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "fsrs_power_brier": {
+      "mean": 0.0831,
+      "min": 0.0831,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "fsrs_power_logloss": {
+      "mean": 0.3125,
+      "min": 0.3125,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "majority_accuracy": {
+      "mean": 0.9143,
+      "min": 0.9143,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "rate_auc": {
+      "mean": 0.5593,
+      "min": 0.5593,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "streak_auc": {
+      "mean": 0.5229,
+      "min": 0.5229,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    }
+  }
+}

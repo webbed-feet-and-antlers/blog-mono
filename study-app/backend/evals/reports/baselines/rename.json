@@ -1,0 +1,60 @@
+{
+  "suite": "rename",
+  "run": "20260819T111804Z",
+  "split": "val",
+  "runtime_secs": 56.9,
+  "metrics": {
+    "descriptiveness": {
+      "mean": 0.45,
+      "min": 0.2,
+      "n": 10,
+      "threshold": 0.45,
+      "failures": [
+        {
+          "case": "sciq-33",
+          "score": 0.2,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output is a generic name ('Ecology Lecture Notes') that lacks specificity about the document's content or material type, failing to distinguish it among similar files despite the detailed context provided."
+        },
+        {
+          "case": "sciq-33",
+          "score": 0.3,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic as 'Ecology' but uses the generic label 'Lecture Notes' without specifying a unique focus or material type, making it insufficiently detailed for easy identification among many similar files."
+        },
+        {
+          "case": "sciq-33",
+          "score": 0.4,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
+        },
+        {
+          "case": "sciq-33",
+          "score": 0.4,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
+        },
+        {
+          "case": "sciq-33",
+          "score": 0.4,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
+        },
+        {
+          "case": "sciq-33",
+          "score": 0.4,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
+        }
+      ]
+    },
+    "gate_recall": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "rule_pass": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 1.0,
+      "failures": []
+    }
+  }
+}

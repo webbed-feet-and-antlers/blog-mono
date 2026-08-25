@@ -4,12 +4,20 @@ version: "3"
 # Pulled in under the `posse:` namespace from the root Taskfile.yml.
 #
 # Credentials auto-load from site/.env (the npm `syndicate` script uses
-# `node --env-file-if-exists=.env`), so no `source .env` is needed locally.
+# `node --env-file-if-exists=.env`), so no `source .env` needed locally.
 # In CI, secrets are injected directly and there's no .env.
 #
-# Passing a blog slug: use `--` after the task name, e.g.
+# Passing args: use `--` after the task name, e.g.
 #   task posse:dry-run -- posse-syndication
-# The slug arrives as {{.CLI_ARGS}}; an empty value means "all unpublished".
+# The args arrive as {{.CLI_ARGS}}; an empty value means "all unpublished".
+#
+# The no-API platforms (Medium, Substack, LinkedIn Article, Indie Hackers)
+# run in "assisted draft" mode when a browser session exists locally:
+#   task posse:login -- medium        # once per platform (and on expiry)
+#   task posse:assisted -- <slug>     # drafts everything, opens the editors
+#   ...publish each draft by hand...
+#   task posse:confirm -- <slug> medium <public-url>
+# Without a session those platforms fall back to the manual paste package.
 
 tasks:
   dry-run:
@@ -40,33 +48,68 @@ tasks:
       - npm run build
       - npm run syndicate -- --dry-run=false
 
+  login:
+    desc: "Save a browser session for an assisted-draft platform (substack|medium|linkedin|indiehackers)"
+    preconditions:
+      - sh: '[ -n "{{.CLI_ARGS}}" ]'
+        msg: "A platform is required (e.g. `task posse:login -- medium`)."
+    cmds:
+      - node --env-file-if-exists=.env scripts/login.mjs --platform={{.CLI_ARGS}}
+
+  assisted:
+    desc: "Syndicate + create drafts on the no-API platforms, then open them ready to publish (slug required)"
+    preconditions:
+      - sh: '[ -n "{{.CLI_ARGS}}" ]'
+        msg: "A slug is required (e.g. `task posse:assisted -- posse-syndication`)."
+    cmds:
+      # Same as posse:manual — kept as a distinct name for the assisted era.
+      - task: manual
+
   manual:
-    desc: "Build the Medium+Substack manual package for one blog and open it ready to paste"
+    desc: "Build the package for one blog, create assisted drafts where a session exists, and open everything ready to paste/publish"
     preconditions:
       - sh: '[ -n "{{.CLI_ARGS}}" ]'
         msg: "A slug is required (e.g. `task posse:manual -- posse-syndication`)."
     cmds:
-      # Build for component screenshots, syndicate (posts + packages), then open
-      # everything in the browser. Safe to re-run: the manual adapters don't
-      # write back IDs, and the package dedup keeps files byte-identical.
+      # Build for component screenshots, syndicate (posts + packages + drafts),
+      # then open everything in the browser. Safe to re-run: the manual
+      # adapters don't write back IDs, packages dedup, and existing drafts
+      # skip (use --blog= forcing via posse:publish to re-draft).
       - npm run build
       - npm run syndicate -- --dry-run=false --blog={{.CLI_ARGS}}
       - task: open-manual
 
   open-manual:
-    desc: "Open the latest manual package HTML + Medium/Substack editor tabs (internal)"
+    desc: "Open the manual package HTML + any saved draft editors (falls back to platform homepages) (internal)"
     internal: true
     vars:
       # SUBSTACK_PUB overrides the publication slug; defaults to "theinkpens".
       SUBSTACK_PUB: theinkpens
     cmds:
-      # This task runs with dir: site (set by the root includes:), so the path is
+      # This task runs with dir: site (set by the root includes:), so paths are
       # relative to site/. `open` is macOS; on Linux swap to `xdg-open`.
-      - open ".syndication-output/syndicate-{{.CLI_ARGS}}.html"
-      # Medium stories dashboard — "Import a story" is one click from here.
-      - open "https://medium.com/me/stories"
-      # Substack new-post editor for this publication.
-      - open "https://{{.SUBSTACK_PUB}}.substack.com/publish/post"
+      #
+      # Draft deep-links first (you're signed in in your real browser); for
+      # platforms without a saved draft, fall back to their editor homepage.
+      - |
+        drafts=$(node scripts/draft-links.mjs {{.CLI_ARGS}} 2>/dev/null || true)
+        if [ -n "$drafts" ]; then
+          echo "$drafts" | while read -r url; do [ -n "$url" ] && open "$url"; done
+          echo "Opened draft editor(s). Publish each, then run:"
+          echo "  task posse:confirm -- {{.CLI_ARGS}} <platform> <public-url>"
+        else
+          open ".syndication-output/syndicate-{{.CLI_ARGS}}.html"
+          open "https://medium.com/me/stories"
+          open "https://{{.SUBSTACK_PUB}}.substack.com/publish/post"
+        fi
+
+  confirm:
+    desc: "Record a published draft: moves it from draftLinks to syndication (slug platform url)"
+    preconditions:
+      - sh: '[ -n "{{.CLI_ARGS}}" ]'
+        msg: "Args required: `task posse:confirm -- <slug> <substack|medium|linkedinArticle|indiehackers> <public-url>`."
+    cmds:
+      - node --env-file-if-exists=.env scripts/confirm.mjs {{.CLI_ARGS}}
 
   ci:dry-run:
     desc: "Trigger the GitHub Actions Syndicate workflow in dry-run mode (slug optional)"

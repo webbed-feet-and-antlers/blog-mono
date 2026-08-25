@@ -1,0 +1,50 @@
+{
+  "suite": "session",
+  "run": "20260819T105549Z",
+  "split": "val",
+  "runtime_secs": 0.1,
+  "metrics": {
+    "mix_mastering": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 1,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "mix_struggling": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 1,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "mix_sweet": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 1,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "most_forgotten_first": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 1,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "pool_shortage_fallback": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 1,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "scope_filter": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 1,
+      "threshold": 1.0,
+      "failures": []
+    }
+  }
+}

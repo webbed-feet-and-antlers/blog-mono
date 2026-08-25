@@ -1,0 +1,46 @@
+name: Delete PR branch
+
+# Deletes a PR's head branch as soon as the PR is closed — which GitHub fires
+# both for MERGED PRs (pull_request.merged == true) and closed-unmerged ones,
+# so one trigger covers both cases. A deleted branch stays recoverable from
+# the PR page ("Restore branch"), so closing by mistake costs nothing.
+#
+# Skipped for fork PRs (their head refs live in the fork, not this repo) and
+# for the default branch (a PR head can never be it, but belt and suspenders).
+# Races with GitHub's native "auto-delete head branches" setting or a manual
+# delete are tolerated: a 404/422 means the ref is already gone and the run
+# exits green instead of failing.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write # to delete the head branch ref
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    if: >-
+      !github.event.pull_request.head.repo.fork &&
+      github.event.pull_request.head.ref != github.event.repository.default_branch
+    steps:
+      - name: Delete head branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = context.payload.pull_request.head.ref;
+            const ref = `heads/${branch}`;
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref });
+              core.info(`Deleted ${ref}`);
+            } catch (error) {
+              // 404/422 = the ref is already gone (native auto-delete, a
+              // manual delete, or a duplicate close event). Not a failure.
+              if (error.status === 404 || error.status === 422) {
+                core.info(`${ref} already gone — nothing to do`);
+                return;
+              }
+              throw error;
+            }

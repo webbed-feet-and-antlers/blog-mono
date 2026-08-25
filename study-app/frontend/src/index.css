@@ -1,0 +1,85 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* The hand-rolled stylesheet, imported into the base layer AFTER preflight:
+   it overrides Tailwind's resets where they overlap (existing pages stay
+   pixel-identical) while sitting BELOW the utilities layer, so shadcn
+   component classes always win over hand-rolled rules during the migration. */
+@import "./styles/global.css" layer(base);
+
+@custom-variant dark (&:is(.dark *));
+
+/* Map shadcn's semantic color system onto the app's existing design tokens
+   (defined in global.css :root) so migrated components look native to the
+   theme: same indigo accent, zinc neutrals, Inter, radii and shadows. */
+@theme inline {
+  --font-sans: var(--font);
+
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--panel);
+  --color-popover-foreground: var(--text);
+
+  --color-primary: var(--accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--panel-hover);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--panel-hover);
+  --color-muted-foreground: var(--text-dim);
+  --color-accent: var(--accent-tint);
+  --color-accent-strong: var(--accent-tint-strong);
+  --color-accent-foreground: var(--accent-hover);
+
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+
+  /* App-specific status colors, exposed as utilities (bg-ok, text-warn, …). */
+  --color-ok: var(--ok);
+  --color-ok-tint: var(--ok-tint);
+  --color-warn: var(--warn);
+  --color-warn-tint: var(--warn-tint);
+  --color-danger: var(--danger);
+  --color-danger-tint: var(--danger-tint);
+
+  /* shadcn Sidebar surface — matches the old 300px rail's zinc wash. */
+  --color-sidebar: var(--sidebar-bg);
+  --color-sidebar-foreground: var(--text);
+  --color-sidebar-primary: var(--accent);
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: var(--accent-tint);
+  --color-sidebar-accent-foreground: var(--accent-hover);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--accent);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* 12px base radius → sm 8px / md 10px / lg 12px / xl 16px, matching the
+     hand-rolled --r-sm…--r-lg scale. */
+  --radius: 0.75rem;
+
+  /* shadcn Sidebar layout metrics (300px matches the previous fixed rail).
+     Surface colors come from the @theme mapping above (global.css tokens). */
+  --sidebar-width: 300px;
+  --sidebar-width-icon: 3rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+

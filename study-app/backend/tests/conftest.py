@@ -1,0 +1,93 @@
+"""Shared test fixtures.
+
+DB_PATH is set BEFORE any app import — the engine in app.db reads
+settings.db_url at import time, so this must happen first. Each pytest
+session gets a throwaway SQLite file.
+
+Background features that would make real LLM/audio calls are disabled via
+env (they default off anyway); the flag-gated handler paths are exercised
+via monkeypatched settings in the tests that need them.
+"""
+
+from __future__ import annotations
+
+import os
+import tempfile
+from pathlib import Path
+
+_TMP = Path(tempfile.mkdtemp(prefix="study-app-tests-"))
+os.environ["DB_PATH"] = str(_TMP / "test.db")
+os.environ["AUTO_GENERATE_FLASHCARDS"] = "false"
+os.environ["AUTO_RENAME_FILES"] = "false"
+os.environ["PROACTIVE_ENABLED"] = "false"
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
+from app.db import SessionLocal, init_db
+from app.main import app as fastapi_app
+from app.models import ContentItem, Document
+
+
+@pytest.fixture(autouse=True)
+async def _ready_db():
+    """Ensure tables exist (ASGITransport doesn't run the app lifespan)."""
+    await init_db()
+    yield
+
+
+@pytest.fixture
+async def client():
+    transport = ASGITransport(app=fastapi_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+@pytest.fixture
+async def db():
+    """A direct DB session for seeding + asserting."""
+    async with SessionLocal() as session:
+        yield session
+
+
+def make_quiz(
+    doc_id: str = "doc-quiz",
+    content_id: str = "quiz-1",
+    concepts: tuple[str, str] = ("Photosynthesis", "Calvin cycle"),
+) -> tuple[Document, ContentItem]:
+    """A document + 2-question quiz whose questions carry concept tags."""
+    doc = Document(
+        id=doc_id,
+        filename="bio-notes.pdf",
+        mime="application/pdf",
+        file_path="/tmp/bio-notes.pdf",
+        text="Photosynthesis and the Calvin cycle…",
+        kind="text",
+    )
+    quiz = ContentItem(
+        id=content_id,
+        document_id=doc_id,
+        type="quiz",
+        content={
+            "title": "Photosynthesis quiz",
+            "questions": [
+                {
+                    "id": "q1",
+                    "prompt": f"What is {concepts[0]}?",
+                    "options": ["Right", "Wrong", "Wrong", "Wrong"],
+                    "answer_idx": 0,
+                    "explanation": "",
+                    "concept": concepts[0],
+                },
+                {
+                    "id": "q2",
+                    "prompt": f"Where does the {concepts[1]} occur?",
+                    "options": ["Wrong", "Right", "Wrong", "Wrong"],
+                    "answer_idx": 1,
+                    "explanation": "",
+                    "concept": concepts[1],
+                },
+            ],
+        },
+    )
+    return doc, quiz
