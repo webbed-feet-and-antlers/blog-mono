@@ -6,7 +6,7 @@ description: 'Why most AI integrations fail by bolting chatbots onto UIs, and ho
 pubDate: 2026-07-30
 ---
 
-The default approach to adding AI to a product is to bolt a chatbot onto the side of an existing product that previously worked without AI. You add a floating widget in the corner, wire up an API endpoint, and suddenly you can call an ‘AI-powered’ app. The user types questions into a box, and the model generates text; if it's agentic, it might be able to see the current page or search your docs. Sometimes it helps. But I'd argue this interaction design only works when the original app was needlessly complicated; I've never heard someone say “clicking this button has been working fine, but I wish I actually had to write a couple hundred word prompt into a chatbot instead”. Usually what's built is just a worse version of ChatGPT embedded in your interface.
+The default approach to adding AI to a product is to bolt a chatbot onto the side of an existing product that previously worked without AI. You add a floating widget in the corner, wire up an API endpoint, and suddenly you can call it an ‘AI-powered’ app. The user types questions into a box, and the model generates text; if it's agentic, it might be able to see the current page or search your docs. Sometimes it helps. But I'd argue this interaction design only works when the original app was needlessly complicated; I've never heard someone say “clicking this button has been working fine, but I wish I actually had to write a couple hundred word prompt into a chatbot instead”. Usually what's built is just a worse version of ChatGPT embedded in your interface.
 
 This is the easy path, and so we wanted to test a different idea: what if the agent is the product, rather than a feature? What if every core interaction of the study tool (generating study notes, taking quizzes, reviewing flashcards, organising a semester, pacing for an exam) flows through to feed a single agent, and it in turn feeds those features? The idea is to hook the agent loop into the product loop, with a compounding memory store. The user never talks to the agent and never types a prompt. They interact with regular UI elements, such as flashcard decks, calendars, and progress bars, which work better because an agent runs silently behind them.
 
@@ -20,42 +20,42 @@ The core organisational structure is modules, and these are intended to map to a
 
 You can upload content that can either be a document attached to the module in general, like that module's recommended textbook, or as part of a lesson, where it might be the lecture slides or professor's notes. Lessons are essentially just a grouping of documents and recordings associated with a lesson or lecture.
 
-![The modules page, grouped by semester with the current term expanded](/screenshots/study-app-agent/modules.png)
+![The modules page, grouped by semester with the current term expanded](/screenshots/modules.png)
 
-**Uploads.** You drop in whatever content you get on the course - slide decks, Word documents, spreadsheets, PDFs, etc. The app converts them into a viewable format, and if appropriate, renames them to what it is actually about; `619ab3.pdf` means nothing to you, so will be renamed to something sensible. The content is automatically analysed, a concept list and prerequisite graph are generated from the content. This then feeds downstream features. If the content includes new concepts, a flashcard deck gets automatically generated and fed into the global flashcard spaced repetition system.
+**Uploads.** You drop in whatever content you get on the course - slide decks, Word documents, spreadsheets, PDFs, etc. The app converts them into a viewable format and, if appropriate, renames them to what it is actually about; `619ab3.pdf` means nothing to you, so will be renamed to something sensible. The content is automatically analysed, a concept list and prerequisite graph are generated from the content. This then feeds downstream features. If the content includes new concepts, a flashcard deck gets automatically generated and fed into the global flashcard spaced repetition system.
 
 For each module, we automatically generate and update a study plan to help structure the learning for the student. If they complete a task, we routinely check and can automatically tick off completed items without them needing to remember to update it. As the module/course progresses, the student will record more lectures and upload more content throughout the semester; the system therefore will update the study plan routinely to incorporate these changes.
 
-![Inside a module: the agent-written study plan on top, documents and lessons below](/screenshots/study-app-agent/module-view.png)
+![Inside a module: the agent-written study plan on top, documents and lessons below](/screenshots/module-view.png)
 
-![In the module, you can organise lessons and files](/screenshots/study-app-agent/module-files.png)
+![In the module, you can organise lessons and files](/screenshots/module-files.png)
 
 **Generation.** Every document offers a variety of views on top of it - notes, quizzes, and flashcards, with optional hints to steer their generation. You can also view the concepts that are detected in the document. If you regenerate any of them, we stack versions and allow the student to pick, rather than overwriting them. This allows you to create multiple quizzes or flashcard decks from the same content. Quizzes are classic four-option multiple-choice quizzes; flashcard concepts carry two or three phrasings to encourage the student to learn the underlying concept instead of memorising the specific card.
 
-![A generated quiz on a lecture document, one tab among the document's materials](/screenshots/study-app-agent/document-quiz.png)
+![A generated quiz on a lecture document, one tab among the document's materials](/screenshots/document-quiz.png)
 
 **Lectures.** The recording page puts slides on one side and notes on the other; notes you type are timestamped and linked with the audio. You can record with a microphone, the audio of a browser tab playing an online lecture, or both. When you stop, the audio is automatically transcribed and flows through the same pipeline as an upload. The recording, slides, transcript, and notes are grouped as one lecture and can be associated with and organised into a module. This flow allows a student to collect all the content from lectures over a semester and then have appropriate study materials ambiently served to them, and their learning tracked to inform future generated material.
 
-![The lecture recording page: slide preview, timestamped notes, source picker](/screenshots/study-app-agent/record.png)
+![The lecture recording page: slide preview, timestamped notes, source picker](/screenshots/record.png)
 
-**Studying.** Concepts you are about to forget, ranked by predicted recall, mixed with new material at a ratio that keeps the student in an ideal level of desirable difficulty with approximately 70–85% accuracy. This helps learning stick as students are getting positive affirmation and encouragement and stay engaged, since getting 80% right gives them the required dopamine hits; however, that 20% they get wrong will stretch them, ensuring they aren’t wasting their time and not actually learning. Every answer updates a per-concept competency level and a spaced-repetition schedule, so the next session is built from everything before it.
+**Studying.** Concepts you are about to forget, ranked by predicted recall, mixed with new material at a ratio that keeps the student in an ideal level of desirable difficulty with approximately 70–85% accuracy. This helps learning stick as students are getting positive affirmation and encouragement and stay engaged. Getting 80% right gives them the required dopamine hits; however, that 20% they get wrong will stretch them, ensuring they aren’t wasting their time and not actually learning. Every answer updates a per-concept competency level and a spaced-repetition schedule, so the next session is built from everything before it.
 
-![A composed study session — review and new cards, flip to answer, self-grade](/screenshots/study-app-agent/study.png)
+![A composed study session — review and new cards, flip to answer, self-grade](/screenshots/study.png)
 
 **The visible model.** We surface a dashboard with a list of all the concepts, recall probabilities, with filters for weak/due/mastered concepts. Each concept opens a view showing all the documents, quiz questions, and flashcards the concept is mentioned in. The profile card lets users see how the agent sees them: a narrative profile the agent wrote about them based on their behaviour - when you study, how fast you answer, what you abandon, what you ace and what you struggle with. This profile and data are used to tailor all the generated content to you.
 
-![The concepts dashboard: predicted recall per concept, due and weak filters](/screenshots/study-app-agent/concepts.png)
+![The concepts dashboard: predicted recall per concept, due and weak filters](/screenshots/concepts.png)
 
-!["How the agent sees you": the agent's narrative profile, written from the behaviour ledger](/screenshots/study-app-agent/mirror.png)
+!["How the agent sees you": the agent's narrative profile, written from the behaviour ledger](/screenshots/mirror.png)
 
-!["Chart and statistics of what the user studies and where they are struggling, this is used as knowledge for the agent](/screenshots/study-app-agent/mirror-data.png)
+!["Chart and statistics of what the user studies and where they are struggling, this is used as knowledge for the agent](/screenshots/mirror-data.png)
 
 **What to do next.** The home page recommends what is likely to be the next focus for the user. Each suggestion includes a reference (e.g. "You recall Chlorophyll slowly, ~34s avg — a targeted quiz would tighten that"), and carries today's item from the relevant study plans. We collect the exam dates for the study plans to pace the plan toward the exam, and the plan automatically updates as new content arrives. Taking the suggested quiz checks off the plan item by itself. When you upload content, we prompt you to organise content eagerly and prevent you from becoming disorganised. You can manually move content between modules in one step.
 
-![The home page: recommendations that cite their evidence and today's plan item](/screenshots/study-app-agent/home.png)
+![The home page: recommendations that cite their evidence and today's plan item](/screenshots/home.png)
 
 We also have a dark mode for the app.
-![The concepts dashboard in dark mode](/screenshots/study-app-agent/concepts-dark.png)
+![The concepts dashboard in dark mode](/screenshots/concepts-dark.png)
 
 None of this is a chat interface. There is no prompt box anywhere. The agent's work (scheduling, generating, ranking, narrating) surfaces as ordinary UI. A user may never know it is a unified AI agent as the engine of the product. All this could have been achieved with isolated features, but as we add features and they impact each other, it would become a spaghetti-like mess. We also wanted the product to learn and grow with the user, personalising all the features and parts to them, understanding the student, how they learn and what they struggle with. We believe the best form of education is a great human tutor who can tailor the education to you; this is trying to replicate some of what makes that work so well.
 
@@ -211,12 +211,14 @@ The system components divide into five primary functional responsibilities:
 
 As we added more features and background features, and they in turn had side effects, our application grew unwieldy. An example of this is that once a recording is added, we need to automatically transcribe it; once a text document is added (either from transcription or a user uploading a document), we then need to run concept extraction. Hopefully this illustrates how the complexity can grow, and if each feature needs to explicitly trigger the next action, they accumulate too many responsibilities. A single quiz submission handler grew significantly; it had to handle synchronously updating concept mastery, calculating FSRS schedules, updating user profiles, checking weak topics, and writing telemetry logs. If a secondary step raised an error, the main quiz submission would either have to try again, rerunning all the successfully completed actions or the background errors could be ignored, but they'd then vanish inside the main quiz submission task. Neither of these is ideal.
 
-Our solution was to utilise an event-driven approach. This works with a publish-and-subscribe philosophy, so when an be action happens (like a quiz being submitted), any other feature can listen for that event and trigger its own action accordingly (e.g. the FSRS schedule can be updated). This elegantly compartmentalises the architecture and allows it to be more easily extended; for example, if the FSRS schedule updater wants to listen for completed flashcards in addition to quizzes, it can simply also subscribe to flashcards completed events. Our event bus fixed this by separating database commits from background side effects:
+Our solution was to utilise an event-driven approach. This works with a publish-and-subscribe philosophy, so when any action happens (like a quiz being submitted), any other feature can listen for that event and trigger its own action accordingly (e.g. the FSRS schedule can be updated). This elegantly compartmentalises the architecture and allows it to be more easily extended; for example, if the FSRS schedule updater wants to listen for completed flashcards in addition to quizzes, it can simply also subscribe to flashcards completed events. Our event bus fixed this by separating database commits from background side effects:
 
 ```
 # 1. Primary write commits synchronously
 session.add(quiz_attempt)
 await session.commit()
+
+
 
 
 # 2. Side effects publish asynchronously
@@ -355,17 +357,17 @@ The final phase replaced manual checking with an automated evaluation suite. Ten
 
 ## Next steps
 
-Our intention for building this was twofold: first, we wanted to explore these ideas around AI agent-driven products and ideas around EdTech. But we also wanted a realistic app that can act as a test bed for future experiments and research, allowing us to plug in and apply much of our current exploration into a real app. We're planning many more future posts building out various elements of our prototype study app. Some of the things we are working on:
+Our intention for building this was twofold: first, we wanted to explore these ideas around AI agent-driven products and ideas around EdTech. But we also wanted a realistic app that can act as a test bed for future experiments and research, allowing us to plug in and apply much of our current exploration into a real app. We're planning many more future posts building out various elements of our prototype study app. Some of the things we are currently working on and researching:
 
 - Custom embeddings solutions and runtimes to allow for fast, cheap, scalable and high-quality information processing, grouping and recall/searching. We'll also explore more interesting ways to integrate this with agents beyond simple RAG, with agentic searching and tool use
 - Self-hosted transcription models for significantly faster and cheaper transcription. Plus ways we can measure ASR quality and boost accuracy, especially in challenging audio situations
-- Knowledge graph extraction without LLMs, allowing us to have fast, cheap and scalable concept and relationships extraction
+- Knowledge graph extraction without LLMs, allowing us to have fast, cheap and scalable concept and relationship extraction
 - Agent sandboxes and runtimes, exploring ideas around neuro-symbolic AI and improving AI quality by integrating tooling like algebra and maths solvers or physics simulators
 - Automatically aligning slides in a presentation to audio based on the transcript, allowing for grouping content based on the slides and associating a slide with a transcript section for deeper context
 - Tutor bots and concepts around authentic practice, and bringing AI tutoring and learning into a student's existing workflow and life. It's inspired by Andy Matuschak’s brilliant “How we might learn” https://andymatuschak.org/hmwl/
 - Research into OCR, document processing pipelines, accessibility and PDF accessibility remediation, with open-source tooling like Docling. Self-hosted and managed for lower cost and scalable document handling
 - Fine-tuning small models for extremely fast summarisation and wiki-fication. Combining with the knowledge graph extraction, this lets us build evergreen AI-generated wikis about any concept, constantly up to date based on the content the students have captured. The fine-tuning is important to allow us to use smaller models and to get human-sounding writing rather than ‘AI slop’ text
-- Deep dive into quiz generation, quality and evaluations. Fine-tuning small models to generate ideal quizzes and looking into automatic short answer grading research for different quiz modalities
+- Deep dive into quiz generation, quality and evaluations. Fine-tuning small models to generate ideal quizzes and looking into automatic short-answer grading research for different quiz modalities
 - Further research on recommendation systems and behavioural modelling to better recommend actions and schedule work for the student, based on their behaviour. Building a notification system to encourage students to engage with their learning and content, gamifying it, similar to Duolingo
 
-As you can see, there is a lot we are working on in this space, and this series will continue long-term, whilst also publishing other content! In the meantime, we are planning to publish more blog posts that go deeper into how and why we built our current prototype as we did. Hopefully these or our future research and blogs sound interesting. If you want to be updated when we release them, you can follow us on your preferred social platforms below:
+As you can see, there is a lot we are working on in this space, and this series will continue long-term, whilst also publishing other content! In the meantime, we are planning to publish more blog posts that go deeper into how and why we built our current prototype as we did. Hopefully these, or our future research and blogs, sound interesting. If you want to be updated when we release them, you can follow us on your preferred social platforms below:
