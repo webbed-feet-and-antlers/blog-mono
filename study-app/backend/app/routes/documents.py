@@ -1,0 +1,259 @@
+"""Document upload/list/get/delete routes.
+
+Handles three kinds of documents:
+  - text/PDF/MD: extracted immediately (existing flow)
+  - audio recordings: transcribed in the background via Whisper
+Slides (PDF) use the existing text flow unchanged.
+"""
+
+from __future__ import annotations
+
+import mimetypes
+import shutil
+from pathlib import Path
+
+import fitz  # PyMuPDF
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
+from fastapi.responses import FileResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .. import storage
+from ..config import settings
+from ..db import get_session
+from ..events import bus
+from ..events.domain import DocumentIngested
+from ..models import Document
+from ..parsers import OFFICE_SUFFIXES, convert_office_to_pdf, extract_text
+from ..schemas import DocumentDetail, DocumentOut
+
+router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+MAX_BYTES = 50 * 1024 * 1024  # 50 MB for text/PDF/office docs
+AUDIO_MAX_BYTES = settings.audio_max_bytes
+ALLOWED_SUFFIXES = {
+    ".pdf", ".txt", ".md",
+    ".pptx", ".docx", ".xlsx", ".doc", ".ppt", ".xls",
+    ".webm", ".mp3", ".m4a", ".wav", ".ogg", ".flac",
+}
+AUDIO_SUFFIXES = {".webm", ".mp3", ".m4a", ".wav", ".ogg", ".flac"}
+
+# MIME types for serving audio files.
+AUDIO_MIME = {
+    ".webm": "audio/webm",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".wav": "audio/wav",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+}
+
+
+@router.post("", response_model=DocumentOut, status_code=201)
+async def upload_document(
+    file: UploadFile,
+    lesson_id: str | None = None,
+    module_id: str | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    filename = file.filename or "upload"
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ALLOWED_SUFFIXES:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{suffix}'. Allowed: {sorted(ALLOWED_SUFFIXES)}",
+        )
+
+    is_audio = suffix in AUDIO_SUFFIXES
+    max_bytes = AUDIO_MAX_BYTES if is_audio else MAX_BYTES
+
+    data = await file.read()
+    if len(data) > max_bytes:
+        limit_mb = max_bytes // (1024 * 1024)
+        raise HTTPException(
+            status_code=413, detail=f"File exceeds {limit_mb} MB limit."
+        )
+
+    mime = file.content_type or mimetypes.guess_type(filename)[0] or (
+        AUDIO_MIME.get(suffix, "application/octet-stream") if is_audio else "text/plain"
+    )
+
+    file_id, dest = await storage.save_upload(filename, data)
+
+    if is_audio:
+        # Audio: save file, create doc with pending transcription, return immediately.
+        doc = Document(
+            id=file_id,
+            filename=filename,
+            mime=mime,
+            file_path=str(dest),
+            text="",
+            page_count=0,
+            char_count=0,
+            lesson_id=lesson_id,
+            module_id=module_id,
+            kind="audio",
+            transcription_status="pending",
+        )
+        session.add(doc)
+        await session.commit()
+        await session.refresh(doc)
+
+        # Kick off the ingestion chain (transcribe → rename → analyze → …)
+        # as a background event handler. publish() returns immediately.
+        await bus.publish(DocumentIngested(document_id=doc.id, source="audio"))
+        return doc
+
+    # Text/PDF/office: extract text immediately.
+    # Office docs (.pptx/.docx/.xlsx/.doc/.ppt/.xls) are converted to PDF
+    # first — the converted PDF becomes the stored file (renderable in the
+    # in-app viewer) and the source for text extraction.
+    try:
+        stored_path = dest
+        stored_mime = mime
+        if suffix in OFFICE_SUFFIXES:
+            converted_pdf = convert_office_to_pdf(dest)
+            # Replace the stored file: move the converted PDF into storage
+            # under the same id, delete the original office file.
+            pdf_dest = dest.with_suffix(".pdf")
+            shutil.move(str(converted_pdf), str(pdf_dest))
+            storage.delete_upload(str(dest))
+            stored_path = pdf_dest
+            stored_mime = "application/pdf"
+        text, page_count = extract_text(stored_path, stored_mime)
+    except Exception as exc:
+        await storage.delete_upload(str(dest))
+        raise HTTPException(status_code=422, detail=f"Failed to parse file: {exc}")
+
+    doc = Document(
+        id=file_id,
+        filename=filename,
+        mime=stored_mime,
+        file_path=str(stored_path),
+        text=text,
+        page_count=page_count,
+        char_count=len(text),
+        lesson_id=lesson_id,
+        module_id=module_id,
+        kind="text",
+    )
+    session.add(doc)
+    await session.commit()
+    await session.refresh(doc)
+
+    # Kick off the ingestion chain (rename → analyze → graph merge → …)
+    # as a background event handler. publish() returns immediately.
+    await bus.publish(DocumentIngested(document_id=doc.id, source="upload"))
+    return doc
+
+
+@router.get("", response_model=list[DocumentOut])
+async def list_documents(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(
+        select(Document).order_by(Document.uploaded_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.get("/{document_id}", response_model=DocumentDetail)
+async def get_document(document_id: str, session: AsyncSession = Depends(get_session)):
+    doc = await session.get(Document, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Attach the topic from the cached analysis (if available) so the
+    # frontend can display it as a subtitle.
+    from ..agent.memory import read_memory
+
+    analysis = await read_memory(session, "doc", document_id, "analysis")
+    if analysis and isinstance(analysis, dict) and analysis.get("topic"):
+        # Build a dict from the ORM object + add the topic field.
+        data = {c.name: getattr(doc, c.name) for c in doc.__table__.columns}
+        data["topic"] = analysis["topic"]
+        return data
+    return doc
+
+
+@router.get("/{document_id}/file")
+async def get_document_file(
+    document_id: str, session: AsyncSession = Depends(get_session)
+):
+    """Serve the raw file (audio, PDF) with correct Content-Type + Range support.
+
+    Essential for audio seeking — the <audio> element needs Accept-Ranges.
+    PDFs are served inline so the browser can render them in an <iframe>
+    rather than forcing a download.
+    """
+    doc = await session.get(Document, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = Path(doc.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    suffix = file_path.suffix.lower()
+    media_type = AUDIO_MIME.get(suffix) or mimetypes.guess_type(file_path.name)[0] or (
+        "application/pdf" if suffix == ".pdf" else "application/octet-stream"
+    )
+
+    # Inline disposition for browser-viewable types (PDF in an iframe, audio
+    # in a player). Omit the filename so FileResponse doesn't default to
+    # attachment (which would trigger a download instead of inline display).
+    response = FileResponse(path=str(file_path), media_type=media_type)
+    response.headers["Content-Disposition"] = f'inline; filename="{doc.filename}"'
+    return response
+
+
+@router.delete("/{document_id}", status_code=204)
+async def delete_document(
+    document_id: str, session: AsyncSession = Depends(get_session)
+):
+    doc = await session.get(Document, document_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await storage.delete_upload(doc.file_path)
+    await session.delete(doc)
+    await session.commit()
+
+
+@router.get("/{document_id}/slides/{page}")
+async def get_document_slide_image(
+    document_id: str,
+    page: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Render a specific page (slide) of an uploaded PDF document as a PNG image.
+
+    page is 1-indexed (page=1 is the first slide).
+    """
+    doc_obj = await session.get(Document, document_id)
+    if doc_obj is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    file_path = Path(doc_obj.file_path)
+    if not file_path.exists() or file_path.suffix.lower() != ".pdf":
+        raise HTTPException(status_code=400, detail="Document is not a valid PDF")
+
+    try:
+        doc = fitz.open(str(file_path))
+        if page < 1 or page > doc.page_count:
+            doc.close()
+            raise HTTPException(
+                status_code=404,
+                detail=f"Page {page} out of range (1-{doc.page_count})",
+            )
+        fitz_page = doc[page - 1]
+        mat = fitz.Matrix(2, 2)  # 2x zoom for clarity
+        pix = fitz_page.get_pixmap(matrix=mat)
+        png_bytes = pix.tobytes("png")
+        doc.close()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to render slide: {exc}"
+        )
+
+    return Response(content=png_bytes, media_type="image/png")
+

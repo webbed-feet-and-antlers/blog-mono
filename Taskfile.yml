@@ -1,9 +1,11 @@
 version: "3"
 
 # Top-level entrypoint. Site/dev tasks live here; POSSE syndication tasks are
-# namespaced under `posse:` and pulled in from site/Taskfile.posse.yml.
+# namespaced under `posse:` and pulled in from site/Taskfile.posse.yml; AI
+# study-app tasks are namespaced under `study-app:`.
 #
-# Run `task --list` to see everything, `task posse --list` for syndication.
+# Run `task --list` to see everything, `task posse --list` for syndication,
+# `task study-app --list` for the study app.
 
 includes:
   posse:
@@ -46,3 +48,62 @@ tasks:
     dir: site
     cmds:
       - npm test
+
+  # --- AI Study App ----------------------------------------------------------
+  # A POC for an agent-driven product: an AI study tools app where notes,
+  # quizzes, and flashcards are all produced by one shared LangGraph agent.
+  # See study-app/README.md for the architecture.
+
+  study-app:install:
+    desc: "Install study-app backend (uv) + frontend (npm) deps"
+    cmds:
+      - cmd: "VIRTUAL_ENV= uv --directory study-app/backend sync"
+      - cmd: "npm --prefix study-app/frontend install"
+
+  study-app:backend:
+    desc: "Start the study-app FastAPI backend on :8000"
+    dir: study-app/backend
+    cmds:
+      - "VIRTUAL_ENV= uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+
+  study-app:frontend:
+    desc: "Start the study-app Vite dev server on :5173"
+    dir: study-app/frontend
+    cmds:
+      - npm run dev
+
+  study-app:dev:
+    desc: "Start both the backend (:8000) and frontend (:5173)"
+    deps:
+      - study-app:backend
+      - study-app:frontend
+
+  study-app:check:
+    desc: "Type-check the frontend"
+    dir: study-app/frontend
+    cmds:
+      - npm run check
+
+  study-app:evals-prepare:
+    desc: "Download + prepare public eval datasets into study-app/backend/evals/data/"
+    dir: study-app/backend
+    cmds:
+      - "VIRTUAL_ENV= uv run python -m evals.data"
+
+  study-app:evals-gate:
+    desc: "Fast eval tier (~10 min): all suites at EVALS_N=3 on the val split — smoke-check AI quality after product changes. Small-N cases are a seeded subset of the full run's set"
+    dir: study-app/backend
+    cmds:
+      - "EVALS_N=3 VIRTUAL_ENV= uv run pytest evals/ -m evals -rA --tb=short"
+
+  study-app:evals:
+    desc: "Run the AI-feature eval suites on the val split (needs study-app:evals-prepare first; EVALS_N caps cases/suite; EVALS_CONCURRENCY caps in-flight LLM calls, default 4)"
+    dir: study-app/backend
+    cmds:
+      - "VIRTUAL_ENV= uv run pytest evals/ -m evals -rA --tb=short"
+
+  study-app:evals-heldout:
+    desc: "Rare held-out check on the test split (EVALS_SPLIT=test, EVALS_N=10): catches sample-overfitting. Never tune against these results; a val-vs-test gap means prompts/gates were tuned to the val sample. Run before promoting baselines or publishing metric claims"
+    dir: study-app/backend
+    cmds:
+      - "EVALS_SPLIT=test VIRTUAL_ENV= uv run pytest evals/ -m evals -rA --tb=short"

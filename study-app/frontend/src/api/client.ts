@@ -1,0 +1,651 @@
+// Thin typed wrapper over the backend API. Uses the Vite dev-server proxy
+// (/api -> http://127.0.0.1:8000), so in dev no base URL is needed.
+
+import type {
+  AgentMemory,
+  ConceptReferences,
+  ConceptWithGraph,
+  ContentItem,
+  Document,
+  DocumentDetail,
+  GenerateRequest,
+  Lesson,
+  LectureSession,
+  LectureSessionDetail,
+  Module,
+  ModuleTree,
+  QuizAttempt,
+  TaskType,
+} from "../types";
+
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const res = await fetch(path, init);
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? detail;
+    } catch {
+      // non-JSON error body
+    }
+    throw new ApiError(res.status, detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+// --- Documents ---
+
+export async function uploadDocument(
+  file: File,
+  lessonId?: string,
+  onProgress?: (pct: number) => void,
+  moduleId?: string,
+): Promise<Document> {
+  const form = new FormData();
+  form.append("file", file);
+  const params = new URLSearchParams();
+  if (lessonId) params.set("lesson_id", lessonId);
+  if (moduleId) params.set("module_id", moduleId);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+
+  // Use XMLHttpRequest for upload progress support (essential for large audio).
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `/api/documents${qs}`);
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(JSON.parse(xhr.responseText));
+      } else {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          reject(new ApiError(xhr.status, body.detail || xhr.statusText));
+        } catch {
+          reject(new ApiError(xhr.status, xhr.statusText));
+        }
+      }
+    };
+    xhr.onerror = () => reject(new ApiError(0, "Network error"));
+    xhr.send(form);
+  });
+}
+
+export function getDocumentFileUrl(id: string): string {
+  return `/api/documents/${id}/file`;
+}
+
+export function getDocumentSlideImageUrl(docId: string, page: number): string {
+  return `/api/documents/${docId}/slides/${page}`;
+}
+
+
+export async function listDocuments(): Promise<Document[]> {
+  return request<Document[]>("/api/documents");
+}
+
+export async function getDocument(id: string): Promise<DocumentDetail> {
+  return request<DocumentDetail>(`/api/documents/${id}`);
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  await request<void>(`/api/documents/${id}`, { method: "DELETE" });
+}
+
+// --- Generation ---
+
+export async function generate(req: GenerateRequest): Promise<ContentItem> {
+  return request<ContentItem>("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+/**
+ * Stream generation progress via SSE. Calls onStatus for each status update,
+ * onDone with the final ContentItem, or onError on failure.
+ *
+ * Uses fetch + ReadableStream (not EventSource) because this is a POST.
+ */
+export async function generateStream(
+  req: GenerateRequest,
+  callbacks: {
+    onStatus: (status: string) => void;
+    onDone: (item: ContentItem) => void;
+    onError: (message: string) => void;
+  },
+): Promise<void> {
+  const res = await fetch("/api/generate/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+
+  if (!res.ok || !res.body) {
+    callbacks.onError(`HTTP ${res.status}`);
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE events are separated by double newlines.
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? ""; // last partial chunk stays in buffer
+
+      for (const raw of events) {
+        const eventLine = raw.match(/^event: (.+)$/m);
+        const dataLine = raw.match(/^data: (.+)$/m);
+        if (!eventLine || !dataLine) continue;
+
+        const eventType = eventLine[1].trim();
+        const data = JSON.parse(dataLine[1]);
+
+        if (eventType === "status") {
+          callbacks.onStatus(data.status);
+        } else if (eventType === "done") {
+          callbacks.onDone(data.item);
+        } else if (eventType === "error") {
+          callbacks.onError(data.message);
+        }
+      }
+    }
+  } catch (err) {
+    callbacks.onError((err as Error).message);
+  }
+}
+
+// --- Content ---
+
+export async function listContent(
+  documentId?: string,
+  type?: TaskType,
+): Promise<ContentItem[]> {
+  const params = new URLSearchParams();
+  if (documentId) params.set("document_id", documentId);
+  if (type) params.set("type", type);
+  const qs = params.toString();
+  return request<ContentItem[]>(`/api/content${qs ? `?${qs}` : ""}`);
+}
+
+export async function deleteContent(id: string): Promise<void> {
+  await request<void>(`/api/content/${id}`, { method: "DELETE" });
+}
+
+// --- Quiz ---
+
+export async function submitQuiz(
+  contentId: string,
+  answers: Record<string, number>,
+  timings?: {
+    duration_secs?: number | null;
+    question_timings?: Record<string, number> | null;
+  },
+): Promise<QuizAttempt> {
+  return request<QuizAttempt>(`/api/quiz/${contentId}/attempt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      answers,
+      duration_secs: timings?.duration_secs ?? null,
+      question_timings: timings?.question_timings ?? null,
+    }),
+  });
+}
+
+// --- Memory (debug) ---
+
+export async function listMemory(
+  refId?: string,
+): Promise<AgentMemory[]> {
+  const params = new URLSearchParams();
+  if (refId) params.set("ref_id", refId);
+  const qs = params.toString();
+  return request<AgentMemory[]>(`/api/memory${qs ? `?${qs}` : ""}`);
+}
+
+// --- Proactive decks ---
+
+export async function listProactiveDecks(): Promise<ContentItem[]> {
+  return request<ContentItem[]>("/api/memory/proactive");
+}
+
+// --- Learner profile ---
+
+export interface LearnerProfile {
+  learner_level: string;
+  preferred_difficulty: string;
+  preferred_formats: {
+    quiz_length: number | null;
+    card_style: string | null;
+    notes_depth: string | null;
+  };
+  study_goal: string;
+  stats: {
+    total_quizzes: number;
+    total_flashcard_reviews: number;
+    avg_score: number | null;
+    score_history: { score: number; difficulty: string; ts: string }[];
+    flashcard_known_ratio: number | null;
+    first_interaction: string | null;
+    last_interaction: string | null;
+  };
+  updated_at: string | null;
+  // --- Behavioral understanding (from the activity ledger) ---
+  insights?: {
+    summary: string;
+    traits: string[];
+    habits: string;
+    updated_at: string;
+    activities_seen: number;
+  } | null;
+  patterns?: {
+    hour_histogram: number[];
+    best_study_hour: number | null;
+    quiz_duration_history: { secs: number; score: number }[];
+    avg_quiz_duration_secs: number | null;
+    sessions: { completed: number; abandoned: number };
+  } | null;
+  engagement?: {
+    total_dwell_secs: number;
+    actions_count: number;
+    tab_switches: Record<string, number> | null;
+    top_docs: {
+      doc_id: string;
+      topic: string | null;
+      views: number;
+      dwell_secs: number;
+    }[];
+  } | null;
+  slow_concepts?: { concept: string; avg_secs: number; samples: number }[];
+}
+
+export async function reflectOnLearner(
+  force = true,
+): Promise<{ status: string; reason?: string; insights?: unknown }> {
+  return request(`/api/memory/reflect?force=${force}`, { method: "POST" });
+}
+
+export async function getLearnerProfile(): Promise<LearnerProfile> {
+  return request<LearnerProfile>("/api/memory/profile");
+}
+
+// --- Recommendations ---
+
+export interface Recommendation {
+  action: string;
+  title: string;
+  rationale: string;
+  document_id: string | null;
+  tab: string | null;
+  ready: boolean;
+  deck?: { title: string; cards: any[] } | null;
+  content_id?: string;
+  strategy_name?: string;
+  dismissible?: boolean;
+  score?: number;
+}
+
+export interface RecommendationResponse {
+  primary: Recommendation;
+  alternatives: Recommendation[];
+  context: {
+    due_count: number;
+    learner_level: string;
+    total_concepts: number;
+    mastered_count: number;
+    welcome_back: string | null;
+    total_quizzes: number;
+  };
+  impression_id: string;
+}
+
+export async function getRecommendation(): Promise<RecommendationResponse> {
+  return request<RecommendationResponse>("/api/recommend");
+}
+
+export async function submitRecommendationFeedback(
+  impressionId: string,
+  strategyName: string,
+  action: string,
+  durationSecs?: number,
+): Promise<void> {
+  await request<{ status: string }>("/api/recommend/feedback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      impression_id: impressionId,
+      strategy_name: strategyName,
+      action,
+      duration_secs: durationSecs,
+    }),
+  });
+}
+
+// --- Flashcard reviews ---
+
+export async function submitFlashcardReview(
+  contentId: string,
+  results: {
+    card_id: string;
+    known: boolean;
+    concept: string;
+    secs?: number | null;
+  }[],
+): Promise<{ recorded: number }> {
+  return request<{ recorded: number }>(
+    `/api/flashcards/${contentId}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ results }),
+    },
+  );
+}
+
+// --- Modules & Lessons (organization hierarchy) ---
+
+export async function listModuleTree(): Promise<ModuleTree> {
+  return request<ModuleTree>("/api/modules");
+}
+
+export interface ModuleMeta {
+  academic_year?: string | null;
+  term?: string | null;
+  exam_date?: string | null;
+}
+
+export async function createModule(
+  title: string,
+  meta?: ModuleMeta,
+): Promise<Module> {
+  return request<Module>("/api/modules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, ...(meta ?? {}) }),
+  });
+}
+
+export async function updateModule(
+  id: string,
+  patch: ModuleMeta & { title?: string },
+): Promise<Module> {
+  return request<Module>(`/api/modules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function renameModule(id: string, title: string): Promise<Module> {
+  return request<Module>(`/api/modules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function setModuleExamDate(
+  id: string,
+  examDate: string | null,
+): Promise<Module> {
+  return request<Module>(`/api/modules/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exam_date: examDate }),
+  });
+}
+
+export async function deleteModule(id: string): Promise<void> {
+  await request<void>(`/api/modules/${id}`, { method: "DELETE" });
+}
+
+export async function createLesson(
+  moduleId: string,
+  title: string,
+): Promise<Lesson> {
+  return request<Lesson>(`/api/modules/${moduleId}/lessons`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function renameLesson(
+  id: string,
+  title: string,
+): Promise<Lesson> {
+  return request<Lesson>(`/api/lessons/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteLesson(id: string): Promise<void> {
+  await request<void>(`/api/lessons/${id}`, { method: "DELETE" });
+}
+
+export async function moveDocument(
+  docId: string,
+  target: { lessonId?: string | null; moduleId?: string | null },
+): Promise<Document> {
+  return request<Document>(`/api/documents/${docId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      lesson_id: target.lessonId ?? null,
+      module_id: target.moduleId ?? null,
+    }),
+  });
+}
+
+// --- Concepts (knowledge graph) ---
+
+export async function listConcepts(): Promise<ConceptWithGraph[]> {
+  return request<ConceptWithGraph[]>("/api/concepts");
+}
+
+export async function getConceptReferences(
+  concept: string,
+): Promise<ConceptReferences> {
+  return request<ConceptReferences>(
+    `/api/concepts/${encodeURIComponent(concept)}/references`,
+  );
+}
+
+// --- Lecture sessions ---
+
+export async function createLecture(data: {
+  title: string;
+  lesson_id?: string;
+  audio_doc_id?: string;
+  slides_doc_id?: string;
+  notes?: string;
+  duration_seconds?: number;
+  slide_timestamps?: { slide_number: number; audio_seconds: number }[];
+  slide_count?: number;
+}): Promise<LectureSession> {
+  return request<LectureSession>("/api/lectures", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getLecture(id: string): Promise<LectureSessionDetail> {
+  return request<LectureSessionDetail>(`/api/lectures/${id}`);
+}
+
+export async function updateLectureNotes(
+  id: string,
+  notes: string,
+): Promise<LectureSession> {
+  return request<LectureSession>(`/api/lectures/${id}/notes`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notes }),
+  });
+}
+
+export function getSlideImageUrl(lectureId: string, page: number): string {
+  return `/api/lectures/${lectureId}/slides/${page}`;
+}
+
+// --- Study sessions ---
+
+export interface SessionCard {
+  id: string;
+  front: string;
+  back: string;
+  concept: string;
+  source: string; // "review" | "new"
+  content_id?: string | null;
+}
+
+export interface StudySession {
+  id: string;
+  type: string;
+  cards: SessionCard[];
+  mix: { review: number; new: number };
+  rationale: string;
+}
+
+// --- Study plans ---
+
+export interface PlanItem {
+  id: string;
+  type:
+    | "review_concepts"
+    | "take_quiz"
+    | "generate_quiz"
+    | "review_deck"
+    | "generate_flashcards"
+    | "read_document";
+  title: string;
+  rationale: string;
+  day_offset: number;
+  estimate_mins: number;
+  status: "pending" | "done";
+  done_at: string | null;
+  done_reason: string | null;
+  done_kind: "auto" | "manual" | null;
+  target: {
+    document_id?: string | null;
+    concepts?: string[] | null;
+  };
+}
+
+export interface StudyPlanData {
+  id: string;
+  module_id: string;
+  version: number;
+  generated_at: string;
+  stale_reasons: string[];
+  items: PlanItem[];
+  meta: Record<string, unknown>;
+  staleness: { stale: boolean; reasons: string[] };
+}
+
+export async function getStudyPlan(
+  moduleId: string,
+): Promise<StudyPlanData | null> {
+  try {
+    return await request<StudyPlanData>(`/api/modules/${moduleId}/plan`);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
+
+export async function generateStudyPlan(
+  moduleId: string,
+  examDate?: string | null,
+): Promise<StudyPlanData> {
+  return request<StudyPlanData>(`/api/modules/${moduleId}/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ exam_date: examDate ?? null }),
+  });
+}
+
+export async function patchPlanItem(
+  planId: string,
+  itemId: string,
+  status: "done" | "pending",
+): Promise<{ status: string; item: PlanItem }> {
+  return request(`/api/plans/${planId}/items/${itemId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+}
+
+export async function startStudySession(
+  type: string = "flashcards",
+  count: number = 20,
+  scope: string = "global",
+  documentId?: string,
+  moduleId?: string,
+): Promise<StudySession> {
+  return request<StudySession>("/api/study-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      type,
+      count,
+      scope,
+      document_id: documentId ?? null,
+      module_id: moduleId ?? null,
+    }),
+  });
+}
+
+export async function submitSessionReview(
+  sessionId: string,
+  results: {
+    card_id: string;
+    known: boolean;
+    concept: string;
+    content_id?: string | null;
+    secs?: number | null;
+  }[],
+  durationSecs?: number,
+): Promise<{ recorded: number }> {
+  return request<{ recorded: number }>(
+    `/api/study-session/${sessionId}/review`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        results,
+        duration_secs: durationSecs ?? null,
+      }),
+    },
+  );
+}

@@ -1,0 +1,42 @@
+{
+  "suite": "flashcards",
+  "run": "20260819T105549Z",
+  "split": "val",
+  "runtime_secs": 452.3,
+  "metrics": {
+    "application_style_shift": {
+      "mean": 0.96,
+      "min": 0.9,
+      "n": 5,
+      "threshold": 0.5,
+      "failures": []
+    },
+    "quality_rubric": {
+      "mean": 0.74,
+      "min": 0.0,
+      "n": 10,
+      "threshold": 0.6,
+      "failures": [
+        {
+          "case": "sciq-142",
+          "score": 0.0,
+          "reason": "All cards ask atomic questions and are grounded in the source passage. Most test transferable understanding, but some pairs (e.g., lunar cycle duration) are near-identical rewordings, reducing variant quality. The 'Name the phases in order' card is not directly supported by the passage, which only lists phases without specifying a complete ordered sequence from new to full."
+        }
+      ]
+    },
+    "structural_pass": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 1.0,
+      "failures": []
+    },
+    "variant_distinctness": {
+      "mean": 1.0,
+      "min": 1.0,
+      "n": 10,
+      "threshold": 0.8,
+      "failures": []
+    }
+  }
+}
