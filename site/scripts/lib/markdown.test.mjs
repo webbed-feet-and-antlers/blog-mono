@@ -32,6 +32,66 @@ test('mdxToMarkdown: inlines a screenshot image where the component was', async 
   assert.ok(beforeIdx < imgIdx && imgIdx < afterIdx, 'image is positioned between before and after');
 });
 
+test('mdxToMarkdown: a "try it live" caption appears under each interactive image', async () => {
+  const imgUrl = 'https://theinkpens.com/sshot/binpacker-x.png';
+  const out = await mdxToMarkdown(
+    'before\n\n<BinPacker client:visible />\n\nafter',
+    URL,
+    { BinPacker: imgUrl }
+  );
+  // Caption links to the canonical URL and reads as a live-demo CTA.
+  assert.ok(out.includes(`href="${URL}"`), 'caption links to the canonical URL');
+  assert.ok(/try this demo live/i.test(out), 'caption invites trying the demo');
+  assert.ok(out.includes('inkpens.tech'), 'caption names the canonical site');
+  // Ordering: image, then caption, then the trailing end-note. Caption sits
+  // between the image and 'after'.
+  const imgIdx = out.indexOf(imgUrl);
+  const capIdx = out.indexOf('Try this demo live');
+  const afterIdx = out.indexOf('after');
+  assert.ok(imgIdx < capIdx && capIdx < afterIdx, 'caption is positioned between image and after');
+});
+
+test('mdxToMarkdown: each interactive image gets its own caption (multiple components)', async () => {
+  const out = await mdxToMarkdown(
+    '<BinPacker />\n\n<Chart />',
+    URL,
+    {
+      BinPacker: 'https://x/a.png',
+      Chart: 'https://x/b.png',
+    }
+  );
+  const captionCount = (out.match(/Try this demo live/gi) || []).length;
+  assert.equal(captionCount, 2, 'one caption per interactive image');
+});
+
+test('mdxToMarkdown: themed pair {dark,light} emits a <picture> with dark <img> fallback', async () => {
+  const dark = 'https://theinkpens.com/sshot/binpacker-x-dark.png';
+  const light = 'https://theinkpens.com/sshot/binpacker-x-light.png';
+  const out = await mdxToMarkdown(
+    'before\n\n<BinPacker client:visible />\n\nafter',
+    URL,
+    { BinPacker: { dark, light } }
+  );
+  // <picture> with a light source keyed on prefers-color-scheme, dark as <img>.
+  assert.ok(out.includes('<picture>'), 'emits a <picture> element');
+  assert.ok(out.includes(`srcset="${light}"`), 'light URL in the <source>');
+  assert.ok(out.includes('media="(prefers-color-scheme: light)"'), 'source switches on light theme');
+  assert.ok(out.includes(`src="${dark}"`), 'dark URL is the <img> fallback (shown when <picture> is stripped)');
+  assert.ok(out.includes('BinPacker demo'), 'alt text preserved');
+  // positioned between before/after
+  const beforeIdx = out.indexOf('before');
+  const darkIdx = out.indexOf(dark);
+  const afterIdx = out.indexOf('after');
+  assert.ok(beforeIdx < darkIdx && darkIdx < afterIdx, 'picture is positioned between before and after');
+});
+
+test('mdxToMarkdown: themed pair with only dark variant degrades to a single image', async () => {
+  const dark = 'https://theinkpens.com/sshot/binpacker-x-dark.png';
+  const out = await mdxToMarkdown('<BinPacker />', URL, { BinPacker: { dark } });
+  assert.ok(!out.includes('<picture>'), 'no <picture> when only one variant');
+  assert.ok(out.includes(`![BinPacker demo (interactive on the original post)](${dark})`));
+});
+
 test('mdxToMarkdown: component without a screenshot is stripped (no image, note still appended)', async () => {
   const out = await mdxToMarkdown('text\n\n<BinPacker />\nmore', URL, {});
   assert.ok(!/!\[BinPacker/.test(out), 'no image inlined');
@@ -91,7 +151,7 @@ test('markdownToHtml: leaves math as plain text (no KaTeX spans)', async () => {
 });
 
 test('markdownToHtml: blockquote survives (interactive note round-trips)', async () => {
-  const md = '> 🔁 *Parts of this essay are interactive on the original post — see them live: https://x/*';
+  const md = '> 🔁 *Parts of this blog are interactive on the original post — see them live: https://x/*';
   const html = await markdownToHtml(md);
   assert.ok(html.includes('<blockquote>'), 'blockquote rendered');
   assert.ok(html.includes('interactive on the original post'), 'note text preserved');
@@ -108,4 +168,20 @@ test('markdownToHtml: accepts mdxToMarkdown output (integration)', async () => {
   const html = await markdownToHtml(md);
   assert.ok(html.includes('<img'), 'inlined screenshot becomes an <img>');
   assert.ok(html.includes('https://x/sshot.png'), 'image URL preserved');
+});
+
+test('markdownToHtml: themed <picture> survives into HTML (Medium/Substack paste path)', async () => {
+  // The Medium/Substack path renders mdxToMarkdown output to HTML. Without
+  // allowDangerousHtml the raw <picture> node would be dropped to nothing —
+  // this test guards that the themed pair makes it through.
+  const md = await mdxToMarkdown(
+    'intro\n\n<BinPacker client:visible />\n\noutro',
+    URL,
+    { BinPacker: { dark: 'https://x/dark.png', light: 'https://x/light.png' } }
+  );
+  const html = await markdownToHtml(md);
+  assert.ok(html.includes('<picture>'), '<picture> survives into HTML');
+  assert.ok(html.includes('https://x/dark.png'), 'dark URL preserved in HTML');
+  assert.ok(html.includes('https://x/light.png'), 'light URL preserved in HTML');
+  assert.ok(html.includes('prefers-color-scheme'), 'media query preserved');
 });

@@ -2,18 +2,18 @@ name: Syndicate (on merge)
 
 # Option 3 — automatic LIVE publish when a PR labeled 'publish' is merged to main.
 # No label (or a close-without-merge) = nothing happens. The label is the explicit
-# opt-in, so everyday merges that touch essays (e.g. copy fixes) never post.
+# opt-in, so everyday merges that touch blogs (e.g. copy fixes) never post.
 #
 # Loop prevention: this workflow's commit step writes syndication IDs back into
-# essays/*.mdx, which would re-trigger the preview workflow. The commit message
+# blogs/*.mdx, which would re-trigger the preview workflow. The commit message
 # carries '[skip preview]' and syndicate-preview.yml's job-level `if` skips on it.
 #
 # Create the label once (repo owner):
-#   gh label create publish --description "Merge publishes this essay to all platforms" --color F59E0B
+#   gh label create publish --description "Merge publishes this blog to all platforms" --color F59E0B
 #
 # Relationship to the other two workflows:
 #   - syndicate.yml          — manual workflow_dispatch (post on demand)
-#   - syndicate-preview.yml  — auto dry-run on essay push to main
+#   - syndicate-preview.yml  — auto dry-run on blog push to main
 #   - syndicate-on-merge.yml — THIS file (auto publish on labeled-PR merge)
 
 on:
@@ -22,7 +22,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write # to commit syndication IDs back into essay frontmatter
+  contents: write # to commit syndication IDs back into blog frontmatter
 
 # Shares the `syndicate` group with the manual workflow so a manual publish and
 # an auto publish can't run concurrently (prevents double-posting). Serial, no cancel.
@@ -101,9 +101,9 @@ jobs:
       # component screenshots (they live in public/sshot and are served by Pages
       # — they must be permanent since dev.to/Medium hotlink rather than re-host).
       # The '[skip preview]' tag breaks the loop with syndicate-preview.yml,
-      # which would otherwise re-fire on this essays/*.mdx commit.
+      # which would otherwise re-fire on this blogs/*.mdx commit.
       - name: Commit syndication IDs + screenshots
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore(syndicate): record cross-post IDs + screenshots [skip preview]"
-          file_pattern: "essays/*.mdx essays/*.md site/public/sshot/*.png"
+          file_pattern: "blogs/*.mdx blogs/*.md site/public/sshot/*.png"

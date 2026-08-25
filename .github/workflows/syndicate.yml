@@ -1,6 +1,6 @@
 name: Syndicate
 
-# POSSE (Post Own Site, Syndicate Everywhere): cross-posts essays to dev.to,
+# POSSE (Post Own Site, Syndicate Everywhere): cross-posts blogs to dev.to,
 # Bluesky, Mastodon, X (via Buffer), LinkedIn (via Buffer), Medium, and emits
 # Substack + Indie Hackers teasers. Manual trigger only — posting is
 # outward-facing, so it never runs on push. The dry-run input defaults to TRUE
@@ -12,13 +12,13 @@ on:
         description: "Dry run — preview payloads, post nothing, commit nothing"
         type: boolean
         default: true
-      essay:
-        description: "Essay slug to force (re)syndicate; empty = all unpublished"
+      blog:
+        description: "Blog slug to force (re)syndicate; empty = all unpublished"
         required: false
         default: ""
 
 permissions:
-  contents: write # to commit syndication IDs back into essay frontmatter
+  contents: write # to commit syndication IDs back into blog frontmatter
 
 # Don't cancel a cross-post in flight; serial runs avoid double-posting.
 concurrency:
@@ -65,7 +65,7 @@ jobs:
         run: |
           node scripts/syndicate.mjs \
             --dry-run=${{ inputs.dry_run }} \
-            --essay=${{ inputs.essay }}
+            --blog=${{ inputs.blog }}
         env:
           SITE_URL: ${{ vars.SITE_URL || 'https://inkpens.tech' }}
           # Public origin where OG images are served (for Buffer/X image attachment).
@@ -103,4 +103,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "chore(syndicate): record cross-post IDs + screenshots"
-          file_pattern: "essays/*.mdx essays/*.md site/public/sshot/*.png"
+          file_pattern: "blogs/*.mdx blogs/*.md site/public/sshot/*.png"

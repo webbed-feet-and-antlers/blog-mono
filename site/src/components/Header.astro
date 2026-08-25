@@ -21,7 +21,7 @@ const links = [
   <nav class="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
     <a
       href={path()}
-      class="flex items-center gap-2 tracking-tight text-zinc-100 transition-opacity hover:opacity-80 dark:text-zinc-900"
+      class="flex items-center gap-2 rounded-md tracking-tight text-zinc-100 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 dark:text-zinc-900 dark:focus-visible:ring-offset-white"
       aria-label="The Inkpens — home"
     >
       {/* Inline SVG so currentColor adapts to light/dark; an <img> can't inherit color. */}
@@ -44,19 +44,23 @@ const links = [
     </a>
     <div class="flex items-center gap-1">
       {
-        links.map((l) => (
-          <a
-            href={path(l.href)}
-            class:list={[
-              'rounded-md px-3 py-1.5 text-sm transition-colors',
-              isActive(l.href)
-                ? 'text-brand-400 dark:text-brand-600'
-                : 'text-zinc-400 hover:text-zinc-100 dark:text-zinc-600 dark:hover:text-zinc-900',
-            ]}
-          >
-            {l.label}
-          </a>
-        ))
+        links.map((l) => {
+          const active = isActive(l.href);
+          return (
+            <a
+              href={path(l.href)}
+              aria-current={active ? 'page' : undefined}
+              class:list={[
+                'rounded-md px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 dark:focus-visible:ring-offset-white',
+                active
+                  ? 'text-brand-400 dark:text-brand-600'
+                  : 'text-zinc-400 hover:text-zinc-100 dark:text-zinc-600 dark:hover:text-zinc-900',
+              ]}
+            >
+              {l.label}
+            </a>
+          );
+        })
       }
       <ThemeToggle />
     </div>

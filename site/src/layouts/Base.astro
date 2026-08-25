@@ -18,6 +18,13 @@ const {
 } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site).toString();
 const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
+
+// Umami analytics — cookieless. Set UMAMI_WEBSITE_ID in .env (local) or as a
+// GitHub Actions var (production) to enable; leave unset to disable (e.g. dev).
+// UMAMI_HOST overrides the endpoint (default: Umami cloud; set to your own origin
+// like https://stats.inkpens.tech if you self-host later).
+const umamiWebsiteId = import.meta.env.UMAMI_WEBSITE_ID;
+const umamiHost = (import.meta.env.UMAMI_HOST || 'https://cloud.umami.is').replace(/\/$/, '');
 ---
 
 <!doctype html>
@@ -27,6 +34,43 @@ const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href={path('favicon.svg')} />
     <meta name="generator" content={Astro.generator} />
+
+    {/*
+      Content-Security-Policy. GitHub Pages can't set HTTP headers, so this is a
+      <meta> tag (HTML documents only). Astro bundles the islands + theme toggle
+      as INLINE scripts, so script-src can't drop 'unsafe-inline' without breaking
+      hydration — that gap is covered by the build-time scanner (scripts/scan-components.mjs)
+      which catches injected/dynamic scripts before they ship. The CSP's real teeth here:
+        - connect-src 'self'  → blocks fetch/XHR/WebSocket to any external domain (exfiltration)
+        - object-src 'none'   → no plugins/Flash
+        - base-uri 'self'     → no <base> hijack
+        - form-action 'self'  → no off-site form submission
+      External allowlist:
+        - script-src/connect-src: cloud.umami.is (the analytics script + beacon)
+        - style-src: Google Fonts (CSS), jsDelivr (KaTeX CSS)
+        - font-src: Google Fonts (font files)
+    */}
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cloud.umami.is; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://cloud.umami.is; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+
+    {/*
+      Umami analytics (https://umami.is) — cookieless, no consent banner needed.
+      Env-gated: only renders when UMAMI_WEBSITE_ID is set, so the dev server and
+      any build without the ID ship zero analytics. is:inline keeps the tag literal
+      (Astro would otherwise bundle/break it). UMAMI_HOST defaults to the cloud CDN;
+      override to a self-hosted origin if you move off cloud.
+    */}
+    {umamiWebsiteId && (
+      <script
+        defer
+        is:inline
+        src={`${umamiHost}/script.js`}
+        data-website-id={umamiWebsiteId}
+        data-domains="inkpens.tech"
+      />
+    )}
 
     <title>{title}</title>
     <meta name="description" content={description} />
@@ -64,8 +108,16 @@ const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
     class="min-h-screen bg-zinc-950 font-sans text-zinc-300 antialiased dark:bg-white dark:text-zinc-700 [--wm:var(--wm-dark)] dark:[--wm:var(--wm-light)]"
     style={`--wm-dark: url('${path('inkpen-watermark-dark.svg')}'); --wm-light: url('${path('inkpen-watermark-light.svg')}')`}
   >
+    {/* Skip link: first focusable element, hidden until focused. Lets keyboard
+        users bypass the header/nav and jump straight to page content. */}
+    <a
+      href="#main"
+      class="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-brand-600 focus:px-4 focus:py-2 focus:text-white"
+    >
+      Skip to content
+    </a>
     <Header />
-    <main>
+    <main id="main" tabindex="-1">
       <slot />
     </main>
     <Footer />

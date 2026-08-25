@@ -19,7 +19,7 @@ const CREATE_POST_MUTATION = `mutation CreateThreadedPost($input: CreatePostInpu
 }`;
 
 /**
- * Public OG image URL for an essay slug, or undefined if PUBLIC_OG_BASE_URL
+ * Public OG image URL for a blog slug, or undefined if PUBLIC_OG_BASE_URL
  * (the deployed site origin) isn't set — in which case the post goes text-only.
  * @param {string} slug
  * @returns {string|undefined}

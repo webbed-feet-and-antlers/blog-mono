@@ -1,6 +1,6 @@
-// Builds a single "syndication package" Markdown file per essay for the
+// Builds a single "syndication package" Markdown file per blog for the
 // platforms that have no clean automation path (Medium, Substack). Both
-// platforms share the manual-paste workflow, so one file per essay covers
+// platforms share the manual-paste workflow, so one file per blog covers
 // them both — with platform-specific instructions baked in.
 //
 // The package contains: the full sanitized body (screenshots inlined),
@@ -9,7 +9,7 @@
 //
 // Idempotent across the two adapters in a single run: each adapter calls
 // addPlatformNote() to append its instruction; the first call also writes
-// the body + canonical header. We track which essays have been seeded so
+// the body + canonical header. We track which blogs have been seeded so
 // the Medium and Substack adapters compose into one file cleanly.
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -21,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, '..', '..', '.syndication-output');
 
 /**
- * Path to the package file for a given essay slug.
+ * Path to the package file for a given blog slug.
  * @param {string} slug
  */
 export function packagePath(slug) {
@@ -149,7 +149,7 @@ ${bodyHtml.trim()}
 
 /**
  * Write the paste-ready HTML companion to the markdown package. Overwrites
- * unconditionally each run — the HTML is fully derived from the essay body,
+ * unconditionally each run — the HTML is fully derived from the blog body,
  * so there's nothing to dedup and overwrite is the simplest idempotent path.
  *
  * @param {object} opts

@@ -1,11 +1,11 @@
 ---
 import { getCollection, render } from 'astro:content';
-import Essay from '../../layouts/Essay.astro';
+import Blog from '../../layouts/Blog.astro';
 import { readingTime } from '../../lib/readingTime';
 
 export async function getStaticPaths() {
-  const essays = await getCollection('essays');
-  return essays.map((entry) => ({
+  const blogs = await getCollection('blogs');
+  return blogs.map((entry) => ({
     params: { slug: entry.id.replace(/\.(md|mdx)$/, '') },
     props: { entry },
   }));
@@ -16,6 +16,6 @@ const { Content } = await render(entry);
 const mins = readingTime(entry.body ?? '');
 ---
 
-<Essay entry={entry} readingTime={mins}>
+<Blog entry={entry} readingTime={mins}>
   <Content />
-</Essay>
+</Blog>

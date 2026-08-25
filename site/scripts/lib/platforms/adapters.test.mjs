@@ -5,6 +5,7 @@ import * as bluesky from './bluesky.mjs';
 import * as mastodon from './mastodon.mjs';
 import * as buffer from './buffer.mjs';
 import * as linkedin from './linkedin.mjs';
+import * as linkedinArticle from './linkedin-article.mjs';
 import * as medium from './medium.mjs';
 import * as substack from './substack.mjs';
 import * as indiehackers from './indiehackers.mjs';
@@ -130,6 +131,25 @@ test('indiehackers.publish: returns {id:"manual"} and produces no HTTP', async (
       title: 'T', bodyMarkdown: 'body', socialPost: 'blurb', canonicalUrl: 'https://x', tags: [], slug: 's',
     });
     assert.equal(result.id, 'manual');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('linkedinArticle.available(): always true (manual, no credentials)', () => {
+  restoreEnv();
+  assert.equal(linkedinArticle.available(), true, 'manual platform is always available');
+});
+
+test('linkedinArticle.publish: returns {id:"manual"} and produces no HTTP', async () => {
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = () => { throw new Error('linkedinArticle must not fetch'); };
+  try {
+    const result = await linkedinArticle.publish({
+      title: 'T', bodyMarkdown: 'body', canonicalUrl: 'https://x', tags: [], slug: 's',
+    });
+    assert.equal(result.id, 'manual');
+    assert.ok(result.url.includes('syndicate-s'), 'url points at the package file');
   } finally {
     globalThis.fetch = origFetch;
   }

@@ -77,14 +77,16 @@ function startStaticServer(root) {
 /**
  * @param {object} opts
  * @param {string} opts.componentName   - e.g. "BinPacker" (must match a route)
- * @param {string} opts.slug            - essay slug (namespacing the PNG)
+ * @param {string} opts.slug            - blog slug (namespacing the PNG)
+ * @param {('dark'|'light')} [opts.theme='dark'] - which theme variant to capture
  * @param {string} [opts.distDir]       - override built-site dir
  * @param {string} [opts.outDir]        - override output dir
  * @returns {Promise<{path: string, url: string} | null>} local path + the
  *   site-relative URL (/sshot/<file>), or null if the harness wasn't built.
  */
-export async function screenshotComponent({ componentName, slug, distDir = DIST_DIR, outDir = PUBLIC_SSHOT }) {
-  const htmlPath = join(distDir, 'sshot', componentName, 'index.html');
+export async function screenshotComponent({ componentName, slug, theme = 'dark', distDir = DIST_DIR, outDir = PUBLIC_SSHOT }) {
+  // Harness route is now /sshot/<Component>/<theme>/index.html.
+  const htmlPath = join(distDir, 'sshot', componentName, theme, 'index.html');
   if (!existsSync(htmlPath)) {
     return null; // harness not built — caller falls back to strip-and-note
   }
@@ -98,7 +100,7 @@ export async function screenshotComponent({ componentName, slug, distDir = DIST_
       deviceScaleFactor: 2,
     });
     const page = await ctx.newPage();
-    await page.goto(`${server.baseURL}/sshot/${componentName}/`);
+    await page.goto(`${server.baseURL}/sshot/${componentName}/${theme}/`);
 
     // client:only islands render NOTHING until React hydrates, so waiting for
     // the [data-shot] wrapper isn't enough (it exists in the SSR HTML empty).
@@ -118,9 +120,13 @@ export async function screenshotComponent({ componentName, slug, distDir = DIST_
     await el.scrollIntoViewIfNeeded().catch(() => {});
 
     await mkdir(outDir, { recursive: true });
-    const file = `${componentName.toLowerCase()}-${slug}.png`;
+    const file = `${componentName.toLowerCase()}-${slug}-${theme}.png`;
     const outPath = join(outDir, file);
-    await el.screenshot({ path: outPath, omitBackground: false });
+    // omitBackground: true — the harness body is transparent, so the padding
+    // around the component card is emitted with a real alpha channel (not filled
+    // white). The dark/light card then blends into whatever page shows it,
+    // instead of clashing with a white frame on a dark background.
+    await el.screenshot({ path: outPath, omitBackground: true });
 
     // site-relative URL — prefixed with the origin at the call site.
     return { path: outPath, url: `/sshot/${file}` };

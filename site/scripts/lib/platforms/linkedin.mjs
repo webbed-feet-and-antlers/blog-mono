@@ -26,7 +26,7 @@ export function available() {
  * @param {string[]} opts.posts        - joined into a single post body
  *                                       (LinkedIn personal profiles don't thread)
  * @param {string} opts.canonicalUrl   - appended to the post body (in-body link)
- * @param {string} opts.slug           - essay slug, for the OG image URL
+ * @param {string} opts.slug           - blog slug, for the OG image URL
  * @param {boolean} opts.dryRun
  * @returns {Promise<{id: string, url: string}>} id is the Buffer post id
  */

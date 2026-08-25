@@ -72,7 +72,7 @@ export async function publish({ posts, imagePath, dryRun }) {
     text: posts[0].slice(0, 300),
     createdAt: new Date().toISOString(),
     ...(blob
-      ? { embed: { $type: 'app.bsky.embed.images', images: [{ alt: 'Essay preview', image: blob, aspectRatio: { width: 1200, height: 630 } }] } }
+      ? { embed: { $type: 'app.bsky.embed.images', images: [{ alt: 'Blog preview', image: blob, aspectRatio: { width: 1200, height: 630 } }] } }
       : {}),
   };
   const root = await createRecord(accessJwt, rootRecord);

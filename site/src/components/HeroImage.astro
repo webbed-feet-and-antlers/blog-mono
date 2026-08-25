@@ -1,13 +1,13 @@
 ---
-// The hero image for an essay: a per-post custom image (entry.data.heroImage)
+// The hero image for a blog: a per-post custom image (entry.data.heroImage)
 // wins, otherwise the auto-generated title card at /og/<slug>.png. Used both as
-// the in-page banner atop an essay and as the thumbnail on the blog index, so
+// the in-page banner atop a blog and as the thumbnail on the blog index, so
 // the resolution logic + markup lives in one place.
 import type { CollectionEntry } from 'astro:content';
 import { path } from '../lib/path';
 
 interface Props {
-  entry: CollectionEntry<'essays'>;
+  entry: CollectionEntry<'blogs'>;
   /** Render at thumbnail size (for the blog index) vs full banner. */
   size?: 'full' | 'thumb';
 }

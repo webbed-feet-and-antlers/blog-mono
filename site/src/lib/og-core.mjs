@@ -82,13 +82,13 @@ async function loadBrandMark() {
  * Render a 1200x630 OG image and return the PNG bytes.
  *
  * @param {object} opts
- * @param {string} opts.title          - essay title (the main text)
- * @param {string[]} [opts.tags]       - essay tags (drive the accent color + badge)
+ * @param {string} opts.title          - blog title (the main text)
+ * @param {string[]} [opts.tags]       - blog tags (drive the accent color + badge)
  * @param {number} [opts.readingMinutes] - shown as a badge when provided
  * @param {string} [opts.subtitle]     - e.g. author/site name
  * @param {string} [opts.brand]        - brand text, top-left
  * @param {Uint8Array} [opts.previewImage] - optional component screenshot to embed
- * @param {string} [opts.slug]         - essay slug; selects a per-essay scene override
+ * @param {string} [opts.slug]         - blog slug; selects a per-blog scene override
  * @returns {Promise<Uint8Array|null>} PNG bytes, or null if the font isn't
  *   available (caller skips the image; posting/render still succeeds).
  */
@@ -108,7 +108,7 @@ export async function renderOgImageBytes({
 
   const accent = accentFor(tags);
   const brandMark = await loadBrandMark();
-  // Resolve an SVG scene: a per-essay override (public/scenes/<slug>.svg) wins,
+  // Resolve an SVG scene: a per-blog override (public/scenes/<slug>.svg) wins,
   // else the tag library. Tinted with the accent. undefined = plain gradient.
   const sceneName = sceneNameFor(tags, slug);
   const sceneDataUri = sceneName ? await loadSceneDataUri(sceneName, accent.accent) : undefined;

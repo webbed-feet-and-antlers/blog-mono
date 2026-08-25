@@ -1,4 +1,4 @@
-// Reads frontmatter + writes syndication IDs back into the essay file.
+// Reads frontmatter + writes syndication IDs back into the blog file.
 //
 // The write-back is SURGICAL: only the `syndication:` block in the frontmatter
 // is touched. Every other frontmatter field (quotes, date format, array style,
