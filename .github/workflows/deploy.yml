@@ -33,6 +33,12 @@ jobs:
           node-version: 22
           package-manager: npm
           build-cmd: npm run build
+        # Umami analytics (cookieless). The website ID is not secret — it appears
+        # in the public HTML script tag — so a plain repo Variable is fine. Set it
+        # at Settings → Secrets and variables → Actions → Variables as UMAMI_WEBSITE_ID.
+        # Until set, the build ships no analytics (the script tag is env-gated).
+        env:
+          UMAMI_WEBSITE_ID: ${{ vars.UMAMI_WEBSITE_ID }}
 
   deploy:
     needs: build

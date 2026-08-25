@@ -1,0 +1,142 @@
+---
+// Screenshot harness: renders a single React island in a chromeless page so
+// scripts/lib/component-shot.mjs can screenshot it for cross-posting.
+// Not linked from the site; reached directly at /sshot/<Component>/<theme>.
+//
+// Two things are AUTO-DERIVED here:
+//   1. getStaticPaths scans the repo-root /blogs, finds every capitalized
+//      component tag actually used, and renders one page per component × theme.
+//      So adding a component to a blog is enough to get it screenshotted —
+//      no getStaticPaths edit.
+//   2. The component LIST for validation is derived from the imports below.
+//
+// What CANNOT be auto-derived: the <Component client:only /> render branches.
+// Astro's compiler requires a static import reference for each client:only
+// island (it can't bundle a variable). So each screenshot-able component still
+// needs an explicit import + render branch below. Adding a brand-new component
+// to the build means one import + one branch here — that's the irreducible cost.
+import { readdir, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+// Importing global.css is load-bearing: it (a) makes Tailwind scan + emit the
+// components' class rules so they apply on the harness page, and (b) defines the
+// dark-first `@custom-variant dark` so the .light class on <html> actually
+// switches the components between themes. Without it the screenshot renders with
+// browser defaults (black on white) regardless of the theme param.
+import '../../../styles/global.css';
+import BinPacker from '../../../components/react/BinPacker';
+import Chart from '../../../components/react/Chart';
+import LearningRateScheduler from '../../../components/react/LearningRateScheduler';
+import RenderingStrategies from '../../../components/react/RenderingStrategies';
+
+// Components this harness can render. Each must also have an explicit import
+// above AND a render branch below (Astro's client:only compiler constraint).
+// This list is duplicated inside getStaticPaths because Astro hoists that
+// function to its own scope and frontmatter consts aren't visible there — keep
+// the two lists in sync when adding a component.
+
+export async function getStaticPaths() {
+  // Must match the imports + render branches below.
+  const KNOWN = new Set(['BinPacker', 'Chart', 'LearningRateScheduler', 'RenderingStrategies']);
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  // src/pages/sshot/[component] -> site/ -> repo root -> blogs/
+  const blogsDir = join(__dirname, '..', '..', '..', '..', '..', 'blogs');
+  const themes = ['dark', 'light'];
+
+  // Find capitalized component tags in a markdown/mdx body.
+  const componentsInBody = (body: string): string[] => {
+    const found = new Set<string>();
+    const re = /<([A-Z][A-Za-z0-9]+)\b[^>]*\/?>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body)) !== null) found.add(m[1]);
+    return [...found];
+  };
+
+  const walk = async (dir: string, out: string[] = []): Promise<string[]> => {
+    if (!existsSync(dir)) return out;
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) await walk(full, out);
+      else if (entry.isFile()) out.push(full);
+    }
+    return out;
+  };
+
+  // Union of component names used across all blogs, filtered to those this
+  // harness can render (so a typo'd tag or a not-yet-imported component doesn't
+  // 404 the build — it just won't get a screenshot).
+  const found = new Set<string>();
+  const files = await walk(blogsDir);
+  for (const file of files) {
+    if (!/\.(md|mdx)$/.test(file)) continue;
+    const raw = await readFile(file, 'utf8');
+    for (const name of componentsInBody(raw)) {
+      if (KNOWN.has(name)) found.add(name);
+    }
+  }
+  const names = [...found].sort();
+
+  const paths: { params: { component: string; theme: string } }[] = [];
+  for (const component of names) {
+    for (const theme of themes) {
+      paths.push({ params: { component, theme } });
+    }
+  }
+  return paths;
+}
+
+const { component, theme } = Astro.params;
+// Page-scope KNOWN for the defensive "unknown component" render below. getStaticPaths
+// already filters to these, so this branch only fires if the two lists drift apart.
+const KNOWN = new Set(['BinPacker', 'Chart', 'LearningRateScheduler', 'RenderingStrategies']);
+// Dark-first: no class on <html> renders the dark default; .light opts into light.
+const rootClass = theme === 'light' ? 'light' : '';
+---
+
+<html lang="en" class={rootClass}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <style>
+      /* Reset everything so the screenshot is just the component. Colors are
+         inherited from the theme: the component's own classes (dark-first) render
+         dark by default, or light when .light is on <html>. */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        background: transparent;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      .shot-wrap { padding: 16px; width: 800px; }
+      .unknown { padding: 16px; color: #dc2626; }
+    </style>
+  </head>
+  <body>
+    <div class="shot-wrap" data-shot>
+      {component === 'BinPacker' && <BinPacker client:only="react" />}
+      {component === 'Chart' && (
+        <Chart
+          client:only="react"
+          data={[
+            { batch: '8', tokens: 7800 },
+            { batch: '16', tokens: 15200 },
+            { batch: '32', tokens: 28600 },
+            { batch: '64', tokens: 41000 },
+          ]}
+          xKey="batch"
+          series={[{ dataKey: 'tokens', name: 'tokens/sec', color: '#1e5cf5' }]}
+          height={300}
+          yLabel="tokens/sec"
+        />
+      )}
+      {component === 'LearningRateScheduler' && <LearningRateScheduler client:only="react" />}
+      {component === 'RenderingStrategies' && <RenderingStrategies client:only="react" />}
+      {!KNOWN.has(component) && (
+        <div class="unknown">
+          Unknown component: {component}. If this is a new component, add an import
+          and a render branch in <code>src/pages/sshot/[component]/[theme].astro</code>.
+        </div>
+      )}
+    </div>
+  </body>
+</html>

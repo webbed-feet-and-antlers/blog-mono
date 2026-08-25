@@ -1,26 +1,26 @@
 name: Syndicate (preview)
 
-# Option 1 — automatic DRY-RUN when an essay lands on main. Fires on any push
-# to main that touches essays/**, runs the full syndication pipeline against the
+# Option 1 — automatic DRY-RUN when a blog lands on main. Fires on any push
+# to main that touches blogs/**, runs the full syndication pipeline against the
 # real platform secrets (so the preview shows actual 'would-post' plans with
 # thread counts, image attachment flags, etc.), and writes the result to the
 # Actions job summary. Posts nothing, commits nothing.
 #
 # Loop prevention: the on-merge publish workflow commits syndication IDs back
-# into essays/*.mdx, which would re-trigger this preview. Those commits carry
+# into blogs/*.mdx, which would re-trigger this preview. Those commits carry
 # '[skip preview]' in their message, and the job-level `if` below short-circuits
 # on it.
 #
 # Relationship to the other two workflows:
 #   - syndicate.yml          — manual workflow_dispatch (post on demand)
-#   - syndicate-preview.yml  — THIS file (auto dry-run on essay push)
+#   - syndicate-preview.yml  — THIS file (auto dry-run on blog push)
 #   - syndicate-on-merge.yml — auto publish when a 'publish'-labeled PR merges
 
 on:
   push:
     branches: [main]
     paths:
-      - 'essays/**'
+      - 'blogs/**'
 
 permissions:
   contents: read

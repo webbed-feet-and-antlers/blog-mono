@@ -12,12 +12,12 @@ export interface OgImageOptions {
   brand?: string;
   /** Optional component screenshot bytes to embed as a preview panel. */
   previewImage?: Uint8Array;
-  /** Essay slug; selects a per-essay scene override (public/scenes/<slug>.svg). */
+  /** Blog slug; selects a per-blog scene override (public/scenes/<slug>.svg). */
   slug?: string;
 }
 
 /**
- * Render a 1200x630 OG image for an essay. Returns PNG bytes, or null if the
+ * Render a 1200x630 OG image for a blog. Returns PNG bytes, or null if the
  * bundled font isn't available (caller should then skip the image).
  */
 export async function renderOgImage({

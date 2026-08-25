@@ -2,9 +2,9 @@
 //   { posts: string[], image: boolean }
 //
 // Resolution order for a platform's `posts`:
-//   1. essay.social.<platform>   (string | string[])
-//   2. essay.socialPost          (string — backward compat)
-//   3. essay.description         (string — last-resort fallback)
+//   1. blog.social.<platform>   (string | string[])
+//   2. blog.socialPost          (string — backward compat)
+//   3. blog.description         (string — last-resort fallback)
 //
 // The canonical URL is appended to the LAST post for thread-capable platforms
 // (twitter/bluesky/mastodon). For LinkedIn it is NOT appended here — that
@@ -13,7 +13,7 @@
 const THREAD_PLATFORMS = new Set(['twitter', 'bluesky', 'mastodon']);
 
 /**
- * @param {object} data           - essay frontmatter
+ * @param {object} data           - blog frontmatter
  * @param {string} canonicalUrl
  * @returns {{ [platform: string]: { posts: string[], image: boolean } }}
  */

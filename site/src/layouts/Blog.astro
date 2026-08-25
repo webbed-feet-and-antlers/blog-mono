@@ -5,7 +5,7 @@ import { tagStyle } from '../lib/tags';
 import { path } from '../lib/path';
 
 interface Props {
-  entry: CollectionEntry<'essays'>;
+  entry: CollectionEntry<'blogs'>;
   readingTime?: number;
 }
 const { entry, readingTime } = Astro.props;
@@ -24,8 +24,13 @@ const updatedStr = updatedDate
 
 // Build the "Also published on" list from frontmatter syndication IDs.
 // POSSE: post on your own site (canonical), syndicate everywhere else.
+// API adapters store platform IDs (derived to URLs below); assisted-draft
+// platforms (Medium/Substack/LinkedIn Article/Indie Hackers) store the full
+// public URL via `task posse:confirm` — values starting with http win.
 const synd = syndication ?? {};
 const blueskyHandle = import.meta.env.PUBLIC_BLUESKY_HANDLE;
+const asUrl = (v: string | number, derive: (v: string) => string) =>
+  String(v).startsWith('http') ? String(v) : derive(String(v));
 type SyndLink = { label: string; href: string };
 const syndLinks: SyndLink[] = [
   synd.devto && { label: 'dev.to', href: `https://dev.to` },
@@ -38,7 +43,10 @@ const syndLinks: SyndLink[] = [
   synd.mastodon && { label: 'Mastodon', href: import.meta.env.PUBLIC_MASTODON_INSTANCE ?? '#' },
   synd.linkedin && { label: 'LinkedIn', href: 'https://www.linkedin.com' },
   synd.buffer && { label: 'X', href: 'https://x.com' },
-  synd.medium && { label: 'Medium', href: `https://medium.com/p/${synd.medium}` },
+  synd.medium && { label: 'Medium', href: asUrl(synd.medium, (v) => `https://medium.com/p/${v}`) },
+  synd.linkedinArticle && { label: 'LinkedIn Article', href: String(synd.linkedinArticle) },
+  synd.substack && { label: 'Substack', href: String(synd.substack) },
+  synd.indiehackers && { label: 'Indie Hackers', href: String(synd.indiehackers) },
 ].filter((l): l is SyndLink => l !== undefined && l !== null && l !== 0 && l !== '');
 ---
 
@@ -49,7 +57,7 @@ const syndLinks: SyndLink[] = [
         {title}
       </h1>
       <p class="mt-3 text-base text-zinc-400 dark:text-zinc-600">{description}</p>
-      <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500 dark:text-zinc-500">
+      <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-400 dark:text-zinc-500">
         <time datetime={pubDate.toISOString()}>{dateStr}</time>
         {readingTime && <><span aria-hidden="true">·</span><span>{readingTime} min read</span></>}
         {
@@ -73,7 +81,7 @@ const syndLinks: SyndLink[] = [
     </header>
 
     <div
-      class="prose prose-invert prose-zinc max-w-none prose-headings:font-serif prose-headings:scroll-mt-20 prose-headings:font-semibold prose-a:text-brand-400 prose-a:no-underline hover:prose-a:underline prose-pre:bg-zinc-900 prose-pre:p-4 prose-img:rounded-lg dark:prose-none dark:prose-zinc dark:prose-a:text-brand-600"
+      class="prose prose-invert prose-zinc max-w-none prose-headings:font-serif prose-headings:scroll-mt-20 prose-headings:font-semibold prose-a:text-brand-400 prose-a:no-underline prose-a:hover:underline prose-pre:bg-zinc-900 prose-pre:p-4 prose-img:rounded-lg dark:prose-none dark:prose-zinc dark:prose-a:text-brand-600"
     >
       <slot />
     </div>
@@ -81,7 +89,7 @@ const syndLinks: SyndLink[] = [
     {
       syndLinks.length > 0 && (
         <footer class="mt-12 border-t border-zinc-800 pt-6 dark:border-zinc-200">
-          <p class="font-mono text-[11px] uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
+          <p class="font-mono text-[11px] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
             Also published on
           </p>
           <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">

@@ -3,8 +3,8 @@ import { getCollection } from 'astro:content';
 import type { APIContext } from 'astro';
 
 export async function GET(context: APIContext) {
-  const all = await getCollection('essays', ({ data }) => !data.draft);
-  const essays = all.sort(
+  const all = await getCollection('blogs', ({ data }) => !data.draft);
+  const blogs = all.sort(
     (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
   );
 
@@ -18,7 +18,7 @@ export async function GET(context: APIContext) {
       'Data science and machine learning notes from Becky & Nathan Inkpen.',
     // site must be the origin WITHOUT base; we prefix each item link instead.
     site: context.site ?? 'https://inkpens.tech',
-    items: essays.map((entry) => ({
+    items: blogs.map((entry) => ({
       title: entry.data.title,
       description: entry.data.description,
       pubDate: entry.data.pubDate,

@@ -1,4 +1,4 @@
-// Reads essays directly from the repo-root /essays folder (outside site/),
+// Reads blogs directly from the repo-root /blogs folder (outside site/),
 // bypassing the Astro content layer so the script can run standalone in CI.
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -9,11 +9,11 @@ import { dirname } from 'node:path';
 import matter from 'gray-matter';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// scripts/lib/ -> up to site/ -> up to repo root -> essays/
-const ESSAYS_DIR = join(__dirname, '..', '..', '..', 'essays');
+// scripts/lib/ -> up to site/ -> up to repo root -> blogs/
+const BLOGS_DIR = join(__dirname, '..', '..', '..', 'blogs');
 
 /**
- * @typedef {Object} Essay
+ * @typedef {Object} Blog
  * @property {string} slug     - filename without extension (the URL slug)
  * @property {string} path     - absolute path to the .md/.mdx file
  * @property {string} ext      - '.md' or '.mdx'
@@ -33,15 +33,15 @@ async function* walk(dir) {
 }
 
 /**
- * Load a single essay by slug.
+ * Load a single blog by slug.
  * @param {string} slug
- * @returns {Promise<Essay | null>}
+ * @returns {Promise<Blog | null>}
  */
-export async function loadEssay(slug) {
+export async function loadBlog(slug) {
   for (const ext of ['.mdx', '.md']) {
-    const candidate = join(ESSAYS_DIR, slug + ext);
+    const candidate = join(BLOGS_DIR, slug + ext);
     if (existsSync(candidate)) {
-      return readEssay(candidate);
+      return readBlog(candidate);
     }
   }
   return null;
@@ -49,9 +49,9 @@ export async function loadEssay(slug) {
 
 /**
  * @param {string} filePath
- * @returns {Promise<Essay>}
+ * @returns {Promise<Blog>}
  */
-async function readEssay(filePath) {
+async function readBlog(filePath) {
   const raw = await readFile(filePath, 'utf8');
   const parsed = matter(raw);
   const ext = extname(filePath);
@@ -66,18 +66,18 @@ async function readEssay(filePath) {
 }
 
 /**
- * Load every essay in /essays. Drafts are included so the script can decide.
- * @returns {Promise<Essay[]>}
+ * Load every blog in /blogs. Drafts are included so the script can decide.
+ * @returns {Promise<Blog[]>}
  */
-export async function loadEssays() {
-  if (!existsSync(ESSAYS_DIR)) return [];
+export async function loadBlogs() {
+  if (!existsSync(BLOGS_DIR)) return [];
   const out = [];
-  for await (const file of walk(ESSAYS_DIR)) {
+  for await (const file of walk(BLOGS_DIR)) {
     const ext = extname(file).toLowerCase();
     if (ext !== '.md' && ext !== '.mdx') continue;
-    out.push(await readEssay(file));
+    out.push(await readBlog(file));
   }
   return out;
 }
 
-export { ESSAYS_DIR };
+export { BLOGS_DIR };
