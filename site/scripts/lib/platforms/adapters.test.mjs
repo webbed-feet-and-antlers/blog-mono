@@ -63,7 +63,7 @@ const DRY_RUN_INPUTS = {
   bluesky: { posts: ['a', 'b'], imagePath: null, dryRun: true },
   mastodon: { posts: ['a'], imagePath: null, dryRun: true },
   buffer: { posts: ['a', 'b'], slug: 's', dryRun: true },
-  linkedin: { posts: ['a'], canonicalUrl: 'https://x', slug: 's', dryRun: true },
+  linkedin: { posts: ['a'], articleUrl: 'https://www.linkedin.com/pulse/x', dryRun: true },
 };
 
 for (const [name, mod, input] of [
@@ -91,6 +91,17 @@ for (const [name, mod, input] of [
     }
   });
 }
+
+// --- linkedin: the caption post depends on its Article being confirmed ---
+
+test('linkedin.publish without an article URL: refuses (caption needs its Article)', async () => {
+  restoreEnv();
+  Object.assign(process.env, ADAPTER_ENV.linkedin);
+  await assert.rejects(
+    linkedin.publish({ posts: ['a'], articleUrl: undefined, dryRun: true }),
+    /LinkedIn Article/,
+  );
+});
 
 // --- assisted/manual adapters: package writes go to a temp-ish dir ---
 // (the real gitignored .syndication-output — acceptable, cleaned by re-runs)

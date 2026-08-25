@@ -1,23 +1,31 @@
 ---
-title: 'How We Built the Blog: An Astro + MDX Site on GitHub Pages'
-description: 'How we built a fast, durable, static blog that is still interactive with Astro 5, MDX islands, and GitHub Pages, and where we deliberately chose to send no JavaScript at all.'
+title: 'How We Built Our Blog: Astro, MDX, and Almost No JavaScript'
+description: 'Astro, MDX, and GitHub Pages, with React islands that only load when you scroll to them. The best decisions are the things we left out.'
 pubDate: 2026-07-30
 tags: ['astro', 'mdx', 'web', 'github-pages']
-socialPost: 'Built our blog on Astro + MDX + GitHub Pages: static by default, with React islands that hydrate only when you scroll to them. Zero JS for almost every reader; full interactivity where it earns its keep.'
+socialPost: 'We have a pile of projects in various states of barely to mostly done, so we started a blog to force ourselves to finish things. First post: how we built it — almost zero JavaScript, React islands that load on scroll, and components written by a coding agent.'
 social:
   twitter:
-    - '1/ How we built the blog: static by default, interactive on purpose. Astro + MDX, deployed to GitHub Pages.'
-    - "2/ Most pages ship zero JavaScript. Interactivity is an island — a React component that hydrates only when you scroll it into view, and nothing else. You're looking at one right now."
-    - "3/ The clever bit is the theming: dark-first by default via a one-line Tailwind custom variant. Bare classes are dark; 'dark:' prefixes actually style *light* mode. Inverts the usual convention."
-    - "4/ Content lives at the repo root (outside the Astro project) and is pulled in by a glob loader. Type-safe frontmatter via Zod. Blogs and app code don't tangle."
-    - '5/ What we left out on purpose: no comments, no analytics, no client-side router, no framework driving the whole site. Each absence is a choice.'
-    - 'Full writeup, with a live React component embedded in the prose:'
+    - "1/ We have a pile of projects in various states of barely to mostly done. So we built a blog with one rule: nothing gets posted until it's finished. First post: how we built it."
+    - '2/ The site: Astro + MDX, hosted on GitHub Pages. Almost every page ships zero JavaScript — just pre-built HTML, unless something genuinely needs interactivity.'
+    - "3/ The things that need interactivity are React islands. They only download and hydrate once you scroll them into view. There's one embedded in the middle of the post, and it's live, not a screenshot."
+    - "4/ Why most blogs don't do this: every interactive component is a mini React app, and they're tedious to hand-code. So a coding agent writes ours. A build script then rejects anything with eval, fetch, or dynamic imports, and we review the result like any other PR."
+    - "5/ The decision we're proudest of is the stuff we never built: no comments, no tracking, no client-side router, no framework running the whole site. Boring is the goal. Boring usually just works."
+    - 'Full writeup, with a live component embedded in the prose:'
   bluesky:
-    - 'How we built the blog: static by default, interactive on purpose.'
-    - "Most readers get zero JavaScript. Interactivity lives in React islands that hydrate only when scrolled into view — there's one sitting in the prose of this very post. The theming trick is nice too: dark-first via a one-line Tailwind custom variant. ↩"
-  mastodon: 'How we built the blog: Astro + MDX + GitHub Pages. Static by default, interactive on purpose — React islands hydrate only when scrolled into view, so most readers get zero JavaScript. Dark-first theming via a one-line Tailwind custom variant, content co-located outside the app, type-safe frontmatter, and a deliberate list of things we left out.'
+    - 'We have a pile of projects in various states of barely to mostly done, so we built a blog to force ourselves to finish things. First post: how we built it.'
+    - 'Almost every page ships zero JavaScript. Interactivity lives in React islands that only load on scroll — one is live in the middle of this post. The components are written by a coding agent, then checked by a lint script before we merge.'
+  mastodon: 'We have a pile of projects in various states of barely to mostly done, so we built a blog to force ourselves to finish things. First post: how we built it. Astro + MDX on GitHub Pages, almost zero JavaScript, React islands that load on scroll (one is live in the post), components written by a coding agent then linted before merge. Proudest of what we left out: no comments, no tracking, no client-side router.'
   linkedin: |
-    We recently rebuilt our technical blog and the guiding principle was simple: static by default, interactive on purpose. The stack is Astro 5 (static output) with MDX for blogs, React 19 for the rare interactive component, Tailwind 4 for styling, and GitHub Pages for hosting. The interesting part is the restraint — almost every page ships zero JavaScript. Interactivity is an island that hydrates only when scrolled into view, and there's nothing else. This post walks through the stack, how MDX gives us live components inside prose, a one-line Tailwind trick that makes the whole site dark-first by default, and — the part we're proudest of — a list of what we deliberately chose NOT to build.
+    We have a long list of projects in various states of barely to mostly done. The blog is our fix: nothing gets published until it's actually finished. A clean breakpoint, an artefact, done.
+
+    Naturally, the first post is about the blog itself. The stack is Astro 5 with MDX, React 19 for the few interactive parts, Tailwind 4, and GitHub Pages for hosting. Almost every page ships zero JavaScript — when something genuinely needs interactivity, it becomes a React island that only downloads and hydrates once you scroll it into view.
+
+    The part people find surprising: the interactive components are written by a coding agent. We didn't hand-code them, and we don't blindly trust them either — a build script rejects anything with eval, external fetches, or dynamic imports, a strict CSP contains whatever's left, and a human reviews every component before merge.
+
+    And the decision we're proudest of is everything we didn't build: no comment system, no tracking, no client-side router, no framework running the whole site. Each of those is maintenance we never do.
+
+    Full write-up, with a live component embedded in the prose:
 ---
 
 import BinPacker from '../site/src/components/react/BinPacker';

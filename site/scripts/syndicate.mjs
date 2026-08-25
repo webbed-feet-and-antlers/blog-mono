@@ -6,8 +6,9 @@
 // manual syndication package when no session exists.
 //
 // Native POSSE: per-platform copy + threads (reply-chained) + native image
-// attachment. The canonical URL lives in the last post of a thread (or a
-// LinkedIn comment) so posts feel native rather than "blurb + link".
+// attachment. The canonical URL lives in the last post of a thread so posts
+// feel native rather than "blurb + link"; the LinkedIn post instead shares
+// the confirmed LinkedIn Article's URL as its caption (see linkedin.mjs).
 // Assisted drafts stop short of publishing: a human reviews and clicks
 // Publish, then `task posse:confirm` records the final URL.
 //
@@ -193,13 +194,6 @@ async function syndicateBlog(blog, opts) {
       skipIf: () => opts.blog === undefined && syndication.buffer,
     },
     {
-      key: 'linkedin',
-      label: linkedin.name,
-      available: () => linkedin.available(),
-      run: () => linkedin.publish({ posts: social.linkedin.posts, canonicalUrl, slug: blog.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && syndication.linkedin,
-    },
-    {
       // The long-form LinkedIn Article (125k-char, UI-only — no API). Distinct
       // key from the short `linkedin` post so the two surfaces don't collide on
       // the syndication-idempotency field. With a saved linkedin session this
@@ -210,6 +204,23 @@ async function syndicateBlog(blog, opts) {
       available: () => linkedinArticle.available(),
       run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
       skipIf: () => opts.blog === undefined && (syndication.linkedinArticle || draftLinks.linkedinArticle),
+    },
+    {
+      // The short LinkedIn post is the CAPTION for the Article above: it only
+      // goes out once the Article is published and confirmed
+      // (syndication.linkedinArticle), and shares the Article's public URL
+      // instead of the canonical one.
+      key: 'linkedin',
+      label: linkedin.name,
+      available: () => linkedin.available(),
+      run: () => linkedin.publish({ posts: social.linkedin.posts, articleUrl: syndication.linkedinArticle, dryRun: opts.dryRun }),
+      skipIf: () => opts.blog === undefined && syndication.linkedin,
+      waiting: () =>
+        syndication.linkedinArticle
+          ? null
+          : draftLinks.linkedinArticle
+            ? 'article draft ready — publish it, then task posse:confirm'
+            : 'waiting on LinkedIn Article publish + task posse:confirm',
     },
     {
       key: 'medium',
@@ -246,6 +257,14 @@ async function syndicateBlog(blog, opts) {
     if (p.skipIf()) {
       const drafted = !syndication[p.key] && draftLinks[p.key];
       summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim(drafted ? '(draft ready — publish it, then task posse:confirm)' : '(already posted)')}`);
+      continue;
+    }
+    // Dependent platforms (e.g. the LinkedIn caption needs its Article
+    // published first): a non-null waiting reason skips with that message,
+    // in dry-run and live runs alike.
+    const waitingReason = p.waiting?.();
+    if (waitingReason) {
+      summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim(`(${waitingReason})`)}`);
       continue;
     }
     try {
