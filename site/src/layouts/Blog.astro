@@ -24,8 +24,13 @@ const updatedStr = updatedDate
 
 // Build the "Also published on" list from frontmatter syndication IDs.
 // POSSE: post on your own site (canonical), syndicate everywhere else.
+// API adapters store platform IDs (derived to URLs below); assisted-draft
+// platforms (Medium/Substack/LinkedIn Article/Indie Hackers) store the full
+// public URL via `task posse:confirm` — values starting with http win.
 const synd = syndication ?? {};
 const blueskyHandle = import.meta.env.PUBLIC_BLUESKY_HANDLE;
+const asUrl = (v: string | number, derive: (v: string) => string) =>
+  String(v).startsWith('http') ? String(v) : derive(String(v));
 type SyndLink = { label: string; href: string };
 const syndLinks: SyndLink[] = [
   synd.devto && { label: 'dev.to', href: `https://dev.to` },
@@ -38,7 +43,10 @@ const syndLinks: SyndLink[] = [
   synd.mastodon && { label: 'Mastodon', href: import.meta.env.PUBLIC_MASTODON_INSTANCE ?? '#' },
   synd.linkedin && { label: 'LinkedIn', href: 'https://www.linkedin.com' },
   synd.buffer && { label: 'X', href: 'https://x.com' },
-  synd.medium && { label: 'Medium', href: `https://medium.com/p/${synd.medium}` },
+  synd.medium && { label: 'Medium', href: asUrl(synd.medium, (v) => `https://medium.com/p/${v}`) },
+  synd.linkedinArticle && { label: 'LinkedIn Article', href: String(synd.linkedinArticle) },
+  synd.substack && { label: 'Substack', href: String(synd.substack) },
+  synd.indiehackers && { label: 'Indie Hackers', href: String(synd.indiehackers) },
 ].filter((l): l is SyndLink => l !== undefined && l !== null && l !== 0 && l !== '');
 ---
 
