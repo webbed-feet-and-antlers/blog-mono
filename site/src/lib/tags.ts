@@ -101,10 +101,10 @@ export interface TagTally {
   count: number;
 }
 
-/** Tally all tags across the essays collection, sorted by count desc then name. */
-export function allTags(essays: CollectionEntry<'essays'>[]): TagTally[] {
+/** Tally all tags across the blogs collection, sorted by count desc then name. */
+export function allTags(blogs: CollectionEntry<'blogs'>[]): TagTally[] {
   const counts = new Map<string, number>();
-  for (const e of essays) {
+  for (const e of blogs) {
     for (const t of e.data.tags ?? []) {
       counts.set(t, (counts.get(t) ?? 0) + 1);
     }

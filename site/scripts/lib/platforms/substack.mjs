@@ -39,7 +39,7 @@ export async function publish({ title, bodyMarkdown, bodyHtml, socialPost, canon
       `<https://${substackPub}.substack.com/publish/post>`,
       '',
       `Suggested teaser intro: ${socialPost || '(use the socialPost blurb)'}`,
-      'Then link: "Read the full essay → " followed by:',
+      'Then link: "Read the full blog → " followed by:',
       '',
       `<${canonicalUrl}>`,
       '',

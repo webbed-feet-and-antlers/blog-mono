@@ -1,13 +1,13 @@
-// Per-essay SVG "scenes" rendered behind the OG card content — abstract
+// Per-blog SVG "scenes" rendered behind the OG card content — abstract
 // geometric tech art that adds visual uniqueness without a flat solid gradient.
 //
 // Sourcing (in priority order):
-//   1. Per-essay override: public/scenes/<slug>.svg (committed bespoke scene).
+//   1. Per-blog override: public/scenes/<slug>.svg (committed bespoke scene).
 //   2. Tag library: TAG_SCENES maps a tag → a named scene in public/scenes/.
 //   3. None → undefined (the renderer falls back to its plain gradient).
 //
 // Scenes are authored with a {{ACCENT}} placeholder so the renderer can tint
-// them with the essay's accent color at compositing time (satori renders each
+// them with the blog's accent color at compositing time (satori renders each
 // <img> as a self-contained SVG, so CSS currentColor can't cross that boundary).
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -31,7 +31,7 @@ const TAG_SCENES: Record<string, string> = {
   indieweb: 'network',
   'machine-learning': 'vectors',
   'data-science': 'vectors',
-  // extended for essays in this repo
+  // extended for blogs in this repo
   astro: 'constellation',
   mdx: 'grid',
   web: 'grid',
@@ -40,9 +40,9 @@ const TAG_SCENES: Record<string, string> = {
 };
 
 /**
- * Resolve the scene name for an essay (override > tag library > none).
- * @param tags essay tags, in declared order
- * @param slug essay slug; if public/scenes/<slug>.svg exists it wins
+ * Resolve the scene name for a blog (override > tag library > none).
+ * @param tags blog tags, in declared order
+ * @param slug blog slug; if public/scenes/<slug>.svg exists it wins
  */
 export function sceneNameFor(tags: string[], slug?: string): string | undefined {
   if (slug && existsSync(join(SCENES_DIR, `${slug}.svg`))) return slug;

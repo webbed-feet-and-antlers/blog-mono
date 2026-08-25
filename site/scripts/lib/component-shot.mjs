@@ -77,7 +77,7 @@ function startStaticServer(root) {
 /**
  * @param {object} opts
  * @param {string} opts.componentName   - e.g. "BinPacker" (must match a route)
- * @param {string} opts.slug            - essay slug (namespacing the PNG)
+ * @param {string} opts.slug            - blog slug (namespacing the PNG)
  * @param {('dark'|'light')} [opts.theme='dark'] - which theme variant to capture
  * @param {string} [opts.distDir]       - override built-site dir
  * @param {string} [opts.outDir]        - override output dir

@@ -17,7 +17,7 @@ export function available() {
 /**
  * @param {object} opts
  * @param {string[]} opts.posts        - thread body; canonical URL in last post
- * @param {string} opts.slug           - essay slug, for the OG image URL
+ * @param {string} opts.slug           - blog slug, for the OG image URL
  * @param {boolean} opts.dryRun
  * @returns {Promise<{id: string, url: string}>} id is the Buffer update id
  */

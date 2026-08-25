@@ -1,9 +1,9 @@
-// OG-image color theming: maps an essay's tags to a gradient accent. Mirrors
+// OG-image color theming: maps a blog's tags to a gradient accent. Mirrors
 // the Tailwind color families in tags.ts but as raw hex (satori can't read
 // Tailwind classes). Single source of truth for OG coloring.
 //
 // accentFor(tags) scans ALL tags and returns the first mapped one's Accent, so
-// an essay whose primary tag isn't mapped (e.g. "astro") still gets color from
+// a blog whose primary tag isn't mapped (e.g. "astro") still gets color from
 // a later tag. Falls back to the neutral default.
 
 export interface Accent {
@@ -34,7 +34,7 @@ const ACCENTS: Record<string, Omit<Accent, 'tag'>> = {
   zinc: { from: '#334155', to: '#475569', accent: '#94a3b8', badgeBg: 'rgba(148,163,184,0.15)', badgeBorder: 'rgba(148,163,184,0.35)' },
 };
 
-// Tag → color family. Extended beyond tags.ts to cover the actual essay tags in
+// Tag → color family. Extended beyond tags.ts to cover the actual blog tags in
 // this repo (astro, mdx, web, github-pages) so every post gets a distinct color.
 // Keep this aligned with TAG_COLORS in tags.ts.
 const TAG_FAMILY: Record<string, string> = {
@@ -49,7 +49,7 @@ const TAG_FAMILY: Record<string, string> = {
   indieweb: 'fuchsia',
   'machine-learning': 'sky',
   'data-science': 'emerald',
-  // extended for essays in this repo
+  // extended for blogs in this repo
   astro: 'fuchsia',
   mdx: 'violet',
   web: 'sky',
@@ -59,7 +59,7 @@ const TAG_FAMILY: Record<string, string> = {
 
 /**
  * Resolve the first mapped tag's accent, else the neutral default.
- * @param tags essay tags, in declared order
+ * @param tags blog tags, in declared order
  */
 export function accentFor(tags: string[]): Accent {
   for (const t of tags) {

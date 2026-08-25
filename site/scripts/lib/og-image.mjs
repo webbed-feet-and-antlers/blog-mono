@@ -21,7 +21,7 @@ const OUT_DIR = join(__dirname, '..', '..', '.syndication-output');
  *
  * @param {object} opts
  * @param {string} opts.title
- * @param {string[]} [opts.tags]     - essay tags (drive the accent color + badge)
+ * @param {string[]} [opts.tags]     - blog tags (drive the accent color + badge)
  * @param {number} [opts.readingMinutes] - shown as a badge when provided
  * @param {string} [opts.subtitle]   - e.g. author/site name
  * @param {string} [opts.brand]      - brand text, top-left
@@ -33,7 +33,7 @@ export async function renderOgImage({ title, tags, readingMinutes, subtitle = 'T
   // The script's OG image is for Bluesky/Mastodon (a standalone post image), so
   // it gets color theming + badges + the scene background but does NOT embed a
   // component screenshot (those are inlined into the cross-posted body separately).
-  // `slug` both names the file and selects a per-essay scene override.
+  // `slug` both names the file and selects a per-blog scene override.
   const bytes = await renderOgImageBytes({ title, tags, readingMinutes, subtitle, brand, slug });
   if (!bytes) return null;
 

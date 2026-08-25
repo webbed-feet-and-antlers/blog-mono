@@ -1,9 +1,9 @@
 /**
- * TEMPLATE for an interactive essay component (React island).
+ * TEMPLATE for an interactive blog component (React island).
  *
  * Copy this file to src/components/react/<Name>.tsx and fill in the logic.
  *
- * Hard rules (see skills/interactive-essay-component/references/component-spec.md):
+ * Hard rules (see skills/interactive-blog-component/references/component-spec.md):
  *  - Filename = component tag = harness KNOWN entry. Default-export the component.
  *  - Dependency-free: import only React hooks. No recharts/d3. Hand-roll SVG/flexbox.
  *  - Root div MUST start with `not-prose my-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4 dark:border-zinc-200 dark:bg-zinc-50`.

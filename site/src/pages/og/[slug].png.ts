@@ -1,11 +1,11 @@
-// Prerendered OG image per essay: builds to /og/<slug>.png at build time
+// Prerendered OG image per blog: builds to /og/<slug>.png at build time
 // (static output, no SSR adapter), so GitHub Pages serves it publicly for social
 // link previews, Buffer/X/LinkedIn image fetches, and the on-page hero banner.
 //
-// The card is themed by the essay's primary tag (color accent + badge), carries
+// The card is themed by the blog's primary tag (color accent + badge), carries
 // the inkpen brand mark + a reading-time badge, and — when a committed component
-// screenshot exists for the essay — embeds that real visual as a preview panel
-// (Vercel/GitHub-style). Prose essays fall back to the centered title card.
+// screenshot exists for the blog — embeds that real visual as a preview panel
+// (Vercel/GitHub-style). Prose blogs fall back to the centered title card.
 //
 // Skips drafts. Mirrors the getStaticPaths pattern in pages/blog/[...slug].astro.
 import type { APIRoute } from 'astro';
@@ -22,22 +22,22 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SSHOT_DIR = join(__dirname, '..', '..', '..', 'public', 'sshot');
 
 /**
- * Find a committed dark-theme component screenshot for the essay, if one exists.
+ * Find a committed dark-theme component screenshot for the blog, if one exists.
  * Files are named <component>-<slug>-dark.png. Returns the bytes, or undefined.
  */
 async function loadPreviewImage(slug: string): Promise<Uint8Array | undefined> {
   if (!existsSync(SSHOT_DIR)) return undefined;
   const { readdir } = await import('node:fs/promises');
   const files = await readdir(SSHOT_DIR);
-  // First dark-variant match wins (deterministic enough; essays rarely have 2+).
+  // First dark-variant match wins (deterministic enough; blogs rarely have 2+).
   const match = files.find((f) => f.endsWith(`-${slug}-dark.png`));
   if (!match) return undefined;
   return readFile(join(SSHOT_DIR, match));
 }
 
 export async function getStaticPaths() {
-  const essays = await getCollection('essays', ({ data }) => data.draft !== true);
-  return essays.map((entry) => {
+  const blogs = await getCollection('blogs', ({ data }) => data.draft !== true);
+  return blogs.map((entry) => {
     const slug = entry.id.replace(/\.(md|mdx)$/, '');
     return {
       params: { slug },

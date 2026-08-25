@@ -16,7 +16,7 @@ async function uploadMedia(imagePath) {
   const form = new FormData();
   // Use a Blob so fetch sets the multipart boundary correctly.
   form.append('file', new Blob([bytes], { type: 'image/png' }), 'og.png');
-  form.append('description', 'Essay preview image');
+  form.append('description', 'Blog preview image');
   const res = await fetch(`${instance()}/api/v2/media`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.MASTODON_TOKEN}` },

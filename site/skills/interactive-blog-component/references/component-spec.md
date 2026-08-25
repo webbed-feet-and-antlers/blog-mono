@@ -1,6 +1,6 @@
-# Interactive Essay Component — Full Spec
+# Interactive Blog Component — Full Spec
 
-Source of truth: the components at `src/components/react/` (`BinPacker.tsx`, `LearningRateScheduler.tsx`, `RenderingStrategies.tsx`; `Chart.tsx` is a legacy recharts wrapper, not a template), the harness `src/pages/sshot/[component]/[theme].astro`, `src/styles/global.css`, and `src/layouts/Essay.astro`.
+Source of truth: the components at `src/components/react/` (`BinPacker.tsx`, `LearningRateScheduler.tsx`, `RenderingStrategies.tsx`; `Chart.tsx` is a legacy recharts wrapper, not a template), the harness `src/pages/sshot/[component]/[theme].astro`, `src/styles/global.css`, and `src/layouts/Blog.astro`.
 
 ## Table of contents
 1. File location & naming
@@ -61,7 +61,7 @@ Defined in `global.css`:
 
 ## 3. The `not-prose` wrapper & card chrome
 
-Components render inside `.prose` (see `Essay.astro`: the `<slot/>` is wrapped in `prose prose-invert prose-zinc ...`). The Typography plugin rewrites descendant typography, so without opting out your buttons/inputs/SVGs inherit prose styles (oversized fonts, weird spacing, the backtick pseudo-elements on `<code>`).
+Components render inside `.prose` (see `Blog.astro`: the `<slot/>` is wrapped in `prose prose-invert prose-zinc ...`). The Typography plugin rewrites descendant typography, so without opting out your buttons/inputs/SVGs inherit prose styles (oversized fonts, weird spacing, the backtick pseudo-elements on `<code>`).
 
 **Standard root wrapper (identical in all hand-rolled components):**
 ```tsx
@@ -89,7 +89,7 @@ Visuals are hand-rolled:
 - **Inline SVG** (`<svg viewBox>` + `<polyline>`/`<line>`/`<text>`) — LearningRateScheduler
 - **Flexbox bars** (`flex h-7 w-full`, each segment a `<div>`/`<button>` with `width: '%'`) — BinPacker, RenderingStrategies
 
-**Why:** island JS size is the architecture's selling point (essays sell "most readers get zero JavaScript"). recharts/d3 would bloat the per-essay bundle. `Chart.tsx` is a legacy recharts wrapper, **not a template** — new components follow the three hand-rolled ones.
+**Why:** island JS size is the architecture's selling point (blogs sell "most readers get zero JavaScript"). recharts/d3 would bloat the per-blog bundle. `Chart.tsx` is a legacy recharts wrapper, **not a template** — new components follow the three hand-rolled ones.
 
 ---
 
@@ -116,7 +116,7 @@ Visuals are hand-rolled:
 
 ## 6. `client:visible` embedding in MDX
 
-Essays live outside the app at `essays/*.md(x)`. Imports use a relative path up and into the app:
+Blogs live outside the app at `blogs/*.md(x)`. Imports use a relative path up and into the app:
 ```mdx
 import BinPacker from '../site/src/components/react/BinPacker';
 import RenderingStrategies from '../site/src/components/react/RenderingStrategies';
@@ -139,7 +139,7 @@ File: `src/pages/sshot/[component]/[theme].astro`. To make a component screensho
 
 **Why explicit branches are required:** Astro's compiler needs a *static* import reference for every `client:only` island — it cannot bundle a variable component reference.
 
-**What IS auto-derived (do NOT touch):** `getStaticPaths` walks `essays/**/*.{md,mdx}`, regex-finds component tags actually used, and emits a page per `component × theme` — but only for names in `KNOWN`. A component not in `KNOWN` just won't get screenshotted (it won't break the build).
+**What IS auto-derived (do NOT touch):** `getStaticPaths` walks `blogs/**/*.{md,mdx}`, regex-finds component tags actually used, and emits a page per `component × theme` — but only for names in `KNOWN`. A component not in `KNOWN` just won't get screenshotted (it won't break the build).
 
 The four edits when adding `NewThing`:
 
@@ -208,7 +208,7 @@ const PALETTE = ['#1e5cf5', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0891b2
 
 Fonts (`global.css` `@theme`): `--font-sans: "Inter"`, `--font-serif: "Fraunces"`, `--font-mono: "JetBrains Mono"`.
 
-**Mono is the language for labels and stats** (the "instrument panel" look, visually separating the island from serif essay prose):
+**Mono is the language for labels and stats** (the "instrument panel" look, visually separating the island from serif blog prose):
 - Subtitle / parameter readout: `font-mono text-xs text-zinc-400 dark:text-zinc-500`
 - Per-row metadata: `font-mono text-[11px]` or `text-[10px]`
 - Stat values: `font-mono text-lg font-semibold`

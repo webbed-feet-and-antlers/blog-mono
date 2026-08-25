@@ -16,8 +16,8 @@ beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'pkg-')); });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 test('packagePath: returns a path ending in syndicate-<slug>.md', () => {
-  const p = packagePath('my-essay');
-  assert.ok(p.endsWith('syndicate-my-essay.md'));
+  const p = packagePath('my-blog');
+  assert.ok(p.endsWith('syndicate-my-blog.md'));
   assert.ok(p.includes('.syndication-output'));
 });
 
@@ -98,19 +98,19 @@ test('seedPackage: omits the Tags line when tags empty', async () => {
 // --- writeHtmlPackage: the paste-ready HTML companion ---
 
 test('packageHtmlPath: returns a path ending in syndicate-<slug>.html', () => {
-  const p = packageHtmlPath('my-essay');
-  assert.ok(p.endsWith('syndicate-my-essay.html'));
+  const p = packageHtmlPath('my-blog');
+  assert.ok(p.endsWith('syndicate-my-blog.html'));
   assert.ok(p.includes('.syndication-output'));
 });
 
 test('writeHtmlPackage: writes a self-contained HTML doc with the body', async () => {
   const slug = 'pkg-html';
-  await writeHtmlPackage({ slug, title: 'My Essay', bodyHtml: '<p>Hello <strong>world</strong></p>' });
+  await writeHtmlPackage({ slug, title: 'My Blog', bodyHtml: '<p>Hello <strong>world</strong></p>' });
   const file = packageHtmlPath(slug);
   assert.ok(existsSync(file), 'HTML package file created');
   const html = readFileSync(file, 'utf8');
   assert.ok(html.includes('<!doctype html>'), 'has doctype');
-  assert.ok(html.includes('<title>My Essay</title>'), 'title in <head>');
+  assert.ok(html.includes('<title>My Blog</title>'), 'title in <head>');
   assert.ok(html.includes('<article>'), 'body wrapped in <article>');
   assert.ok(html.includes('<p>Hello <strong>world</strong></p>'), 'body HTML preserved');
 });

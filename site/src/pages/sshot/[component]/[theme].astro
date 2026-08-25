@@ -4,9 +4,9 @@
 // Not linked from the site; reached directly at /sshot/<Component>/<theme>.
 //
 // Two things are AUTO-DERIVED here:
-//   1. getStaticPaths scans the repo-root /essays, finds every capitalized
+//   1. getStaticPaths scans the repo-root /blogs, finds every capitalized
 //      component tag actually used, and renders one page per component × theme.
-//      So adding a component to an essay is enough to get it screenshotted —
+//      So adding a component to a blog is enough to get it screenshotted —
 //      no getStaticPaths edit.
 //   2. The component LIST for validation is derived from the imports below.
 //
@@ -40,8 +40,8 @@ export async function getStaticPaths() {
   // Must match the imports + render branches below.
   const KNOWN = new Set(['BinPacker', 'Chart', 'LearningRateScheduler', 'RenderingStrategies']);
   const __dirname = dirname(fileURLToPath(import.meta.url));
-  // src/pages/sshot/[component] -> site/ -> repo root -> essays/
-  const essaysDir = join(__dirname, '..', '..', '..', '..', '..', 'essays');
+  // src/pages/sshot/[component] -> site/ -> repo root -> blogs/
+  const blogsDir = join(__dirname, '..', '..', '..', '..', '..', 'blogs');
   const themes = ['dark', 'light'];
 
   // Find capitalized component tags in a markdown/mdx body.
@@ -63,11 +63,11 @@ export async function getStaticPaths() {
     return out;
   };
 
-  // Union of component names used across all essays, filtered to those this
+  // Union of component names used across all blogs, filtered to those this
   // harness can render (so a typo'd tag or a not-yet-imported component doesn't
   // 404 the build — it just won't get a screenshot).
   const found = new Set<string>();
-  const files = await walk(essaysDir);
+  const files = await walk(blogsDir);
   for (const file of files) {
     if (!/\.(md|mdx)$/.test(file)) continue;
     const raw = await readFile(file, 'utf8');

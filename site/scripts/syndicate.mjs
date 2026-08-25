@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// POSSE syndicator: cross-posts each essay to dev.to, Bluesky, Mastodon,
+// POSSE syndicator: cross-posts each blog to dev.to, Bluesky, Mastodon,
 // X (via Buffer), LinkedIn (via Buffer), Medium, and emits Substack + Indie
 // Hackers teasers.
 //
@@ -10,11 +10,11 @@
 // Usage:
 //   npm run syndicate -- --dry-run=true                 # preview all unpublished
 //   npm run syndicate -- --dry-run=false                # post all unpublished
-//   npm run syndicate -- --dry-run=true --essay=embeddings
+//   npm run syndicate -- --dry-run=true --blog=embeddings
 //
 // Credentials are auto-loaded from site/.env via the `--env-file-if-exits=.env`
 // flag in the npm script (no `source .env` needed). CI injects secrets directly.
-import { loadEssays, loadEssay } from './lib/essays.mjs';
+import { loadBlogs, loadBlog } from './lib/blogs.mjs';
 import { writeSyndicationIds } from './lib/frontmatter.mjs';
 import { mdxToMarkdown, markdownToHtml } from './lib/markdown.mjs';
 import { normalizeSocial, teaserBlurb } from './lib/social.mjs';
@@ -32,19 +32,19 @@ import * as indiehackers from './lib/platforms/indiehackers.mjs';
 
 // ── args ──────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const args = { dryRun: true, essay: undefined };
+  const args = { dryRun: true, blog: undefined };
   for (const a of argv.slice(2)) {
     const m = a.match(/^--([^=]+)=(.*)$/);
     if (!m) continue;
     const [, k, v] = m;
     if (k === 'dry-run' || k === 'dry_run') args.dryRun = v !== 'false';
-    if (k === 'essay') args.essay = v || undefined;
+    if (k === 'blog') args.blog = v || undefined;
   }
   return args;
 }
 
 const SITE_URL = (process.env.SITE_URL || '').replace(/\/$/, '');
-const essayUrl = (slug) => `${SITE_URL}/blog/${slug}/`;
+const blogUrl = (slug) => `${SITE_URL}/blog/${slug}/`;
 
 const c = {
   dim: (s) => `\x1b[2m${s}\x1b[0m`,
@@ -54,23 +54,23 @@ const c = {
 };
 const log = (...a) => console.log(...a);
 
-// ── which essays to syndicate ─────────────────────────────────────────────
-async function selectEssays(opts) {
-  if (opts.essay) {
-    const e = await loadEssay(opts.essay);
+// ── which blogs to syndicate ─────────────────────────────────────────────
+async function selectBlogs(opts) {
+  if (opts.blog) {
+    const e = await loadBlog(opts.blog);
     if (!e) {
-      console.error(c.red(`Essay not found: ${opts.essay}`));
+      console.error(c.red(`Blog not found: ${opts.blog}`));
       process.exit(1);
     }
     return [e];
   }
-  const all = await loadEssays();
+  const all = await loadBlogs();
   return all
     .filter((e) => e.data.draft !== true)
     .sort((a, b) => new Date(a.data.pubDate) - new Date(b.data.pubDate));
 }
 
-// ── screenshot each interactive component in an essay (dark + light pair) ──
+// ── screenshot each interactive component in a blog (dark + light pair) ──
 // Returns { ComponentName: { dark, light } } (absolute image URLs) for inlining
 // into cross-post Markdown as a <picture>. Best-effort: if a variant fails we
 // fall back to whichever we have; if both fail the image is skipped entirely
@@ -78,8 +78,8 @@ async function selectEssays(opts) {
 // silently if Playwright isn't installed or the harness wasn't built.
 const SHOT_THEMES = ['dark', 'light'];
 
-async function screenshotComponentsForEssay(essay, siteUrl, summary) {
-  const names = componentsInBody(essay.body);
+async function screenshotComponentsForBlog(blog, siteUrl, summary) {
+  const names = componentsInBody(blog.body);
   if (names.length === 0) return {};
 
   const images = {};
@@ -88,7 +88,7 @@ async function screenshotComponentsForEssay(essay, siteUrl, summary) {
     let failures = 0;
     for (const theme of SHOT_THEMES) {
       try {
-        const result = await screenshotComponent({ componentName: name, slug: essay.slug, theme });
+        const result = await screenshotComponent({ componentName: name, slug: blog.slug, theme });
         if (result) {
           variants[theme] = `${siteUrl}${result.url}`;
           summary.push(`  ${c.dim('shot')}  ${name.padEnd(14)} ${theme.padEnd(5)} → ${result.url}`);
@@ -100,7 +100,7 @@ async function screenshotComponentsForEssay(essay, siteUrl, summary) {
       }
     }
     // If every theme returned null, this component has no screenshot harness.
-    // That's expected when an essay's body mentions a tag in prose (e.g. an
+    // That's expected when a blog's body mentions a tag in prose (e.g. an
     // inline-code example like `<Component />`) that `componentsInBody` matched
     // but which isn't a real island — so we stay quiet rather than warn. The tag
     // is still stripped in the cross-post, and the trailing interactive note covers it.
@@ -117,10 +117,10 @@ async function screenshotComponentsForEssay(essay, siteUrl, summary) {
   return images;
 }
 
-// ── per-essay platform run ────────────────────────────────────────────────
-async function syndicateEssay(essay, opts) {
-  const canonicalUrl = essayUrl(essay.slug);
-  const { data } = essay;
+// ── per-blog platform run ────────────────────────────────────────────────
+async function syndicateBlog(blog, opts) {
+  const canonicalUrl = blogUrl(blog.slug);
+  const { data } = blog;
   const syndication = data.syndication ?? {};
   const newIds = {};
   const summary = [];
@@ -128,11 +128,11 @@ async function syndicateEssay(essay, opts) {
   // Normalize per-platform social copy into { posts: string[], image: boolean }.
   const social = normalizeSocial(data, canonicalUrl);
 
-  // Pre-pass: screenshot each interactive component used in the essay so the
+  // Pre-pass: screenshot each interactive component used in the blog so the
   // images can be inlined into the cross-posted Markdown (dev.to/Medium can't
   // run React). Falls back gracefully if Playwright/harness isn't available.
-  const componentImages = await screenshotComponentsForEssay(essay, SITE_URL, summary);
-  const bodyMarkdown = await mdxToMarkdown(essay.body, canonicalUrl, componentImages);
+  const componentImages = await screenshotComponentsForBlog(blog, SITE_URL, summary);
+  const bodyMarkdown = await mdxToMarkdown(blog.body, canonicalUrl, componentImages);
   // Paste-ready HTML companion for Medium/Substack rich-text editors. Derived
   // from the sanitized markdown, so JSX stripping / screenshot inlining is reused.
   const bodyHtml = await markdownToHtml(bodyMarkdown);
@@ -149,7 +149,7 @@ async function syndicateEssay(essay, opts) {
       readingMinutes,
       subtitle: 'The Inkpens',
       brand: 'theinkpens',
-      slug: essay.slug,
+      slug: blog.slug,
     }).catch((err) => {
       summary.push(`  ${c.yellow('warn')} og-image render failed: ${err.message}`);
       return null;
@@ -163,35 +163,35 @@ async function syndicateEssay(essay, opts) {
       label: devto.name,
       available: () => devto.available(),
       run: () => devto.publish({ title: data.title, bodyMarkdown, canonicalUrl, tags: data.tags ?? [], description: data.description, existingId: syndication.devto, dryRun: opts.dryRun }),
-      skipIf: () => opts.essay === undefined && syndication.devto,
+      skipIf: () => opts.blog === undefined && syndication.devto,
     },
     {
       key: 'bluesky',
       label: bluesky.name,
       available: () => bluesky.available(),
       run: () => bluesky.publish({ posts: social.bluesky.posts, imagePath, dryRun: opts.dryRun }),
-      skipIf: () => opts.essay === undefined && syndication.bluesky,
+      skipIf: () => opts.blog === undefined && syndication.bluesky,
     },
     {
       key: 'mastodon',
       label: mastodon.name,
       available: () => mastodon.available(),
       run: () => mastodon.publish({ posts: social.mastodon.posts, imagePath, dryRun: opts.dryRun }),
-      skipIf: () => opts.essay === undefined && syndication.mastodon,
+      skipIf: () => opts.blog === undefined && syndication.mastodon,
     },
     {
       key: 'buffer',
       label: buffer.name,
       available: () => buffer.available(),
-      run: () => buffer.publish({ posts: social.twitter.posts, slug: essay.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.essay === undefined && syndication.buffer,
+      run: () => buffer.publish({ posts: social.twitter.posts, slug: blog.slug, dryRun: opts.dryRun }),
+      skipIf: () => opts.blog === undefined && syndication.buffer,
     },
     {
       key: 'linkedin',
       label: linkedin.name,
       available: () => linkedin.available(),
-      run: () => linkedin.publish({ posts: social.linkedin.posts, canonicalUrl, slug: essay.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.essay === undefined && syndication.linkedin,
+      run: () => linkedin.publish({ posts: social.linkedin.posts, canonicalUrl, slug: blog.slug, dryRun: opts.dryRun }),
+      skipIf: () => opts.blog === undefined && syndication.linkedin,
     },
     {
       // The long-form LinkedIn Article (125k-char, UI-only — no API). Distinct
@@ -201,29 +201,29 @@ async function syndicateEssay(essay, opts) {
       key: 'linkedinArticle',
       label: linkedinArticle.name,
       available: () => linkedinArticle.available(),
-      run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: essay.slug }),
-      skipIf: () => opts.essay === undefined && syndication.linkedinArticle,
+      run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug }),
+      skipIf: () => opts.blog === undefined && syndication.linkedinArticle,
     },
     {
       key: 'medium',
       label: medium.name,
       available: () => medium.available(),
-      run: () => medium.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: essay.slug }),
-      skipIf: () => opts.essay === undefined && syndication.medium,
+      run: () => medium.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug }),
+      skipIf: () => opts.blog === undefined && syndication.medium,
     },
     {
       key: 'substack',
       label: substack.name,
       available: () => substack.available(),
-      run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: essay.slug }),
-      skipIf: () => opts.essay === undefined && syndication.substack,
+      run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: blog.slug }),
+      skipIf: () => opts.blog === undefined && syndication.substack,
     },
     {
       key: 'indiehackers',
       label: indiehackers.name,
       available: () => indiehackers.available(),
-      run: () => indiehackers.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, tags: data.tags ?? [], slug: essay.slug }),
-      skipIf: () => opts.essay === undefined && syndication.indiehackers,
+      run: () => indiehackers.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, tags: data.tags ?? [], slug: blog.slug }),
+      skipIf: () => opts.blog === undefined && syndication.indiehackers,
     },
   ];
 
@@ -257,7 +257,7 @@ async function syndicateEssay(essay, opts) {
 
   let wroteBack = false;
   if (!opts.dryRun && Object.keys(newIds).length > 0) {
-    wroteBack = await writeSyndicationIds(essay.path, newIds);
+    wroteBack = await writeSyndicationIds(blog.path, newIds);
   }
   return { summary, newIds, wroteBack };
 }
@@ -272,17 +272,17 @@ async function main() {
   }
 
   log(`\n${opts.dryRun ? c.yellow('DRY RUN') : c.green('LIVE RUN')} — site: ${SITE_URL}`);
-  log(opts.essay ? `essay: ${opts.essay} (forced)\n` : `essays: all unpublished\n`);
+  log(opts.blog ? `blog: ${opts.blog} (forced)\n` : `blogs: all unpublished\n`);
 
-  const essays = await selectEssays(opts);
+  const blogs = await selectBlogs(opts);
   let totalPosted = 0;
   let totalErrors = 0;
   let wroteAny = false;
 
-  for (const essay of essays) {
-    log(`━━━ ${essay.slug} ━━━`);
-    log(`    ${essay.data.title}`);
-    const { summary, newIds, wroteBack } = await syndicateEssay(essay, opts);
+  for (const blog of blogs) {
+    log(`━━━ ${blog.slug} ━━━`);
+    log(`    ${blog.data.title}`);
+    const { summary, newIds, wroteBack } = await syndicateBlog(blog, opts);
     for (const line of summary) log(line);
     totalPosted += Object.keys(newIds).length;
     totalErrors += summary.filter((s) => s.includes(c.red('✗'))).length;

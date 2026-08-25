@@ -151,7 +151,7 @@ test('markdownToHtml: leaves math as plain text (no KaTeX spans)', async () => {
 });
 
 test('markdownToHtml: blockquote survives (interactive note round-trips)', async () => {
-  const md = '> 🔁 *Parts of this essay are interactive on the original post — see them live: https://x/*';
+  const md = '> 🔁 *Parts of this blog are interactive on the original post — see them live: https://x/*';
   const html = await markdownToHtml(md);
   assert.ok(html.includes('<blockquote>'), 'blockquote rendered');
   assert.ok(html.includes('interactive on the original post'), 'note text preserved');

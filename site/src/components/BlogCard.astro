@@ -5,7 +5,7 @@ import { tagStyle } from '../lib/tags';
 import HeroImage from './HeroImage.astro';
 
 interface Props {
-  entry: CollectionEntry<'essays'>;
+  entry: CollectionEntry<'blogs'>;
 }
 const { entry } = Astro.props;
 const { title, description, pubDate, tags } = entry.data;

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 
 /**
  * A dependency-free learning-rate scheduler visualizer.
- * Plots warmup + decay schedules as an inline SVG so the essay ships no
+ * Plots warmup + decay schedules as an inline SVG so the blog ships no
  * charting library — the whole island is React state + a polyline.
  */
 

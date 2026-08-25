@@ -1,4 +1,4 @@
-// Converts raw MDX essay body into platform-safe Markdown for long-form
+// Converts raw MDX blog body into platform-safe Markdown for long-form
 // syndication targets (dev.to, Medium). Short-form targets (X/Bluesky/
 // Mastodon/Substack) don't need the body — they use the `social` blurb.
 //
@@ -21,7 +21,7 @@ import remarkGfm from 'remark-gfm';
 import { visit } from 'unist-util-visit';
 
 const INTERACTIVE_NOTE = (canonicalUrl) =>
-  `\n\n> 🔁 *Parts of this essay are interactive on the original post — see them live: ${canonicalUrl}*`;
+  `\n\n> 🔁 *Parts of this blog are interactive on the original post — see them live: ${canonicalUrl}*`;
 
 // Per-image "try it live" caption — emitted under each static screenshot so a
 // reader on a platform that can't run React knows the demo is interactive on the
@@ -119,7 +119,7 @@ export async function mdxToMarkdown(mdxBody, canonicalUrl, componentImages = {})
  * output of mdxToMarkdown directly — JSX stripping / screenshot inlining /
  * import removal all happen upstream, so this is a pure markdown→HTML step.
  *
- * GFM tables are enabled (essays use pipe tables). Math is deliberately left
+ * GFM tables are enabled (blogs use pipe tables). Math is deliberately left
  * as plain `$…$` text rather than run through rehype-katex — Medium/Substack
  * don't load KaTeX's CSS, so KaTeX HTML would render as broken markup.
  *

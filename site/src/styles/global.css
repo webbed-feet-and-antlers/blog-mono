@@ -34,7 +34,7 @@
 }
 
 /*
- * Inline code styling inside prose (essay bodies). The Typography plugin's
+ * Inline code styling inside prose (blog bodies). The Typography plugin's
  * defaults render inline <code> as bold text wrapped in literal backtick
  * characters via ::before/::after — no mono font, no background. Override to
  * the modern look: mono font, subtle tinted background, rounded, tight padding.

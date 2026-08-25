@@ -9,7 +9,7 @@ social:
     - '1/ How we built the blog: static by default, interactive on purpose. Astro + MDX, deployed to GitHub Pages.'
     - "2/ Most pages ship zero JavaScript. Interactivity is an island — a React component that hydrates only when you scroll it into view, and nothing else. You're looking at one right now."
     - "3/ The clever bit is the theming: dark-first by default via a one-line Tailwind custom variant. Bare classes are dark; 'dark:' prefixes actually style *light* mode. Inverts the usual convention."
-    - "4/ Content lives at the repo root (outside the Astro project) and is pulled in by a glob loader. Type-safe frontmatter via Zod. Essays and app code don't tangle."
+    - "4/ Content lives at the repo root (outside the Astro project) and is pulled in by a glob loader. Type-safe frontmatter via Zod. Blogs and app code don't tangle."
     - '5/ What we left out on purpose: no comments, no analytics, no client-side router, no framework driving the whole site. Each absence is a choice.'
     - 'Full writeup, with a live React component embedded in the prose:'
   bluesky:
@@ -17,7 +17,7 @@ social:
     - "Most readers get zero JavaScript. Interactivity lives in React islands that hydrate only when scrolled into view — there's one sitting in the prose of this very post. The theming trick is nice too: dark-first via a one-line Tailwind custom variant. ↩"
   mastodon: 'How we built the blog: Astro + MDX + GitHub Pages. Static by default, interactive on purpose — React islands hydrate only when scrolled into view, so most readers get zero JavaScript. Dark-first theming via a one-line Tailwind custom variant, content co-located outside the app, type-safe frontmatter, and a deliberate list of things we left out.'
   linkedin: |
-    We recently rebuilt our technical blog and the guiding principle was simple: static by default, interactive on purpose. The stack is Astro 5 (static output) with MDX for essays, React 19 for the rare interactive component, Tailwind 4 for styling, and GitHub Pages for hosting. The interesting part is the restraint — almost every page ships zero JavaScript. Interactivity is an island that hydrates only when scrolled into view, and there's nothing else. This post walks through the stack, how MDX gives us live components inside prose, a one-line Tailwind trick that makes the whole site dark-first by default, and — the part we're proudest of — a list of what we deliberately chose NOT to build.
+    We recently rebuilt our technical blog and the guiding principle was simple: static by default, interactive on purpose. The stack is Astro 5 (static output) with MDX for blogs, React 19 for the rare interactive component, Tailwind 4 for styling, and GitHub Pages for hosting. The interesting part is the restraint — almost every page ships zero JavaScript. Interactivity is an island that hydrates only when scrolled into view, and there's nothing else. This post walks through the stack, how MDX gives us live components inside prose, a one-line Tailwind trick that makes the whole site dark-first by default, and — the part we're proudest of — a list of what we deliberately chose NOT to build.
 ---
 
 import BinPacker from '../site/src/components/react/BinPacker';
@@ -27,7 +27,7 @@ Both Becky and I had the same issue: we have many different projects that are al
 
 Naturally, the common choice for this is to host it on [GitHub Pages](https://docs.github.com/en/pages). The advantage obviously was that GitHub handles the hassle of hosting for free! As our issue was various messy in progress projects, having a single mono repo for both this site and those projects seemed an obvious choice.
 
-We were inspired by [Josh Comeau’s fantastic blog](https://www.joshwcomeau.com/) and how he utilises interactive elements in the page to explain concepts. Another inspiration was [Cory Doctorow’s adoption of POSSE (post own site, syndicate everywhere)](https://pluralistic.net/2021/10/10/dead-letters/#more-6162), and we liked the idea of both allowing people to view our content wherever they please, with the reassurance we have a platform we actually control (we have more about this in another essay soon 😄)
+We were inspired by [Josh Comeau’s fantastic blog](https://www.joshwcomeau.com/) and how he utilises interactive elements in the page to explain concepts. Another inspiration was [Cory Doctorow’s adoption of POSSE (post own site, syndicate everywhere)](https://pluralistic.net/2021/10/10/dead-letters/#more-6162), and we liked the idea of both allowing people to view our content wherever they please, with the reassurance we have a platform we actually control (we have more about this in another blog soon 😄)
 
 So the next question was how? Specifically, what tech stack were we going to use?
 We decided to use Astro for it for a couple of reasons:
@@ -66,11 +66,11 @@ What we love about Josh Comeau's blog are the interactive elements in the page t
 Islands in Astro are what make this interaction possible, and they support various JS frameworks; we chose React. By giving the component `client:visible` it becomes an **island**. However, there is an issue here - if we download all the code for the interactive elements, that will slow initial page loads, and we know how important that is! Again, Astro has an answer. The code for our islands is
 **fetched and hydrated only when the component scrolls into the viewport**. This means it’s lazily loaded, and this keeps initial page loads as fast as static. When an interactive element comes into view, we download the code and then update (hydrate) the webpage with the UI of the interactive island component. A reader who never reaches it downloads none of the interactive element code, as most of the page is still plain HTML.
 
-This is another example of an actual component (ignore the bin-packing domain as it's a demo from one of our future essays!) The point is that **a real React component with state, event handlers, and recomputation.**
+This is another example of an actual component (ignore the bin-packing domain as it's a demo from one of our future blogs!) The point is that **a real React component with state, event handlers, and recomputation.**
 
 <BinPacker client:visible budget={8192} />
 
-As it’s just a React component, it is instantiated with `<BinPacker client:visible budget={8192} />` in the MDX essay source. It has `useState`, a `useMemo` recomputing the packing on every change, click handlers that add and remove documents, and live efficiency stats. It runs in the browser and doesn’t exist on the server-rendered page until you scroll to it.
+As it’s just a React component, it is instantiated with `<BinPacker client:visible budget={8192} />` in the MDX blog source. It has `useState`, a `useMemo` recomputing the packing on every change, click handlers that add and remove documents, and live efficiency stats. It runs in the browser and doesn’t exist on the server-rendered page until you scroll to it.
 
 ### Astro `<script>` for the theme toggle
 
@@ -93,7 +93,7 @@ For simple ‘normal’ web interactivity like hover states, focus, transitions,
 
 ## Why MDX, not just Markdown
 
-We store our essays in a separate folder and not in the same source directory as the website code. This allows for the essays to be portable and less coupled to our blog specifically. We chose to store them in MDX instead of the obvious choice of markdown.
+We store our blogs in a separate folder and not in the same source directory as the website code. This allows for the blogs to be portable and less coupled to our blog specifically. We chose to store them in MDX instead of the obvious choice of markdown.
 
 [MDX](https://mdxjs.com/) is an extension of markdown that allows for plugins/extensions. We utilise a pipeline of [remark](https://remark.js.org/)/[rehype](https://github.com/rehypejs/rehype) plugins that the build runs over it to allow for greater functionality than basic markdown offers.
 
@@ -104,7 +104,7 @@ Everything below is rendered by the same build that produced this paragraph.
 This sentence contains a value computed in the MDX module scope:
 one plus one is {1 + 1} (in the source it looks like `one plus one is {1 + 1}`, and this page was last updated {new Date().toLocaleDateString('en-US', { dateStyle: 'long' })} (`{new Date().toLocaleDateString('en-US', { dateStyle: 'long' })}`) . These aren’t static strings; they’re JavaScript expressions that are evaluated at build time.
 
-**Maths via [KaTeX](https://katex.org/)** (`remark-math` + `rehype-katex`). Inline math like $E = mc^2$ renders mid-sentence, and block math gets its own centred display. For example, the attention-cost equation from an essay we are working on appears like this:
+**Maths via [KaTeX](https://katex.org/)** (`remark-math` + `rehype-katex`). Inline math like $E = mc^2$ renders mid-sentence, and block math gets its own centred display. For example, the attention-cost equation from a blog we are working on appears like this:
 
 $$
 \text{cost} = \sum_i L_i^2 \;\neq\; B \cdot L_{\max}^2
@@ -150,7 +150,7 @@ As creating these components is a repeated task and they must follow some guidel
 ### Codifying the rules
 
 Rather than having to prompt the agent to add the same parts to every component, we put our specific design and conventions into the skill.
-This includes rules on being dark mode first, adding a `not-prose` wrapper to prevent our text styling from clashing with the components' styles, and no new third-party dependencies. We also added instructions to make the components accessible and compatible for screenshotting (this will be important in a future essay) to the `SKILL.md` file, and included a starter template the agent can build new components from.
+This includes rules on being dark mode first, adding a `not-prose` wrapper to prevent our text styling from clashing with the components' styles, and no new third-party dependencies. We also added instructions to make the components accessible and compatible for screenshotting (this will be important in a future blog) to the `SKILL.md` file, and included a starter template the agent can build new components from.
 
 In order to enforce consistent quality , we added a `verify.sh` script. This checks the component against our rules before anything ships and essentially acts as a linter. It:
 
@@ -181,7 +181,7 @@ This wouldn’t quite work for us as that level of containerization breaks Astro
 
 ## Metadata
 
-The final part we need is to include metadata about the post. We decided to store this directly with each essay in the MDX file as type-safe frontmatter. This is the block of metadata that you can add at the start of a Markdown file:
+The final part we need is to include metadata about the post. We decided to store this directly with each blog in the MDX file as type-safe frontmatter. This is the block of metadata that you can add at the start of a Markdown file:
 
 ```md
 ---
@@ -193,7 +193,7 @@ tags: ['astro', 'mdx', 'react', 'web', 'github-pages']
 
 Both Becky and I had the same issue; we have many different projects ...
 ...
-THE REST OF THE ESSAY
+THE REST OF THE BLOG
 ...
 ```
 
@@ -236,7 +236,7 @@ And that's the whole toolchain. We simply didn’t need a database, server runti
 
 The deployment is again pretty boring, and boring is the goal - boring usually just works. Pushing to `main` triggers a GitHub Actions workflow that runs [`withastro/action`](https://github.com/withastro/action) to build the `site/` directory and publishes the result to GitHub Pages. Our custom domain (`inkpens.tech`) is configured by a one-line `CNAME` file in the public assets. As this site rarely gets updated, it’s just one concurrent deployment at a time, and no mid-flight cancellations, which makes the deployment pretty trivial. Again, [YAGNI](https://en.wikipedia.org/wiki/You_aren%27t_gonna_need_it) (you aren't going to need it).
 
-Before anything reaches `main`, a separate workflow checks the PRs. We type-check (`astro check`), build, and run the test suite (just Node.js's built-in test runner main). A broken essay or a type error in the frontmatter fails in PR, before we even deploy.
+Before anything reaches `main`, a separate workflow checks the PRs. We type-check (`astro check`), build, and run the test suite (just Node.js's built-in test runner main). A broken blog or a type error in the frontmatter fails in PR, before we even deploy.
 
 ## What we deliberately left out
 
@@ -257,7 +257,7 @@ A few things we'd tell anyone starting an Astro blog:
 
 **Content collections + Zod beat ad-hoc frontmatter.** Type checking and validating frontmatter can catch the mistakes that you might otherwise miss and can check it on PR. It's a small upfront cost for a decent guarantee, so it’s worth it.
 
-**Co-locate for authoring, separate for build.** Keep your essays and posts at the repo root and separate from the app in `site/`, you can then pull them together using a glob loader. The content stays portable, and the app doesn’t get cluttered with posts.
+**Co-locate for authoring, separate for build.** Keep your blogs and posts at the repo root and separate from the app in `site/`, you can then pull them together using a glob loader. The content stays portable, and the app doesn’t get cluttered with posts.
 
 **Dark-first is a one-line custom variant.** You don't need a theming library to default to dark mode. You can use a `@custom-variant` line to flip the light and dark mode convention.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # verify.sh <ComponentName>
 #
-# Audits a React island component against the interactive-essay-component rules.
+# Audits a React island component against the interactive-blog-component rules.
 # Run from the site/ directory. Exits non-zero if any HARD rule fails; prints
 # actionable WARNs for things to check manually.
 #

@@ -44,28 +44,28 @@ test('TAG_COLORS: maps the expected known tags', () => {
   assert.equal(TAG_COLORS['embeddings'], 'violet');
 });
 
-test('allTags: tallies counts across essays', () => {
-  const essays = [
+test('allTags: tallies counts across blogs', () => {
+  const blogs = [
     { data: { tags: ['gpu', 'embeddings'] } },
     { data: { tags: ['gpu', 'systems'] } },
     { data: { tags: ['gpu'] } },
   ];
-  const out = allTags(essays);
+  const out = allTags(blogs);
   assert.equal(out.find((t) => t.tag === 'gpu').count, 3);
   assert.equal(out.find((t) => t.tag === 'embeddings').count, 1);
 });
 
 test('allTags: sorts by count desc then name asc', () => {
-  const essays = [
+  const blogs = [
     { data: { tags: ['b', 'a'] } },
     { data: { tags: ['b'] } }, // b=2, a=1 -> b first
   ];
-  const out = allTags(essays);
+  const out = allTags(blogs);
   assert.equal(out[0].tag, 'b');
   assert.equal(out[1].tag, 'a');
 });
 
-test('allTags: handles essays with missing/empty tags', () => {
+test('allTags: handles blogs with missing/empty tags', () => {
   const out = allTags([{ data: {} }, { data: { tags: [] } }, { data: { tags: ['x'] } }]);
   assert.equal(out.length, 1);
   assert.equal(out[0].tag, 'x');

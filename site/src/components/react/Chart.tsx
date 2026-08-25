@@ -36,7 +36,7 @@ export interface ChartProps {
 const defaultColors = ['#1e5cf5', '#16a34a', '#ea580c', '#9333ea', '#db2777'];
 
 /**
- * A small wrapper around Recharts for use inside MDX essays.
+ * A small wrapper around Recharts for use inside MDX blogs.
  * Mount with `client:visible` and an explicit height:
  *   <Chart client:visible data={...} xKey="batch" series={[...]} />
  */

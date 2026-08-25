@@ -49,7 +49,7 @@ export async function publish({ title, bodyMarkdown, bodyHtml, socialPost, canon
       '  Indie Hackers will be treated as canonical by Google if you post the full',
       '  body, so prefer a teaser that drives readers to your own site.',
       `  Teaser intro: ${socialPost || '(use the socialPost blurb)'}`,
-      '  Then link: "Read the full essay →" followed by:',
+      '  Then link: "Read the full blog →" followed by:',
       `  <${canonicalUrl}>`,
       '',
       '**Option B — full text (accept the SEO trade-off):**',
