@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 // POSSE syndicator: cross-posts each blog to dev.to, Bluesky, Mastodon,
-// X (via Buffer), LinkedIn (via Buffer), Medium, and emits Substack + Indie
-// Hackers teasers.
+// X (via Buffer), LinkedIn (via Buffer), and — with a local browser session
+// saved via `task posse:login` — creates DRAFTS on Medium, Substack, LinkedIn
+// Articles, and Indie Hackers (the no-API platforms), falling back to the
+// manual syndication package when no session exists.
 //
 // Native POSSE: per-platform copy + threads (reply-chained) + native image
 // attachment. The canonical URL lives in the last post of a thread (or a
 // LinkedIn comment) so posts feel native rather than "blurb + link".
+// Assisted drafts stop short of publishing: a human reviews and clicks
+// Publish, then `task posse:confirm` records the final URL.
 //
 // Usage:
 //   npm run syndicate -- --dry-run=true                 # preview all unpublished
@@ -15,7 +19,7 @@
 // Credentials are auto-loaded from site/.env via the `--env-file-if-exits=.env`
 // flag in the npm script (no `source .env` needed). CI injects secrets directly.
 import { loadBlogs, loadBlog } from './lib/blogs.mjs';
-import { writeSyndicationIds } from './lib/frontmatter.mjs';
+import { writeSyndicationIds, writeDraftLinks } from './lib/frontmatter.mjs';
 import { mdxToMarkdown, markdownToHtml } from './lib/markdown.mjs';
 import { normalizeSocial, teaserBlurb } from './lib/social.mjs';
 import { renderOgImage } from './lib/og-image.mjs';
@@ -122,7 +126,9 @@ async function syndicateBlog(blog, opts) {
   const canonicalUrl = blogUrl(blog.slug);
   const { data } = blog;
   const syndication = data.syndication ?? {};
+  const draftLinks = data.draftLinks ?? {};
   const newIds = {};
+  const newDraftLinks = {};
   const summary = [];
 
   // Normalize per-platform social copy into { posts: string[], image: boolean }.
@@ -196,34 +202,35 @@ async function syndicateBlog(blog, opts) {
     {
       // The long-form LinkedIn Article (125k-char, UI-only — no API). Distinct
       // key from the short `linkedin` post so the two surfaces don't collide on
-      // the syndication-idempotency field. Mirrors Medium/Substack: packages the
-      // full body for a manual paste into LinkedIn's "Write an article" UI.
+      // the syndication-idempotency field. With a saved linkedin session this
+      // adapter creates an Article DRAFT via Playwright (paste + autosave);
+      // otherwise it packages the body for a manual paste.
       key: 'linkedinArticle',
       label: linkedinArticle.name,
       available: () => linkedinArticle.available(),
-      run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug }),
-      skipIf: () => opts.blog === undefined && syndication.linkedinArticle,
+      run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
+      skipIf: () => opts.blog === undefined && (syndication.linkedinArticle || draftLinks.linkedinArticle),
     },
     {
       key: 'medium',
       label: medium.name,
       available: () => medium.available(),
-      run: () => medium.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug }),
-      skipIf: () => opts.blog === undefined && syndication.medium,
+      run: () => medium.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
+      skipIf: () => opts.blog === undefined && (syndication.medium || draftLinks.medium),
     },
     {
       key: 'substack',
       label: substack.name,
       available: () => substack.available(),
-      run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: blog.slug }),
-      skipIf: () => opts.blog === undefined && syndication.substack,
+      run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: blog.slug, dryRun: opts.dryRun }),
+      skipIf: () => opts.blog === undefined && (syndication.substack || draftLinks.substack),
     },
     {
       key: 'indiehackers',
       label: indiehackers.name,
       available: () => indiehackers.available(),
-      run: () => indiehackers.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, tags: data.tags ?? [], slug: blog.slug }),
-      skipIf: () => opts.blog === undefined && syndication.indiehackers,
+      run: () => indiehackers.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
+      skipIf: () => opts.blog === undefined && (syndication.indiehackers || draftLinks.indiehackers),
     },
   ];
 
@@ -237,18 +244,27 @@ async function syndicateBlog(blog, opts) {
       continue;
     }
     if (p.skipIf()) {
-      summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim('(already posted)')}`);
+      const drafted = !syndication[p.key] && draftLinks[p.key];
+      summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim(drafted ? '(draft ready — publish it, then task posse:confirm)' : '(already posted)')}`);
       continue;
     }
     try {
       const result = await p.run();
-      if (result.id && !['manual', 'dry-run', 'unknown'].includes(result.id)) {
+      if (result.id && !['manual', 'draft', 'dry-run', 'unknown'].includes(result.id)) {
         newIds[p.key] = result.id;
+      }
+      // Draft links go to their own frontmatter block (a draft is NOT
+      // "published" — it must not feed idempotency-for-publish or the
+      // Also-published-on footer).
+      if (result.id === 'draft' && result.url?.startsWith('http')) {
+        newDraftLinks[p.key] = result.url;
       }
       // Manual platforms (id === 'manual') build a package artifact rather than posting.
       const verb = result.id === 'manual'
         ? (opts.dryRun ? 'would-package' : 'packaged')
-        : (opts.dryRun ? 'would-post' : 'posted');
+        : result.id === 'draft'
+          ? (opts.dryRun ? 'would-draft' : 'drafted')
+          : (opts.dryRun ? 'would-post' : 'posted');
       summary.push(`  ${c.green('✓')} ${p.label.padEnd(14)} ${c.dim(verb)} → ${result.url}`);
     } catch (err) {
       summary.push(`  ${c.red('✗')} ${p.label.padEnd(14)} ${c.red(err.message)}`);
@@ -259,7 +275,10 @@ async function syndicateBlog(blog, opts) {
   if (!opts.dryRun && Object.keys(newIds).length > 0) {
     wroteBack = await writeSyndicationIds(blog.path, newIds);
   }
-  return { summary, newIds, wroteBack };
+  if (!opts.dryRun && Object.keys(newDraftLinks).length > 0) {
+    wroteBack = (await writeDraftLinks(blog.path, newDraftLinks)) || wroteBack;
+  }
+  return { summary, newIds, newDraftLinks, wroteBack };
 }
 
 // ── main ──────────────────────────────────────────────────────────────────
@@ -276,15 +295,17 @@ async function main() {
 
   const blogs = await selectBlogs(opts);
   let totalPosted = 0;
+  let totalDrafted = 0;
   let totalErrors = 0;
   let wroteAny = false;
 
   for (const blog of blogs) {
     log(`━━━ ${blog.slug} ━━━`);
     log(`    ${blog.data.title}`);
-    const { summary, newIds, wroteBack } = await syndicateBlog(blog, opts);
+    const { summary, newIds, newDraftLinks, wroteBack } = await syndicateBlog(blog, opts);
     for (const line of summary) log(line);
     totalPosted += Object.keys(newIds).length;
+    totalDrafted += Object.keys(newDraftLinks).length;
     totalErrors += summary.filter((s) => s.includes(c.red('✗'))).length;
     if (wroteBack) wroteAny = true;
     log('');
@@ -292,6 +313,7 @@ async function main() {
 
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   log(`posted ${c.green(String(totalPosted))} platform(s)`);
+  if (totalDrafted) log(`drafted ${c.green(String(totalDrafted))} platform(s) ${c.dim('(review + Publish, then task posse:confirm)')}`);
   if (totalErrors) log(`${c.red(String(totalErrors))} error(s)`);
   if (wroteAny) log(c.green('wrote syndication IDs back to frontmatter'));
   if (opts.dryRun) log(c.yellow('\nDry run — nothing was posted or committed. Re-run with --dry-run=false to publish.'));

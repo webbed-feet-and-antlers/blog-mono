@@ -44,7 +44,9 @@ const blogs = defineCollection({
     /**
      * Machine-managed: per-platform post IDs written back by scripts/syndicate.mjs.
      * Presence of an ID means "already syndicated to this platform" — used for idempotency
-     * and to render an "Also published on…" footer on the blog page.
+     * and to render an "Also published on…" footer on the blog page. Values are
+     * platform IDs for API adapters; full public URLs for assisted-draft platforms
+     * (set via `task posse:confirm` after the human clicks Publish).
      */
     syndication: z
       .object({
@@ -53,10 +55,25 @@ const blogs = defineCollection({
         mastodon: z.string().optional(), // status id
         buffer: z.string().optional(), // Buffer update id (the X post)
         linkedin: z.string().optional(), // Buffer post id (LinkedIn posted via Buffer)
-        linkedinArticle: z.string().optional(), // left null; manual platform (LinkedIn Article UI — no API)
-        medium: z.string().optional(), // Medium post id
-        substack: z.string().optional(), // left null; manual platform (no API)
-        indiehackers: z.string().optional(), // left null; manual platform (no API/RSS)
+        linkedinArticle: z.string().optional(), // public article URL (via posse:confirm)
+        medium: z.string().optional(), // Medium post id or public URL (via posse:confirm)
+        substack: z.string().optional(), // public post URL (via posse:confirm)
+        indiehackers: z.string().optional(), // public post URL (via posse:confirm)
+      })
+      .optional(),
+    /**
+     * Machine-managed: per-platform DRAFT editor URLs written back by the
+     * assisted-draft adapters (they create the draft + content; a human still
+     * clicks Publish). Presence suppresses re-drafting but never renders on
+     * the site — `task posse:confirm` moves a link into `syndication` and
+     * clears it here once published.
+     */
+    draftLinks: z
+      .object({
+        substack: z.string().optional(),
+        medium: z.string().optional(),
+        linkedinArticle: z.string().optional(),
+        indiehackers: z.string().optional(),
       })
       .optional(),
   }),
