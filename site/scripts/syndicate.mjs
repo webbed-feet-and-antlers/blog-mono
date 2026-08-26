@@ -184,7 +184,7 @@ async function syndicateBlog(blog, opts) {
       key: 'bluesky',
       label: bluesky.name,
       available: () => bluesky.available(),
-      run: () => bluesky.publish({ posts: social.bluesky.posts, imagePath, dryRun: opts.dryRun }),
+      run: () => bluesky.publish({ posts: social.bluesky.posts, imagePath, title: data.title, description: data.description, canonicalUrl, dryRun: opts.dryRun }),
       skipIf: () => !opts.force && syndication.bluesky,
     },
     {
