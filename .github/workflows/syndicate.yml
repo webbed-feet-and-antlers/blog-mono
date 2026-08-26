@@ -111,5 +111,11 @@ jobs:
         if: ${{ inputs.dry_run == false }}
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore(syndicate): record cross-post IDs + screenshots"
-          file_pattern: "blogs/*.mdx blogs/*.md site/public/sshot/*.png"
+          commit_message: "chore(syndicate): record cross-post IDs + screenshots [skip preview]"
+          # Directory-glob patterns only — `git add` fails the whole step if
+          # ANY pathspec matches nothing, so never list extensions that may
+          # not exist (e.g. blogs/*.md when all posts are .mdx). Pin the push
+          # target explicitly: workflow_dispatch checks out a detached HEAD,
+          # from which the action can't infer a branch.
+          file_pattern: "blogs/* site/public/sshot/*"
+          branch: main
