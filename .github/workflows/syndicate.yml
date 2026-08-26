@@ -106,38 +106,30 @@ jobs:
       # Record returned IDs back into frontmatter AND commit the auto-generated
       # component screenshots (they live in public/sshot and are served by Pages
       # — they must be permanent since dev.to/Medium hotlink rather than re-host).
-      # Skipped on dry-run. workflow_dispatch-only, so the commit won't retrigger.
+      # Skipped on dry-run.
       #
-      # main is protected ("changes must be made through a pull request"), which
-      # rejects pushes from the job's GITHUB_TOKEN — so the push authenticates as
-      # the owner via SYNDICATE_PAT. Must be a CLASSIC PAT with the `repo` scope:
-      # classic tokens fully impersonate the user (repo admin → ruleset bypass),
-      # while fine-grained PATs do NOT match role-based bypass actors and get
-      # GH013-rejected despite having Contents write. Create once, then:
-      #   gh secret set SYNDICATE_PAT --env syndication
-      # Posting NEVER depends on this step: without the PAT it posts fine and
-      # only the record-commit is skipped, with a warning pointing here.
-      - name: Commit syndication IDs + screenshots
+      # main is protected ("changes must be made through a pull request") and —
+      # empirically — no CI credential (GITHUB_TOKEN, fine-grained or classic
+      # PAT as the owner) is granted the ruleset bypass, only the owner's local
+      # git credential is. So the record-commit lands on the UNPROTECTED
+      # chore/syndicate-records branch, and `task posse:merge-records` merges
+      # it into main locally with working credentials (one command, part of the
+      # post-publish flow in docs/syndication.md). Posting NEVER depends on
+      # this step — on failure it warns and the run stays green.
+      - name: Record syndication IDs + screenshots
         if: ${{ inputs.dry_run == false }}
-        env:
-          PAT: ${{ secrets.SYNDICATE_PAT }}
         run: |
-          if [ -z "$PAT" ]; then
-            echo "::warning::SYNDICATE_PAT is not set — posts went out, but recording IDs/screenshots to protected main was skipped. Create a classic PAT (repo scope) and run: gh secret set SYNDICATE_PAT --env syndication"
-            exit 0
-          fi
-          git remote set-url origin "https://x-access-token:${PAT}@github.com/${GITHUB_REPOSITORY}.git"
-          # Diagnostics (identity + scopes only — never the token): shows how
-          # GitHub's rulesets see the push principal when GH013s happen.
-          echo "Push principal: $(curl -s -w '\nhttp=%{http_code}\n' -H "Authorization: token ${PAT}" https://api.github.com/user | grep -E '\"login\"|http=' | tr -d ' ' | tr '\n' ' ') scopes=$(curl -s -I -H "Authorization: token ${PAT}" https://api.github.com/user | grep -i '^x-oauth-scopes' | tr -d '\r' || echo 'none (fine-grained token?)')"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           [ -d blogs ] && git add blogs
           [ -d site/public/sshot ] && git add site/public/sshot
           if git diff --cached --quiet; then
-            echo "Nothing to commit."
+            echo "Nothing to record."
             exit 0
           fi
-          git commit -m "chore(syndicate): record cross-post IDs + screenshots [skip preview]"
-          git pull --rebase origin main
-          git push origin HEAD:main
+          git commit -m "chore(syndicate): record cross-post IDs + screenshots"
+          if git push --force origin HEAD:refs/heads/chore/syndicate-records; then
+            echo "::notice::Syndication records pushed to the chore/syndicate-records branch. Merge locally with: task posse:merge-records"
+          else
+            echo "::warning::Could not push the syndication-records branch — IDs are in this run's log; re-record them manually if needed."
+          fi

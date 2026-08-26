@@ -111,6 +111,25 @@ tasks:
     cmds:
       - node --env-file-if-exists=.env scripts/confirm.mjs {{.CLI_ARGS}}
 
+  merge-records:
+    desc: "Merge CI's syndication-record branch into main (IDs + screenshots from the last publish)"
+    cmds:
+      # CI cannot push to protected main (no CI credential gets the ruleset
+      # bypass — only the local git credential does), so it parks the
+      # record-commit on chore/syndicate-records. This merges it with local
+      # credentials. Run after any CI publish; safe when there's nothing new.
+      - |
+        git fetch origin main chore/syndicate-records
+        if git merge-base --is-ancestor origin/chore/syndicate-records origin/main; then
+          echo "No unmerged syndication records."
+        else
+          git checkout main
+          git pull --ff-only origin main
+          git merge --ff-only origin/chore/syndicate-records
+          git push origin main
+          echo "Merged + pushed syndication records."
+        fi
+
   ci:dry-run:
     desc: "Trigger the GitHub Actions Syndicate workflow in dry-run mode (slug optional)"
     cmds:

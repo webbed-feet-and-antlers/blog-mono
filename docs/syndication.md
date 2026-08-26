@@ -109,7 +109,7 @@ task posse:confirm -- <slug> linkedinArticle https://www.linkedin.com/pulse/<id>
 Confirming moves the link from `draftLinks:` to `syndication:` in the
 blog's frontmatter.
 
-### 5. Flush the LinkedIn caption and commit
+### 5. Flush the LinkedIn caption, merge records, and commit
 
 The LinkedIn caption post becomes eligible the moment its Article is
 confirmed, but it only goes out on the next syndication run:
@@ -117,7 +117,16 @@ confirmed, but it only goes out on the next syndication run:
 ```sh
 task posse:publish-all      # everything else skips ("already posted");
                             # the waiting LinkedIn caption posts now
-git add blogs/<slug>.mdx
+```
+
+CI also cannot write syndication IDs back to protected `main` (no CI
+credential is granted the ruleset bypass — only your local git credential
+is). Publish runs park the IDs + screenshots commit on the
+`chore/syndicate-records` branch instead; merge it locally:
+
+```sh
+task posse:merge-records    # ff-merges the record branch into main + pushes
+git add blogs/<slug>.mdx    # your own confirm/draftLinks changes, if pending
 git commit -m "chore(syndicate): confirm assisted posts"
 git push
 ```
@@ -149,6 +158,7 @@ on the site (and triggers a rebuild + Pages deploy).
 | `task posse:login -- <platform>` | Capture/refresh a browser session (headed; you handle 2FA) |
 | `task posse:assisted -- <slug>` | Same as `posse:manual`: build, run, open draft editors + package |
 | `task posse:confirm -- <slug> <platform> <url>` | Record a published draft into `syndication:` |
+| `task posse:merge-records` | Merge CI's `chore/syndicate-records` branch (IDs + screenshots) into main |
 | `task posse:ci:dry-run` / `posse:ci:publish` | Trigger the GitHub workflow from your terminal |
 
 Key flags to `npm run syndicate`: `--dry-run=` (default true), `--blog=`
