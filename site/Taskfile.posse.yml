@@ -81,7 +81,6 @@ tasks:
 
   open-manual:
     desc: "Open the manual package HTML + any saved draft editors (falls back to platform homepages) (internal)"
-    internal: true
     vars:
       # SUBSTACK_PUB overrides the publication slug; defaults to "theinkpens".
       SUBSTACK_PUB: theinkpens
@@ -89,19 +88,26 @@ tasks:
       # This task runs with dir: site (set by the root includes:), so paths are
       # relative to site/. `open` is macOS; on Linux swap to `xdg-open`.
       #
-      # Draft deep-links first (you're signed in in your real browser); for
-      # platforms without a saved draft, fall back to their editor homepage.
+      # Opens everything at once: the package HTML (paste-ready), the manual
+      # platform editors (Medium import / LinkedIn article / Indie Hackers),
+      # and any assisted draft editors already created (Substack etc.).
       - |
+        SITE=$(node --env-file-if-exists=.env -e "console.log(process.env.SITE_URL || 'https://inkpens.tech')")
+        if [ -f ".syndication-output/syndicate-{{.CLI_ARGS}}.html" ]; then
+          open ".syndication-output/syndicate-{{.CLI_ARGS}}.html"
+        fi
+        open "https://medium.com/me/stories"
+        open "https://www.linkedin.com/post/new"
+        open "https://www.indiehackers.com/new-post"
         drafts=$(node scripts/draft-links.mjs {{.CLI_ARGS}} 2>/dev/null || true)
         if [ -n "$drafts" ]; then
           echo "$drafts" | while read -r url; do [ -n "$url" ] && open "$url"; done
-          echo "Opened draft editor(s). Publish each, then run:"
-          echo "  task posse:confirm -- {{.CLI_ARGS}} <platform> <public-url>"
-        else
-          open ".syndication-output/syndicate-{{.CLI_ARGS}}.html"
-          open "https://medium.com/me/stories"
-          open "https://{{.SUBSTACK_PUB}}.substack.com/publish/post"
         fi
+        echo ""
+        echo "Canonical URL — paste into Medium's 'Import a story':"
+        echo "  ${SITE}/blog/{{.CLI_ARGS}}/"
+        echo "When each post is live, record it:"
+        echo "  task posse:confirm -- {{.CLI_ARGS}} <substack|medium|linkedinArticle|indiehackers> <public-url>"
 
   confirm:
     desc: "Record a published draft: moves it from draftLinks to syndication (slug platform url)"
