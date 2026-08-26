@@ -30,13 +30,33 @@ Two sequenced details to know:
 ```sh
 cd site && cp .env.example .env        # fill in the API tokens
 npm install && npx playwright install chromium
-
-# One browser session per assisted platform (re-run only when one expires):
-task posse:login -- substack
-task posse:login -- medium
-task posse:login -- linkedin
-task posse:login -- indiehackers
 ```
+
+One session per assisted platform (re-save when one expires). Two routes:
+
+**Cookie paste (reliable, recommended).** Medium and Substack log in via
+magic-link emails that often never arrive, and Google blocks automated
+browsers outright — so copy the session cookie from your real browser,
+where you're already logged in:
+
+1. Open the site in your normal browser (medium.com,
+   `<pub>.substack.com`, linkedin.com, indiehackers.com).
+2. DevTools (F12) → Application → Cookies → find the session cookie:
+   **Medium `sid` · Substack `substack.sid` · LinkedIn `li_at` ·
+   Indie Hackers `__session`**.
+3. Copy the **Value** column and run:
+
+```sh
+task posse:login -- medium   --cookie=<paste>
+task posse:login -- substack --cookie=<paste>
+task posse:login -- linkedin --cookie=<paste>
+task posse:login -- indiehackers --cookie=<paste>
+```
+
+**Browser capture (default, no `--cookie`).** Opens your local Chrome;
+sign in with password/2FA and press Enter. Fine for password logins, but
+Google sign-in will refuse it ("This browser or app may not be secure")
+and magic-link emails may not arrive — use the cookie route for those.
 
 Sessions are Playwright storageState files in
 `site/.syndication-output/sessions/` — gitignored, local-only, never in CI.
@@ -167,8 +187,13 @@ the selected blog).
 
 ## Troubleshooting
 
-- **"session expired" / login-wall warning in the package** — re-run
-  `task posse:login -- <platform>` and re-run `task posse:assisted -- <slug>`.
+- **"session expired" / login-wall warning in the package** — re-save the
+  session (cookie paste is the reliable route: `task posse:login --
+  <platform> --cookie=<value>`) and re-run `task posse:assisted -- <slug>`.
+- **Magic-link email never arrives (Medium/Substack) or Google says "this
+  browser or app may not be secure"** — the browser-login flow can't get
+  past those; copy the session cookie from your real browser instead (see
+  step 0 above).
 - **A selector drifted** (Medium/LinkedIn/IH editors change) — the adapter
   fails soft to the manual package with the reason noted in it; paste by
   hand from `.syndication-output/syndicate-<slug>.html` and the

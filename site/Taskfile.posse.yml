@@ -49,10 +49,10 @@ tasks:
       - npm run syndicate -- --dry-run=false
 
   login:
-    desc: "Save a browser session for an assisted-draft platform (substack|medium|linkedin|indiehackers)"
+    desc: "Save a session for an assisted platform (substack|medium|linkedin|indiehackers); add --cookie=<value> to paste from your real browser"
     preconditions:
       - sh: '[ -n "{{.CLI_ARGS}}" ]'
-        msg: "A platform is required (e.g. `task posse:login -- medium`)."
+        msg: "A platform is required (e.g. `task posse:login -- medium`, or `task posse:login -- medium --cookie=<value>`)."
     cmds:
       - node --env-file-if-exists=.env scripts/login.mjs --platform={{.CLI_ARGS}}
 
