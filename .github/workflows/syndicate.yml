@@ -107,15 +107,31 @@ jobs:
       # component screenshots (they live in public/sshot and are served by Pages
       # — they must be permanent since dev.to/Medium hotlink rather than re-host).
       # Skipped on dry-run. workflow_dispatch-only, so the commit won't retrigger.
+      #
+      # main is protected ("changes must be made through a pull request"), which
+      # rejects pushes from the job's GITHUB_TOKEN — so the push authenticates as
+      # the owner via SYNDICATE_PAT (fine-grained PAT, Contents: Read and write;
+      # create once, then: gh secret set SYNDICATE_PAT --env syndication).
+      # Posting NEVER depends on this step: without the PAT it posts fine and
+      # only the record-commit is skipped, with a warning pointing here.
       - name: Commit syndication IDs + screenshots
         if: ${{ inputs.dry_run == false }}
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore(syndicate): record cross-post IDs + screenshots [skip preview]"
-          # Directory-glob patterns only — `git add` fails the whole step if
-          # ANY pathspec matches nothing, so never list extensions that may
-          # not exist (e.g. blogs/*.md when all posts are .mdx). Pin the push
-          # target explicitly: workflow_dispatch checks out a detached HEAD,
-          # from which the action can't infer a branch.
-          file_pattern: "blogs/* site/public/sshot/*"
-          branch: main
+        env:
+          PAT: ${{ secrets.SYNDICATE_PAT }}
+        run: |
+          if [ -z "$PAT" ]; then
+            echo "::warning::SYNDICATE_PAT is not set — posts went out, but recording IDs/screenshots to protected main was skipped. Create a fine-grained PAT (Contents: Read and write) and run: gh secret set SYNDICATE_PAT --env syndication"
+            exit 0
+          fi
+          git remote set-url origin "https://x-access-token:${PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -d blogs ] && git add blogs
+          [ -d site/public/sshot ] && git add site/public/sshot
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git commit -m "chore(syndicate): record cross-post IDs + screenshots [skip preview]"
+          git pull --rebase origin main
+          git push origin HEAD:main
