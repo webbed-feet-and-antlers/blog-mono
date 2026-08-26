@@ -39,8 +39,17 @@ jobs:
     # Gates all platform secrets behind the same environment as the manual workflow.
     environment: syndication
     steps:
-      - name: Checkout
+      # Check out MAIN explicitly, not the PR head. The default checkout for a
+      # pull_request event lands on the PR's ref, and the auto-commit step
+      # below would then try to push the syndication IDs to the PR branch —
+      # which may already be deleted by delete-pr-branch.yml (that race once
+      # failed this workflow with "fatal: invalid reference"). The merged
+      # content is on main by the time this job runs, which is also where
+      # the IDs belong.
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -107,3 +116,6 @@ jobs:
         with:
           commit_message: "chore(syndicate): record cross-post IDs + screenshots [skip preview]"
           file_pattern: "blogs/*.mdx blogs/*.md site/public/sshot/*.png"
+          # Belt and suspenders with the main checkout above: never let the
+          # action infer (a possibly deleted) PR branch as the push target.
+          branch: main
