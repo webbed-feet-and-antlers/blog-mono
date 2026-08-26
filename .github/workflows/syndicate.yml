@@ -16,9 +16,13 @@ on:
         type: boolean
         default: true
       blog:
-        description: "Blog slug to force (re)syndicate; empty = all unpublished"
+        description: "Blog slug to scope to; empty = all unpublished (already-posted platforms still skip)"
         required: false
         default: ""
+      force:
+        description: "Force — re-post/re-draft every platform for the selected blog"
+        type: boolean
+        default: false
 
 permissions:
   contents: write # to commit syndication IDs back into blog frontmatter
@@ -68,7 +72,8 @@ jobs:
         run: |
           node scripts/syndicate.mjs \
             --dry-run=${{ inputs.dry_run }} \
-            --blog=${{ inputs.blog }}
+            --blog=${{ inputs.blog }} \
+            --force=${{ inputs.force }}
         env:
           SITE_URL: ${{ vars.SITE_URL || 'https://inkpens.tech' }}
           # Public origin where OG images are served (for Buffer/X image attachment).
