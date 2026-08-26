@@ -1,8 +1,9 @@
 // LinkedIn Article (the long-form 125k-char format):
 //   - The /rest/posts API only creates feed posts (text/image/video, ~3-4k chars).
 //   - The Article format is UI-only: there is no endpoint to create one.
-//   - And a feed post cannot deep-link into an Article as its expanded view —
-//     they are independent surfaces.
+//   - A feed post can't BE an Article, but it can share the Article's URL —
+//     which is the flow: this adapter drafts the Article, and once it's
+//     published and confirmed, linkedin.mjs posts the caption sharing it.
 //
 // ASSISTED-DRAFT tier: with a local session saved via
 // `task posse:login -- linkedin`, this adapter opens the Article editor in
@@ -18,8 +19,9 @@
 // Fail-soft: any selector drift or auth bounce falls back to the manual
 // package, never a bad publish.
 //
-// The short LinkedIn post (headline + canonical link, via Buffer) is a
-// SEPARATE surface and stays fully automated in linkedin.mjs.
+// The short LinkedIn post (via Buffer) is the CAPTION for this Article: it
+// posts automatically on the first syndication run AFTER `task posse:confirm
+// -- <slug> linkedinArticle <url>` records the public URL (see linkedin.mjs).
 import { seedPackage, addPlatformNote, packagePath, writeHtmlPackage, packageHtmlPath } from '../manual-package.mjs';
 import { hasSession } from '../assisted-session.mjs';
 import { withSessionBrowser, AuthError, pasteHtml } from '../browser-draft.mjs';
@@ -137,9 +139,12 @@ export async function publish({ title, bodyMarkdown, bodyHtml, canonicalUrl, tag
       '',
       `<${canonicalUrl}>`,
       '',
-      '4. Publish. The short headline post (posted automatically via Buffer) and',
-      '   this Article are independent surfaces — there is no deep-link between',
-      '   them, so readers find the Article from your profile or the feed.',
+      '4. Publish, then record the public article URL:',
+      '',
+      `   task posse:confirm -- ${slug} linkedinArticle <article-url>`,
+      '',
+      '   The short LinkedIn post (via Buffer) is the caption for this article:',
+      '   once confirmed, the next syndication run posts it sharing this URL.',
       '',
       'Tip: locally, `task posse:login -- linkedin` (once) + `task posse:assisted`',
       'creates the article draft for you; you review + Publish.',

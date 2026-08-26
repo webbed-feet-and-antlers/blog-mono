@@ -6,8 +6,9 @@
 // manual syndication package when no session exists.
 //
 // Native POSSE: per-platform copy + threads (reply-chained) + native image
-// attachment. The canonical URL lives in the last post of a thread (or a
-// LinkedIn comment) so posts feel native rather than "blurb + link".
+// attachment. The canonical URL lives in the last post of a thread so posts
+// feel native rather than "blurb + link"; the LinkedIn post instead shares
+// the confirmed LinkedIn Article's URL as its caption (see linkedin.mjs).
 // Assisted drafts stop short of publishing: a human reviews and clicks
 // Publish, then `task posse:confirm` records the final URL.
 //
@@ -15,8 +16,15 @@
 //   npm run syndicate -- --dry-run=true                 # preview all unpublished
 //   npm run syndicate -- --dry-run=false                # post all unpublished
 //   npm run syndicate -- --dry-run=true --blog=embeddings
+//   npm run syndicate -- --dry-run=false --blog=embeddings --force=true
 //
-// Credentials are auto-loaded from site/.env via the `--env-file-if-exits=.env`
+// --blog scopes the run to one post; it does NOT re-post platforms that
+// already have IDs (so a local assisted follow-up after a labeled merge
+// fills gaps — drafts the no-API platforms — without duplicating the social
+// posts CI just made). --force=true is the explicit escape hatch that
+// re-posts/re-drafts everything for that blog.
+//
+// Credentials are auto-loaded from site/.env via the `--env-file-if-exists=.env`
 // flag in the npm script (no `source .env` needed). CI injects secrets directly.
 import { loadBlogs, loadBlog } from './lib/blogs.mjs';
 import { writeSyndicationIds, writeDraftLinks } from './lib/frontmatter.mjs';
@@ -36,13 +44,14 @@ import * as indiehackers from './lib/platforms/indiehackers.mjs';
 
 // ── args ──────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const args = { dryRun: true, blog: undefined };
+  const args = { dryRun: true, blog: undefined, force: false };
   for (const a of argv.slice(2)) {
     const m = a.match(/^--([^=]+)=(.*)$/);
     if (!m) continue;
     const [, k, v] = m;
     if (k === 'dry-run' || k === 'dry_run') args.dryRun = v !== 'false';
     if (k === 'blog') args.blog = v || undefined;
+    if (k === 'force') args.force = v !== 'false';
   }
   return args;
 }
@@ -162,42 +171,35 @@ async function syndicateBlog(blog, opts) {
     });
   }
 
-  // Each platform: skip if unavailable; skip if already syndicated (unless forced).
+  // Each platform: skip if unavailable; skip if already syndicated (unless --force).
   const platforms = [
     {
       key: 'devto',
       label: devto.name,
       available: () => devto.available(),
       run: () => devto.publish({ title: data.title, bodyMarkdown, canonicalUrl, tags: data.tags ?? [], description: data.description, existingId: syndication.devto, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && syndication.devto,
+      skipIf: () => !opts.force && syndication.devto,
     },
     {
       key: 'bluesky',
       label: bluesky.name,
       available: () => bluesky.available(),
       run: () => bluesky.publish({ posts: social.bluesky.posts, imagePath, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && syndication.bluesky,
+      skipIf: () => !opts.force && syndication.bluesky,
     },
     {
       key: 'mastodon',
       label: mastodon.name,
       available: () => mastodon.available(),
       run: () => mastodon.publish({ posts: social.mastodon.posts, imagePath, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && syndication.mastodon,
+      skipIf: () => !opts.force && syndication.mastodon,
     },
     {
       key: 'buffer',
       label: buffer.name,
       available: () => buffer.available(),
       run: () => buffer.publish({ posts: social.twitter.posts, slug: blog.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && syndication.buffer,
-    },
-    {
-      key: 'linkedin',
-      label: linkedin.name,
-      available: () => linkedin.available(),
-      run: () => linkedin.publish({ posts: social.linkedin.posts, canonicalUrl, slug: blog.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && syndication.linkedin,
+      skipIf: () => !opts.force && syndication.buffer,
     },
     {
       // The long-form LinkedIn Article (125k-char, UI-only — no API). Distinct
@@ -209,28 +211,45 @@ async function syndicateBlog(blog, opts) {
       label: linkedinArticle.name,
       available: () => linkedinArticle.available(),
       run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && (syndication.linkedinArticle || draftLinks.linkedinArticle),
+      skipIf: () => !opts.force && (syndication.linkedinArticle || draftLinks.linkedinArticle),
+    },
+    {
+      // The short LinkedIn post is the CAPTION for the Article above: it only
+      // goes out once the Article is published and confirmed
+      // (syndication.linkedinArticle), and shares the Article's public URL
+      // instead of the canonical one.
+      key: 'linkedin',
+      label: linkedin.name,
+      available: () => linkedin.available(),
+      run: () => linkedin.publish({ posts: social.linkedin.posts, articleUrl: syndication.linkedinArticle, dryRun: opts.dryRun }),
+      skipIf: () => !opts.force && syndication.linkedin,
+      waiting: () =>
+        syndication.linkedinArticle
+          ? null
+          : draftLinks.linkedinArticle
+            ? 'article draft ready — publish it, then task posse:confirm'
+            : 'waiting on LinkedIn Article publish + task posse:confirm',
     },
     {
       key: 'medium',
       label: medium.name,
       available: () => medium.available(),
       run: () => medium.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && (syndication.medium || draftLinks.medium),
+      skipIf: () => !opts.force && (syndication.medium || draftLinks.medium),
     },
     {
       key: 'substack',
       label: substack.name,
       available: () => substack.available(),
       run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: blog.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && (syndication.substack || draftLinks.substack),
+      skipIf: () => !opts.force && (syndication.substack || draftLinks.substack),
     },
     {
       key: 'indiehackers',
       label: indiehackers.name,
       available: () => indiehackers.available(),
       run: () => indiehackers.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
-      skipIf: () => opts.blog === undefined && (syndication.indiehackers || draftLinks.indiehackers),
+      skipIf: () => !opts.force && (syndication.indiehackers || draftLinks.indiehackers),
     },
   ];
 
@@ -246,6 +265,14 @@ async function syndicateBlog(blog, opts) {
     if (p.skipIf()) {
       const drafted = !syndication[p.key] && draftLinks[p.key];
       summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim(drafted ? '(draft ready — publish it, then task posse:confirm)' : '(already posted)')}`);
+      continue;
+    }
+    // Dependent platforms (e.g. the LinkedIn caption needs its Article
+    // published first): a non-null waiting reason skips with that message,
+    // in dry-run and live runs alike.
+    const waitingReason = p.waiting?.();
+    if (waitingReason) {
+      summary.push(`  ${c.yellow('skip')}  ${p.label.padEnd(14)} ${c.dim(`(${waitingReason})`)}`);
       continue;
     }
     try {
@@ -291,7 +318,7 @@ async function main() {
   }
 
   log(`\n${opts.dryRun ? c.yellow('DRY RUN') : c.green('LIVE RUN')} — site: ${SITE_URL}`);
-  log(opts.blog ? `blog: ${opts.blog} (forced)\n` : `blogs: all unpublished\n`);
+  log(opts.blog ? `blog: ${opts.blog}${opts.force ? ' (forced — re-post/re-draft)' : ''}\n` : `blogs: all unpublished\n`);
 
   const blogs = await selectBlogs(opts);
   let totalPosted = 0;
