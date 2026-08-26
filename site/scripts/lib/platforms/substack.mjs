@@ -51,13 +51,10 @@ function inlineToPm(nodes, marks = [], imageUrlMap) {
   for (const n of nodes ?? []) {
     switch (n.type) {
       case 'text':
-        // Literal $…$ math survives the pipeline as plain text (KaTeX CSS
-        // wouldn't survive cross-posting) — turn it into inline equations,
-        // which Substack renders natively (schema verified via probe draft).
-        for (const piece of splitMath(n.value)) {
-          if (piece.kind === 'math') out.push({ type: 'equation', attrs: { latex: piece.text } });
-          else out.push(textNode(piece.text, marks));
-        }
+        // Literal $…$ math stays TEXT — inline equation nodes are not in the
+        // editor's schema and blank the whole post (verified by bisect).
+        // Just drop the delimiters so readers don't see stray dollars.
+        out.push(textNode((n.value ?? '').replace(/\$([^$\n]+)\$/g, '$1'), marks));
         break;
       case 'strong':
         out.push(...inlineToPm(n.children, [...marks, { type: 'strong' }], imageUrlMap));
@@ -98,23 +95,6 @@ function inlineToPm(nodes, marks = [], imageUrlMap) {
     }
   }
   return out;
-}
-
-/** Split a text value into text / $math$ pieces. */
-function splitMath(value) {
-  const pieces = [];
-  let rest = value ?? '';
-  const re = /(^|[^$\\])\$([^$\n]+)\$/;
-  while (true) {
-    const m = re.exec(rest);
-    if (!m) break;
-    const before = rest.slice(0, m.index) + m[1];
-    if (before) pieces.push({ kind: 'text', text: before });
-    pieces.push({ kind: 'math', text: m[2] });
-    rest = rest.slice(m.index + m[0].length);
-  }
-  if (rest) pieces.push({ kind: 'text', text: rest });
-  return pieces;
 }
 
 /**
@@ -180,18 +160,15 @@ function blockToPm(node, imageUrlMap) {
     case 'thematicBreak':
       return { type: 'horizontal_rule' };
     case 'table':
-      // GFM tables — prosemirror-tables shape, verified against Substack's
-      // normalization (table/table_row/table_cell).
+      // Substack's editor has NO table node — emitting one blanks the whole
+      // post (verified by bisect). Normally tables are pre-rendered to PNGs
+      // and swapped out in createDraftOnSubstack; this fallback keeps any
+      // straggler as an aligned code block so nothing crashes.
       return {
-        type: 'table',
-        content: (node.children ?? []).map((row) => ({
-          type: 'table_row',
-          content: (row.children ?? []).map((cell) => ({
-            type: 'table_cell',
-            attrs: { alignment: cell.align ?? null, colspan: 1, rowspan: 1 },
-            content: inlineToPm(cell.children, [], imageUrlMap),
-          })),
-        })),
+        type: 'code_block',
+        content: [{ type: 'text', text: (node.children ?? [])
+          .map((row) => '| ' + (row.children ?? []).map((c) => inlineText(c)).join(' | ') + ' |')
+          .join('\n') }],
       };
     case 'html': {
       const src = /<img [^>]*src="([^"]+)"/.exec(node.value)?.[1];
@@ -212,19 +189,44 @@ function blockToPm(node, imageUrlMap) {
  * @returns {{ type: 'doc', attrs: object, content: object[] }}
  */
 export function markdownToProseMirrorDoc(markdown, imageUrlMap) {
-  // Display math ($$…$$ paragraphs) becomes a block equation; GFM (tables,
-  // strikethrough) needs the remark-gfm plugin.
-  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown ?? '');
+  // Extract display-math blocks RAW, before parsing: micromark eats
+  // backslash-punctuation in text nodes (x\,dx → x,dx), which corrupts latex.
+  const latexBlocks = [];
+  const withSentinels = (markdown ?? '').replace(/(?:^|\n)\$\$([\s\S]+?)\$\$(?=\n|$)/g, (_m, latex) => {
+    latexBlocks.push(latex.trim());
+    return `\n\nLATEXBLOCK${latexBlocks.length - 1}\n\n`;
+  });
+  // GFM (strikethrough) needs the remark-gfm plugin; tables are normally
+  // pre-rendered to PNG images before this runs (the editor has no table
+  // node) and land here as ordinary markdown images.
+  const tree = unified().use(remarkParse).use(remarkGfm).parse(withSentinels);
   const content = tree.children.flatMap((c) => {
-    // A paragraph that is exactly $$…$$ is display math.
-    const para = c.type === 'paragraph' && c.children?.length === 1 && c.children[0].type === 'text'
-      ? /^\$\$([\s\S]+)\$\$$/.exec(c.children[0].value.trim())
+    // Sentinels become Substack's real math node (verified rendering):
+    // latex_block with the latex in persistentExpression plus a random id.
+    const sentinel = c.type === 'paragraph' && c.children?.length === 1 && c.children[0].type === 'text'
+      ? /^LATEXBLOCK(\d+)$/.exec(c.children[0].value.trim())
       : null;
-    if (para) return [{ type: 'equation', attrs: { latex: para[1].trim() } }];
+    if (sentinel) {
+      return [{
+        type: 'latex_block',
+        attrs: { persistentExpression: latexBlocks[Number(sentinel[1])], id: randomId() },
+      }];
+    }
     const blocks = blockToPm(c, imageUrlMap);
     return Array.isArray(blocks) ? blocks : blocks ? [blocks] : [];
   }).filter(Boolean);
   return { type: 'doc', attrs: { schemaVersion: 'v1' }, content };
+}
+
+/** Random 10-char uppercase id, matching the editor's own latex_block ids. */
+function randomId() {
+  return Array.from({ length: 10 }, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join('');
+}
+
+/** Plain-text rendering of an inline mdast node (for the table fallback). */
+function inlineText(node) {
+  if (node.type === 'text' || node.type === 'inlineCode') return node.value ?? '';
+  return (node.children ?? []).map(inlineText).join('');
 }
 
 /**
@@ -330,6 +332,78 @@ async function uploadInlineImages(page, markdown) {
 }
 
 /**
+ * Render GFM pipe-tables as PNG images and swap them into the markdown as
+ * image references — Substack's editor has NO table node (emitting one
+ * blanks the whole post), so a rendered table image is the faithful route
+ * (and the standard Substack workaround). Uses the session page to render
+ * styled HTML and re-host the PNG. Failures keep the original markdown
+ * (which falls back to an aligned code block in the converter).
+ *
+ * @param {import('playwright').Page} page
+ * @param {string} markdown
+ * @returns {Promise<string>} markdown with tables replaced by ![](url) refs
+ */
+async function renderTablesToImages(page, markdown) {
+  const lines = (markdown ?? '').split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const isTableRow = (l) => /^\s*\|/.test(l);
+    const isSeparator = (l) => /^\s*\|[\s:|-]+\|?\s*$/.test(l);
+    if (isTableRow(lines[i]) && i + 1 < lines.length && isSeparator(lines[i + 1])) {
+      const block = [];
+      while (i < lines.length && isTableRow(lines[i])) block.push(lines[i++]);
+      try {
+        const url = await renderTablePng(page, block);
+        if (url) {
+          console.log(`    substack table rendered → ${url.split('/').pop()}`);
+          out.push('', `![Table](${url})`, '');
+          continue;
+        }
+      } catch (e) {
+        console.warn(`    substack table render failed: ${e.message}`);
+      }
+      out.push(...block);
+    } else {
+      out.push(lines[i++]);
+    }
+  }
+  return out.join('\n');
+}
+
+/** Render one pipe-table block to an uploaded PNG; returns its Substack URL. */
+async function renderTablePng(page, blockLines) {
+  const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+  const [header, , ...rows] = blockLines;
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const tr = (cellsIn, tag) => `<tr>${cellsIn.map((c) => `<${tag}>${esc(c)}</${tag}>`).join('')}</tr>`;
+  const html = `<!doctype html><html><body style="margin:0;background:#fff">
+<table style="border-collapse:collapse;font-family:-apple-system,system-ui,sans-serif;font-size:15px;color:#1a1a1a">
+  ${tr(cells(header), 'th')}
+  ${rows.map((r) => tr(cells(r), 'td')).join('\n  ')}
+</table></body></html>
+<style>th,td{border:1px solid #ccc;padding:8px 14px;text-align:left}th{background:#f4f4f4;font-weight:600}</style>`;
+  // setContent navigates off the publication origin — remember it and go
+  // back before the same-origin image upload fetch.
+  const originUrl = page.url();
+  await page.setContent(html);
+  const el = page.locator('table');
+  const buf = await el.screenshot({ scale: 'css' });
+  await page.goto(originUrl, { waitUntil: 'domcontentloaded' });
+  const dataUri = `data:image/png;base64,${buf.toString('base64')}`;
+  const res = await page.evaluate(async (dataUri) => {
+    const r = await fetch('/api/v1/image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUri }),
+    });
+    return { status: r.status, json: await r.json().catch(() => null) };
+  }, dataUri);
+  if (res.status === 200 && res.json?.url) return res.json.url;
+  throw new Error(`image upload ${res.status}`);
+}
+
+/**
  * Create the draft via the session browser (same-origin fetch on the
  * publication — carries cookies + a real browser fingerprint, dodging the
  * 403s Substack gives plain HTTP clients).
@@ -354,7 +428,10 @@ async function createDraftOnSubstack({ title, bodyMarkdown, socialPost, canonica
     ) ?? profile?.publicationUsers?.[0];
 
     const imageUrlMap = mode === 'full' ? await uploadInlineImages(page, bodyMarkdown ?? '') : undefined;
-    const payload = buildDraftPayload({ title, bodyMarkdown, socialPost, canonicalUrl, mode, imageUrlMap });
+    // Tables become PNG images BEFORE conversion (the editor has no table
+    // node; the markdown image refs land as ordinary captionedImages).
+    const markdownForDoc = mode === 'full' ? await renderTablesToImages(page, bodyMarkdown ?? '') : (bodyMarkdown ?? '');
+    const payload = buildDraftPayload({ title, bodyMarkdown: markdownForDoc, socialPost, canonicalUrl, mode, imageUrlMap });
     if (profile && membership) {
       payload.draft_bylines = [{ id: profile.id, publicationUserId: membership.id }];
     }

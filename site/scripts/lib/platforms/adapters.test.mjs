@@ -290,30 +290,32 @@ test('substack.buildDraftPayload: full mode converts markdown + provenance foote
   assert.ok(!payload.draft_body.includes('<p>'), 'no literal HTML');
 });
 
-test('substack.markdownToProseMirrorDoc: GFM tables convert to table/table_row/table_cell', () => {
-  const doc = substack.markdownToProseMirrorDoc('| A | B |\n| --- | --- |\n| 1 | 2 |');
-  const table = doc.content.find((n) => n.type === 'table');
-  assert.ok(table, 'table node present');
-  assert.equal(table.content[0].type, 'table_row');
-  assert.equal(table.content[0].content.length, 2);
-  assert.equal(table.content[0].content[0].type, 'table_cell');
-  assert.equal(table.content[0].content[1].content[0].text, 'B');
-});
+// (Table→PNG conversion runs in the session browser; the pure converter's
+// table handling is covered by the code-block fallback test above.)
 
-test('substack.markdownToProseMirrorDoc: literal $math$ becomes inline equations, $$..$$ becomes block', () => {
+test('substack.markdownToProseMirrorDoc: $$..$$ becomes latex_block, $inline$ stays text', () => {
   const doc = substack.markdownToProseMirrorDoc(
     'The energy is $E=mc^2$ in text.\n\n$$\\int_0^1 x\\,dx$$\n\nplain after'
   );
+  // Inline math: plain text WITHOUT the dollar delimiters (inline equation
+  // nodes are not in the editor's schema and blank the post).
   const para = doc.content.find((n) => n.type === 'paragraph');
-  const eq = para.content.find((n) => n.type === 'equation');
-  assert.ok(eq, 'inline equation present');
-  assert.equal(eq.attrs.latex, 'E=mc^2');
-  const blockEq = doc.content.find((n) => n.type === 'equation');
-  assert.ok(blockEq, 'block equation present');
-  assert.ok(JSON.stringify(doc).includes('int_0^1'));
-  // No stray dollar signs left behind in text nodes.
-  assert.ok(!JSON.stringify(doc).includes('$E'), 'math text stripped of $ delimiters');
+  assert.ok(para.content.some((n) => n.text === 'The energy is E=mc^2 in text.'), 'inline math as plain text');
+  // Block math: the editor's real node shape (verified rendering).
+  const lb = doc.content.find((n) => n.type === 'latex_block');
+  assert.ok(lb, 'latex_block present');
+  assert.equal(lb.attrs.persistentExpression, '\\int_0^1 x\\,dx');
+  assert.match(lb.attrs.id, /^[A-Z]{10}$/, 'random uppercase id');
 });
+
+test('substack.markdownToProseMirrorDoc: table nodes fall back to code blocks, never table nodes', () => {
+  const doc = substack.markdownToProseMirrorDoc('| A | B |\n| --- | --- |\n| 1 | 2 |');
+  assert.ok(!doc.content.some((n) => n.type === 'table'), 'no table nodes (they blank the post)');
+  const cb = doc.content.find((n) => n.type === 'code_block');
+  assert.ok(cb, 'code block fallback present');
+  assert.ok(cb.content[0].text.includes('| A | B |'));
+});
+
 
 test('substack.markdownToProseMirrorDoc: inline <picture> blocks are hoisted to top level', () => {
   const doc = substack.markdownToProseMirrorDoc(
