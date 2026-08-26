@@ -171,6 +171,44 @@ test('linkedinArticle.publish (no session): returns {id:"manual"} and produces n
   }
 });
 
+// --- bluesky.linkFacets: URLs get clickable link facets (byte offsets) ---
+
+test('bluesky.linkFacets: bare URL gets a link facet with correct byte range', () => {
+  const text = 'First post, more at https://inkpens.tech/blog/x/';
+  const facets = bluesky.linkFacets(text);
+  assert.equal(facets.length, 1);
+  assert.deepEqual(facets[0].index, { byteStart: 20, byteEnd: 48 });
+  assert.equal(facets[0].features[0].$type, 'app.bsky.richtext.facet#link');
+  assert.equal(facets[0].features[0].uri, 'https://inkpens.tech/blog/x/');
+});
+
+test('bluesky.linkFacets: no URL -> no facets', () => {
+  assert.deepEqual(bluesky.linkFacets('just words, no links here'), []);
+});
+
+test('bluesky.linkFacets: multibyte chars before the URL shift byte offsets', () => {
+  // ’ is 3 UTF-8 bytes but 1 UTF-16 unit — byte offsets must exceed .index.
+  const text = 'We’ve shipped https://example.com';
+  const facets = bluesky.linkFacets(text);
+  assert.equal(facets.length, 1);
+  assert.equal(facets[0].index.byteStart, 16); // 14 UTF-16 units + 2 extra bytes
+  assert.equal(facets[0].features[0].uri, 'https://example.com');
+});
+
+test('bluesky.linkFacets: trailing punctuation is excluded from the link', () => {
+  const text = 'Read it: https://example.com/post.).';
+  const facets = bluesky.linkFacets(text);
+  assert.equal(facets.length, 1);
+  assert.equal(facets[0].features[0].uri, 'https://example.com/post');
+  assert.deepEqual(facets[0].index, { byteStart: 9, byteEnd: 33 });
+});
+
+test('bluesky.linkFacets: multiple URLs each get a facet', () => {
+  const facets = bluesky.linkFacets('a https://one.com b https://two.com c');
+  assert.equal(facets.length, 2);
+  assert.deepEqual(facets.map((f) => f.features[0].uri), ['https://one.com', 'https://two.com']);
+});
+
 // --- assisted tier: with a session saved, dry-run still touches nothing ---
 
 function fakeSession() {
