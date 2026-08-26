@@ -33,21 +33,19 @@ export function available() {
 }
 
 // The Article editor's title/body. Title: a labeled textbox (or the first
-// contenteditable heading); body: the large editor region. Match broadly so
-// a redesign costs a fallback, not a failure.
+// contenteditable heading); body: the large editor region. These exact
+// selectors are the pair verified end-to-end (paste → autosave with content
+// → persisted draft): the FIRST textbox is the title, the LAST
+// contenteditable is the body. The earlier label-based lookup pasted into an
+// element LinkedIn's editor model doesn't track — the DOM grew but saves
+// carried empty content.
 async function findEditorFields(page) {
-  const title =
-    (await page.getByLabel(/title/i).first().isVisible().catch(() => false))
-      ? page.getByLabel(/title/i).first()
-      : (await page.getByRole('textbox').first().isVisible().catch(() => false))
-        ? page.getByRole('textbox').first()
-        : null;
-  const body =
-    (await page.getByLabel(/body|write your article/i).first().isVisible().catch(() => false))
-      ? page.getByLabel(/body|write your article/i).first()
-      : (await page.locator('[contenteditable="true"]').last().isVisible().catch(() => false))
-        ? page.locator('[contenteditable="true"]').last()
-        : null;
+  const title = (await page.getByRole('textbox').first().isVisible().catch(() => false))
+    ? page.getByRole('textbox').first()
+    : null;
+  const body = (await page.locator('[contenteditable="true"]').last().isVisible().catch(() => false))
+    ? page.locator('[contenteditable="true"]').last()
+    : null;
   return { title, body };
 }
 
@@ -56,40 +54,65 @@ async function findEditorFields(page) {
  * the draft editor URL, or null (with reason) on any failure.
  */
 async function createArticleDraft({ title, bodyHtml }) {
-  const result = await withSessionBrowser('linkedin', async (page) => {
-    await page.goto('https://www.linkedin.com/article/new/', { waitUntil: 'domcontentloaded', timeout: 45_000 });
-    if (/\/login|\/checkpoint/i.test(page.url())) throw new AuthError('linkedin');
+  // Create the draft via LinkedIn's own voyager REST API (same-origin fetch
+  // with the session cookie + JSESSIONID csrf token), bypassing the editor
+  // entirely. The editor-paste approach proved unfixable: the DOM accepts the
+  // paste but LinkedIn's editor model silently drops it, autosaving an empty
+  // draft — while POSTing contentHtml directly works (verified 201 + rendered
+  // in the editor afterwards).
+  const result = await withSessionBrowser(
+    'linkedin',
+    async (page) => {
+      await page.goto('https://www.linkedin.com/article/new/', { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      if (/\/login|\/checkpoint/i.test(page.url())) throw new AuthError('linkedin');
 
-    // Some accounts land the editor via /post/new → "Write article" instead.
-    if (!/article|post\/new|publish/i.test(page.url())) {
-      await page.goto('https://www.linkedin.com/post/new', { waitUntil: 'domcontentloaded', timeout: 45_000 });
-      const writeArticle = page.getByText(/write an? article/i).first();
-      if (await writeArticle.isVisible().catch(() => false)) await writeArticle.click();
-    }
+      // contentHtml may only reference LinkedIn-hosted media — foreign <img>
+      // srcs make the create 400 ("error adding your image"). Strip images;
+      // the mdxToMarkdown "Try this demo live" caption links survive and
+      // point readers at the live interactive versions on the canonical site.
+      const safeHtml = bodyHtml
+        .replace(/<picture[^>]*>[\s\S]*?<\/picture>/g, '')
+        .replace(/<img[^>]*>/g, '');
+      const res = await page.evaluate(async ({ title, bodyHtml, profileUrn }) => {
+        const csrf = decodeURIComponent(
+          (document.cookie.split('; ').find((c) => c.startsWith('JSESSIONID=')) ?? '').replace(/^JSESSIONID=/, '').replace(/^"|"$/g, '')
+        );
+        const r = await fetch('/voyager/api/voyagerPublishingDashFirstPartyArticles/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'csrf-token': csrf, 'X-Restli-Method': 'create' },
+          body: JSON.stringify({
+            authors: [{ profileUrn }],
+            title,
+            contentHtml: bodyHtml,
+            state: 'AUTOSAVED',
+          }),
+        });
+        return { status: r.status, json: await r.json().catch(() => null) };
+      }, {
+        title,
+        bodyHtml: safeHtml,
+        profileUrn: process.env.LINKEDIN_PROFILE_URN || 'urn:li:fsd_profile:ACoAACWJuRoBEsIwpKARLD4NyKRu9tsdIndFr9g',
+      });
 
-    // Dismiss any "welcome"-style modal that would swallow the first click.
-    for (const label of [/skip/i, /dismiss/i, /not now/i, /close/i]) {
-      const btn = page.getByRole('button', { name: label }).first();
-      if (await btn.isVisible().catch(() => false)) await btn.click().catch(() => {});
-    }
+      if (res.status !== 201 || !res.json?.entityUrn) {
+        throw new Error(`article create API ${res.status}: ${JSON.stringify(res.json).slice(0, 200)}`);
+      }
+      const articleId = res.json.entityUrn.split(':').pop();
 
-    const fields = await findEditorFields(page);
-    if (!fields.title || !fields.body) {
-      throw new Error('article editor fields not found (LinkedIn UI changed?)');
-    }
-
-    await fields.title.click();
-    await page.keyboard.type(title, { delay: 10 });
-    const pasted = await pasteHtml(page, fields.body, bodyHtml);
-    if (!pasted) throw new Error('rich-text paste did not land in the editor body');
-
-    // Autosave fires within a few seconds of typing; give it room, then
-    // capture whatever URL the editor settled on as the draft link.
-    await page.waitForTimeout(6_000);
-    const url = page.url();
-    if (!/article|post/i.test(url)) throw new Error(`unexpected editor URL: ${url}`);
-    return url;
-  });
+      // Verify the draft renders with content before calling it a success.
+      const editUrl = `https://www.linkedin.com/article/edit/${articleId}/`;
+      await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      await page.waitForTimeout(6_000);
+      const len = await page.evaluate(() => {
+        const editables = [...document.querySelectorAll('[contenteditable="true"]')];
+        return Math.max(0, ...editables.map((e) => e.textContent.length));
+      });
+      if (len < 200) throw new Error(`draft created but renders empty (${len} chars)`);
+      console.log(`    linkedin draft created via API: article ${articleId}, body renders ${len} chars`);
+      return editUrl;
+    },
+    { headed: true, channel: 'chrome' }
+  );
   return result; // { value } | { value: null, authFailed, reason }
 }
 
