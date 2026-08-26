@@ -24,6 +24,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import { seedPackage, addPlatformNote, packagePath, writeHtmlPackage, packageHtmlPath } from '../manual-package.mjs';
+import { markdownToHtml } from '../markdown.mjs';
 import { hasSession } from '../assisted-session.mjs';
 import { withSessionBrowser, AuthError } from '../browser-draft.mjs';
 
@@ -414,18 +415,21 @@ async function renderTablesToImages(page, markdown, imageMeta) {
   return out.join('\n');
 }
 
-/** Render one pipe-table block to an uploaded PNG; returns its Substack URL. */
+/** Render one pipe-table block to an uploaded PNG; returns the upload metadata. */
 async function renderTablePng(page, blockLines) {
-  const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-  const [header, , ...rows] = blockLines;
-  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const tr = (cellsIn, tag) => `<tr>${cellsIn.map((c) => `<${tag}>${esc(c)}</${tag}>`).join('')}</tr>`;
+  // Render through the markdown→HTML pipeline so cell formatting (code
+  // spans, bold, links) becomes real tags instead of literal markdown.
+  const tableHtml = await markdownToHtml(blockLines.join('\n'));
   const html = `<!doctype html><html><body style="margin:0;background:#fff">
-<table style="border-collapse:collapse;font-family:-apple-system,system-ui,sans-serif;font-size:15px;color:#1a1a1a">
-  ${tr(cells(header), 'th')}
-  ${rows.map((r) => tr(cells(r), 'td')).join('\n  ')}
-</table></body></html>
-<style>th,td{border:1px solid #ccc;padding:8px 14px;text-align:left}th{background:#f4f4f4;font-weight:600}</style>`;
+${tableHtml}
+</body></html>
+<style>
+  table { border-collapse: collapse; font-family: -apple-system, system-ui, sans-serif; font-size: 15px; color: #1a1a1a; }
+  th, td { border: 1px solid #ccc; padding: 8px 14px; text-align: left; }
+  th { background: #f4f4f4; font-weight: 600; }
+  code { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.9em; background: #f4f4f4; padding: 1px 4px; border-radius: 3px; }
+  a { color: #1a6faa; }
+</style>`;
   // setContent navigates off the publication origin — remember it and go
   // back before the same-origin image upload fetch.
   const originUrl = page.url();
