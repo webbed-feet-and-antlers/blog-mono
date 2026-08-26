@@ -40,9 +40,48 @@ function textNode(text, marks = []) {
   return marks.length ? { type: 'text', text, marks } : { type: 'text', text };
 }
 
-function imageNode(url, imageUrlMap) {
-  const src = imageUrlMap?.get(url) ?? url;
-  return { type: 'captionedImage', attrs: { src } };
+/**
+ * Build a captionedImage node in the editor's REAL shape (captured from a
+ * clipboard-paste insert): captionedImage wrapping an image2 child with the
+ * upload's metadata. A bare {src} attr renders an EMPTY container.
+ *
+ * @param {string} url
+ * @param {object} [meta] - the /api/v1/image response {url, bytes, imageWidth, imageHeight, contentType}
+ */
+function imageNode(url, imageData) {
+  const meta = imageData?.get?.(url) ?? imageData;
+  if (meta?.url) {
+    return {
+      type: 'captionedImage',
+      content: [
+        {
+          type: 'image2',
+          attrs: {
+            src: meta.url,
+            srcNoWatermark: null,
+            fullscreen: null,
+            imageSize: null,
+            height: meta.imageHeight ?? null,
+            width: meta.imageWidth ?? null,
+            resizeWidth: null,
+            bytes: meta.bytes ?? null,
+            alt: null,
+            title: null,
+            type: meta.contentType ?? 'image/png',
+            href: null,
+            belowTheFold: false,
+            topImage: false,
+            internalRedirect: null,
+            isProcessing: false,
+            align: null,
+            offset: false,
+          },
+        },
+      ],
+    };
+  }
+  // No upload metadata (upload skipped/failed) — best effort.
+  return { type: 'captionedImage', content: [{ type: 'image2', attrs: { src: url } }] };
 }
 
 /** Inline mdast nodes → ProseMirror inline content. */
@@ -293,11 +332,10 @@ export function buildDraftPayload({ title, bodyMarkdown, socialPost, canonicalUr
  * @param {string} markdown
  * @returns {Promise<Map<string, string>>} original src → re-hosted URL
  */
-async function uploadInlineImages(page, markdown) {
+async function uploadInlineImages(page, markdown, map = new Map()) {
   const srcs = [...markdown.matchAll(/!\[[^\]]*\]\(([^)]+)\)|<img [^>]*src="([^"]+)"/g)]
     .map((m) => m[1] || m[2])
     .slice(0, 12);
-  const map = new Map();
   for (const src of srcs) {
     try {
       const buf = await fetch(src).then((r) => {
@@ -318,7 +356,10 @@ async function uploadInlineImages(page, markdown) {
         }
       }, dataUri);
       if (res.status === 200 && res.json?.url) {
-        map.set(src, res.json.url);
+        // Keyed by BOTH the original src and the re-hosted url, so markdown
+        // refs to either resolve to full upload metadata.
+        map.set(src, res.json);
+        map.set(res.json.url, res.json);
         console.log(`    substack image re-hosted: ${src.split('/').pop()} → ${res.json.url.split('/').pop()}`);
       } else {
         console.warn(`    substack image upload failed (${res.status}) for ${src}: ${res.error ?? JSON.stringify(res.json)?.slice(0, 120)}`);
@@ -341,9 +382,10 @@ async function uploadInlineImages(page, markdown) {
  *
  * @param {import('playwright').Page} page
  * @param {string} markdown
+ * @param {Map<string, object>} imageMeta - filled with the table uploads' metadata
  * @returns {Promise<string>} markdown with tables replaced by ![](url) refs
  */
-async function renderTablesToImages(page, markdown) {
+async function renderTablesToImages(page, markdown, imageMeta) {
   const lines = (markdown ?? '').split('\n');
   const out = [];
   let i = 0;
@@ -354,10 +396,11 @@ async function renderTablesToImages(page, markdown) {
       const block = [];
       while (i < lines.length && isTableRow(lines[i])) block.push(lines[i++]);
       try {
-        const url = await renderTablePng(page, block);
-        if (url) {
-          console.log(`    substack table rendered → ${url.split('/').pop()}`);
-          out.push('', `![Table](${url})`, '');
+        const meta = await renderTablePng(page, block);
+        if (meta?.url) {
+          imageMeta.set(meta.url, meta);
+          console.log(`    substack table rendered → ${meta.url.split('/').pop()}`);
+          out.push('', `![Table](${meta.url})`, '');
           continue;
         }
       } catch (e) {
@@ -399,7 +442,7 @@ async function renderTablePng(page, blockLines) {
     });
     return { status: r.status, json: await r.json().catch(() => null) };
   }, dataUri);
-  if (res.status === 200 && res.json?.url) return res.json.url;
+  if (res.status === 200 && res.json?.url) return res.json;
   throw new Error(`image upload ${res.status}`);
 }
 
@@ -427,11 +470,13 @@ async function createDraftOnSubstack({ title, bodyMarkdown, socialPost, canonica
       (pu) => pu.publication?.subdomain === pub || pu.publication === pub
     ) ?? profile?.publicationUsers?.[0];
 
-    const imageUrlMap = mode === 'full' ? await uploadInlineImages(page, bodyMarkdown ?? '') : undefined;
-    // Tables become PNG images BEFORE conversion (the editor has no table
-    // node; the markdown image refs land as ordinary captionedImages).
-    const markdownForDoc = mode === 'full' ? await renderTablesToImages(page, bodyMarkdown ?? '') : (bodyMarkdown ?? '');
-    const payload = buildDraftPayload({ title, bodyMarkdown: markdownForDoc, socialPost, canonicalUrl, mode, imageUrlMap });
+    const imageMeta = new Map();
+    let markdownForDoc = bodyMarkdown ?? '';
+    if (mode === 'full') {
+      await uploadInlineImages(page, markdownForDoc, imageMeta);
+      markdownForDoc = await renderTablesToImages(page, markdownForDoc, imageMeta);
+    }
+    const payload = buildDraftPayload({ title, bodyMarkdown: markdownForDoc, socialPost, canonicalUrl, mode, imageUrlMap: imageMeta });
     if (profile && membership) {
       payload.draft_bylines = [{ id: profile.id, publicationUserId: membership.id }];
     }

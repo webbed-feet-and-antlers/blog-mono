@@ -328,17 +328,20 @@ test('substack.markdownToProseMirrorDoc: inline <picture> blocks are hoisted to 
 });
 
 test('substack.markdownToProseMirrorDoc: re-hosted image map swaps srcs', () => {
-  const map = new Map([['https://inkpens.tech/sshot/x.png', 'https://substack-post-media.s3.amazonaws.com/public/abc.png']]);
+  const meta = { url: 'https://substack-post-media.s3.amazonaws.com/public/abc.png', bytes: 123, imageWidth: 1600, imageHeight: 900, contentType: 'image/png' };
+  const map = new Map([['https://inkpens.tech/sshot/x.png', meta], [meta.url, meta]]);
   // Top-level html img AND inline img inside a paragraph (mdxToMarkdown emits
   // the picture block without surrounding blank lines — it lands INLINE).
   const doc = substack.markdownToProseMirrorDoc(
     'before\n\n<img src="https://inkpens.tech/sshot/x.png" />\n\nafter\n\ntext with inline <img src="https://inkpens.tech/sshot/x.png" /> image',
     map
   );
-  const srcs = JSON.stringify(doc).match(/"src":"([^"]+)"/g) ?? [];
-  assert.ok(srcs.length >= 2, `found ${srcs.length} image srcs`);
-  for (const s of srcs) {
-    assert.ok(s.includes('substack-post-media'), `image re-hosted, got ${s}`);
-  }
+  const imgs = JSON.stringify(doc).match(/"type":"image2"/g) ?? [];
+  assert.ok(imgs.length >= 2, `found ${imgs.length} image2 nodes`);
+  assert.ok(!JSON.stringify(doc).includes('"src":"https://inkpens.tech'), 'all srcs re-hosted');
+  // The editor's real shape: captionedImage wrapping image2 with full attrs.
+  const first = JSON.stringify(doc.content);
+  assert.ok(first.includes('"type":"captionedImage","content":[{"type":"image2","attrs":{"src":"https://substack-post-media'), 'captionedImage wraps image2');
+  assert.ok(first.includes('"width":1600'), 'carries width');
 });
 
