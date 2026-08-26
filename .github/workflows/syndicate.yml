@@ -129,7 +129,7 @@ jobs:
           git remote set-url origin "https://x-access-token:${PAT}@github.com/${GITHUB_REPOSITORY}.git"
           # Diagnostics (identity + scopes only — never the token): shows how
           # GitHub's rulesets see the push principal when GH013s happen.
-          echo "Push principal: login=$(curl -s -H "Authorization: token ${PAT}" https://api.github.com/user | jq -r .login // 'unknown') scopes=$(curl -s -I -H "Authorization: token ${PAT}" https://api.github.com/user | grep -i '^x-oauth-scopes' | tr -d '\r' || echo 'none (fine-grained token?)')"
+          echo "Push principal: $(curl -s -w '\nhttp=%{http_code}\n' -H "Authorization: token ${PAT}" https://api.github.com/user | grep -E '\"login\"|http=' | tr -d ' ' | tr '\n' ' ') scopes=$(curl -s -I -H "Authorization: token ${PAT}" https://api.github.com/user | grep -i '^x-oauth-scopes' | tr -d '\r' || echo 'none (fine-grained token?)')"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           [ -d blogs ] && git add blogs
