@@ -69,8 +69,11 @@ const umamiHost = (import.meta.env.UMAMI_HOST || 'https://eu.umami.is').replace(
       Umami analytics (https://umami.is) — cookieless, no consent banner needed.
       Env-gated: only renders when UMAMI_WEBSITE_ID is set, so the dev server and
       any build without the ID ship zero analytics. is:inline keeps the tag literal
-      (Astro would otherwise bundle/break it). UMAMI_HOST defaults to the cloud CDN;
-      override to a self-hosted origin if you move off cloud.
+      (Astro would otherwise bundle/break it). UMAMI_HOST defaults to the EU cloud
+      ingest; override to a self-hosted origin if you move off cloud.
+      data-host-url is load-bearing: without it the tracker sends to
+      https://gateway.umami.is/api/send, which does NOT route EU-region
+      websites — beacons vanish even though the script loads fine.
     */}
     {umamiWebsiteId && (
       <script
@@ -78,6 +81,7 @@ const umamiHost = (import.meta.env.UMAMI_HOST || 'https://eu.umami.is').replace(
         is:inline
         src={`${umamiHost}/script.js`}
         data-website-id={umamiWebsiteId}
+        data-host-url={umamiHost}
         data-domains="inkpens.tech"
       />
     )}
