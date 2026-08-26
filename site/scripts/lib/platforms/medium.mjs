@@ -47,28 +47,38 @@ async function fillImportUrl(page, canonicalUrl) {
 /**
  * Drive the Import-a-story flow to a saved draft. Returns the draft editor
  * URL, or null (with reason) on any failure.
+ *
+ * Runs in REAL headed Chrome: Medium fronts /p/import with Cloudflare, which
+ * serves headless Chromium an "Attention Required!" interstitial (that's what
+ * the earlier "import URL input not found" failures actually were).
  */
 async function importStoryDraft(canonicalUrl) {
-  const result = await withSessionBrowser('medium', async (page) => {
-    await page.goto('https://medium.com/p/import', { waitUntil: 'domcontentloaded', timeout: 45_000 });
-    if (/sign-?in|\/login/i.test(page.url())) throw new AuthError('medium');
+  const result = await withSessionBrowser(
+    'medium',
+    async (page) => {
+      await page.goto('https://medium.com/p/import', { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      if (/sign-?in|\/login|attention required/i.test(page.url() + ' ' + (await page.title()))) {
+        throw new AuthError('medium');
+      }
 
-    // The import dialog input + submit. Enter usually submits; some UI
-    // variants need the "Import" button clicked instead.
-    if (!(await fillImportUrl(page, canonicalUrl))) {
-      throw new Error('import URL input not found (Medium UI changed?)');
-    }
-    await page.keyboard.press('Enter');
-    const importBtn = page.getByRole('button', { name: /^import/i }).first();
-    if (await importBtn.isVisible().catch(() => false)) await importBtn.click().catch(() => {});
+      // The import dialog input + submit. Enter usually submits; some UI
+      // variants need the "Import" button clicked instead.
+      if (!(await fillImportUrl(page, canonicalUrl))) {
+        throw new Error('import URL input not found (Medium UI changed?)');
+      }
+      await page.keyboard.press('Enter');
+      const importBtn = page.getByRole('button', { name: /^import/i }).first();
+      if (await importBtn.isVisible().catch(() => false)) await importBtn.click().catch(() => {});
 
-    // Medium fetches + converts the story, then lands in the editor at
-    // /p/<id>/edit. Generous timeout: the scrape takes 10–30s+.
-    await page.waitForURL(/\/p\/[^/]+\/edit/, { timeout: 120_000 });
-    // Give the autosave a beat so the draft is durably under me/stories/drafts.
-    await page.waitForTimeout(3_000);
-    return page.url();
-  });
+      // Medium fetches + converts the story, then lands in the editor at
+      // /p/<id>/edit. Generous timeout: the scrape takes 10–30s+.
+      await page.waitForURL(/\/p\/[^/]+\/edit/, { timeout: 120_000 });
+      // Give the autosave a beat so the draft is durably under me/stories/drafts.
+      await page.waitForTimeout(3_000);
+      return page.url();
+    },
+    { headed: true, channel: 'chrome' }
+  );
   return result; // { value } | { value: null, authFailed, reason }
 }
 

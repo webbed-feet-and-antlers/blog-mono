@@ -126,7 +126,21 @@ async function createDraftOnSubstack({ title, bodyHtml, socialPost, canonicalUrl
     await page.goto(`${origin}/publish/posts`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
     if (/\/signin|\/login/i.test(page.url())) throw new AuthError('substack');
 
+    // The drafts endpoint REQUIRES draft_bylines ([{id, publicationUserId}]) —
+    // a payload without them 400s ("Invalid value"). Both IDs come from the
+    // same-origin profile endpoint; pick this publication's membership.
+    const profile = await page.evaluate(async () => {
+      const r = await fetch('/api/v1/user/profile/self', { headers: { Accept: 'application/json' } });
+      return r.ok ? await r.json() : null;
+    });
+    const membership = (profile?.publicationUsers ?? []).find(
+      (pu) => pu.publication?.subdomain === pub || pu.publication === pub
+    ) ?? profile?.publicationUsers?.[0];
+
     let payload = buildDraftPayload({ title, bodyHtml, socialPost, canonicalUrl, mode });
+    if (profile && membership) {
+      payload.draft_bylines = [{ id: profile.id, publicationUserId: membership.id }];
+    }
     if (mode === 'full' && bodyHtml) {
       payload = buildDraftPayload({
         title,
@@ -135,6 +149,9 @@ async function createDraftOnSubstack({ title, bodyHtml, socialPost, canonicalUrl
         canonicalUrl,
         mode,
       });
+      if (profile && membership) {
+        payload.draft_bylines = [{ id: profile.id, publicationUserId: membership.id }];
+      }
     }
 
     const res = await page.evaluate(async (payload) => {
