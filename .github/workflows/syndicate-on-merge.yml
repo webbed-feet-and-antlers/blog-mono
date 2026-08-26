@@ -111,8 +111,11 @@ jobs:
       # — they must be permanent since dev.to/Medium hotlink rather than re-host).
       # main is protected ("changes must be made through a pull request"), which
       # rejects pushes from the job's GITHUB_TOKEN — so the push authenticates as
-      # the owner via SYNDICATE_PAT (fine-grained PAT, Contents: Read and write;
-      # create once, then: gh secret set SYNDICATE_PAT --env syndication).
+      # the owner via SYNDICATE_PAT. Must be a CLASSIC PAT with the `repo` scope:
+      # classic tokens fully impersonate the user (repo admin → ruleset bypass),
+      # while fine-grained PATs do NOT match role-based bypass actors and get
+      # GH013-rejected despite having Contents write. Create once, then:
+      #   gh secret set SYNDICATE_PAT --env syndication
       # Posting NEVER depends on this step: without the PAT it posts fine and
       # only the record-commit is skipped, with a warning pointing here.
       # (No `if:` — the job is already gated on merged + publish label, and
@@ -122,7 +125,7 @@ jobs:
           PAT: ${{ secrets.SYNDICATE_PAT }}
         run: |
           if [ -z "$PAT" ]; then
-            echo "::warning::SYNDICATE_PAT is not set — posts went out, but recording IDs/screenshots to protected main was skipped. Create a fine-grained PAT (Contents: Read and write) and run: gh secret set SYNDICATE_PAT --env syndication"
+            echo "::warning::SYNDICATE_PAT is not set — posts went out, but recording IDs/screenshots to protected main was skipped. Create a classic PAT (repo scope) and run: gh secret set SYNDICATE_PAT --env syndication"
             exit 0
           fi
           git remote set-url origin "https://x-access-token:${PAT}@github.com/${GITHUB_REPOSITORY}.git"
