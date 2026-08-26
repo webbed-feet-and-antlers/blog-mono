@@ -22,6 +22,7 @@
 // before: it contributes to the shared syndication package artifact.
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
+import remarkGfm from 'remark-gfm';
 import { seedPackage, addPlatformNote, packagePath, writeHtmlPackage, packageHtmlPath } from '../manual-package.mjs';
 import { hasSession } from '../assisted-session.mjs';
 import { withSessionBrowser, AuthError } from '../browser-draft.mjs';
@@ -50,7 +51,13 @@ function inlineToPm(nodes, marks = [], imageUrlMap) {
   for (const n of nodes ?? []) {
     switch (n.type) {
       case 'text':
-        out.push(textNode(n.value, marks));
+        // Literal $…$ math survives the pipeline as plain text (KaTeX CSS
+        // wouldn't survive cross-posting) — turn it into inline equations,
+        // which Substack renders natively (schema verified via probe draft).
+        for (const piece of splitMath(n.value)) {
+          if (piece.kind === 'math') out.push({ type: 'equation', attrs: { latex: piece.text } });
+          else out.push(textNode(piece.text, marks));
+        }
         break;
       case 'strong':
         out.push(...inlineToPm(n.children, [...marks, { type: 'strong' }], imageUrlMap));
@@ -60,6 +67,9 @@ function inlineToPm(nodes, marks = [], imageUrlMap) {
         break;
       case 'inlineCode':
         out.push(textNode(n.value, [...marks, { type: 'code' }]));
+        break;
+      case 'delete':
+        out.push(...inlineToPm(n.children, [...marks, { type: 'strike' }], imageUrlMap));
         break;
       case 'link':
         out.push(...inlineToPm(n.children, [...marks, { type: 'link', attrs: { href: n.url, anchorType: 'LINK' } }], imageUrlMap));
@@ -72,6 +82,8 @@ function inlineToPm(nodes, marks = [], imageUrlMap) {
         break;
       case 'html': {
         // mdxToMarkdown inlines component screenshots as <picture>/<img> HTML.
+        // (Kept for safety — the top-level hoisting in markdownToProseMirrorDoc
+        // handles the real cases, so an inline img here is unusual.)
         const src = /<img [^>]*src="([^"]+)"/.exec(n.value)?.[1];
         if (src) out.push(imageNode(src, imageUrlMap));
         else {
@@ -88,11 +100,60 @@ function inlineToPm(nodes, marks = [], imageUrlMap) {
   return out;
 }
 
-/** Block mdast nodes → ProseMirror block nodes (null to skip). */
+/** Split a text value into text / $math$ pieces. */
+function splitMath(value) {
+  const pieces = [];
+  let rest = value ?? '';
+  const re = /(^|[^$\\])\$([^$\n]+)\$/;
+  while (true) {
+    const m = re.exec(rest);
+    if (!m) break;
+    const before = rest.slice(0, m.index) + m[1];
+    if (before) pieces.push({ kind: 'text', text: before });
+    pieces.push({ kind: 'math', text: m[2] });
+    rest = rest.slice(m.index + m[0].length);
+  }
+  if (rest) pieces.push({ kind: 'text', text: rest });
+  return pieces;
+}
+
+/**
+ * Paragraph → array of blocks. CommonMark treats <picture> as a PHRASING
+ * element, so component-screenshot html always parses inline inside a
+ * paragraph — but captionedImage is block-level and the editor DROPS it when
+ * nested. Split the paragraph around images so they stand alone.
+ */
+function paragraphToPm(node, imageUrlMap) {
+  const blocks = [];
+  let inline = [];
+  const flush = () => {
+    if (inline.length) blocks.push({ type: 'paragraph', content: inline });
+    inline = [];
+  };
+  for (const n of node.children ?? []) {
+    const src =
+      n.type === 'html' ? /<img [^>]*src="([^"]+)"/.exec(n.value)?.[1]
+      : n.type === 'image' ? n.url
+      : null;
+    if (src) {
+      flush();
+      blocks.push(imageNode(src, imageUrlMap));
+    } else if (n.type === 'html') {
+      const text = n.value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (text) inline.push(textNode(text));
+    } else {
+      inline.push(...inlineToPm([n], [], imageUrlMap));
+    }
+  }
+  flush();
+  return blocks.length ? blocks : [{ type: 'paragraph', content: [] }];
+}
+
+/** Block mdast nodes → ProseMirror block node(s); arrays flatten. */
 function blockToPm(node, imageUrlMap) {
   switch (node.type) {
     case 'paragraph':
-      return { type: 'paragraph', content: inlineToPm(node.children, [], imageUrlMap) };
+      return paragraphToPm(node, imageUrlMap);
     case 'heading':
       // Substack's editor headings are levels 2–3; clamp the markdown depth.
       return {
@@ -118,6 +179,20 @@ function blockToPm(node, imageUrlMap) {
       };
     case 'thematicBreak':
       return { type: 'horizontal_rule' };
+    case 'table':
+      // GFM tables — prosemirror-tables shape, verified against Substack's
+      // normalization (table/table_row/table_cell).
+      return {
+        type: 'table',
+        content: (node.children ?? []).map((row) => ({
+          type: 'table_row',
+          content: (row.children ?? []).map((cell) => ({
+            type: 'table_cell',
+            attrs: { alignment: cell.align ?? null, colspan: 1, rowspan: 1 },
+            content: inlineToPm(cell.children, [], imageUrlMap),
+          })),
+        })),
+      };
     case 'html': {
       const src = /<img [^>]*src="([^"]+)"/.exec(node.value)?.[1];
       return src ? imageNode(src, imageUrlMap) : null;
@@ -137,8 +212,18 @@ function blockToPm(node, imageUrlMap) {
  * @returns {{ type: 'doc', attrs: object, content: object[] }}
  */
 export function markdownToProseMirrorDoc(markdown, imageUrlMap) {
-  const tree = unified().use(remarkParse).parse(markdown);
-  const content = tree.children.map((c) => blockToPm(c, imageUrlMap)).filter(Boolean);
+  // Display math ($$…$$ paragraphs) becomes a block equation; GFM (tables,
+  // strikethrough) needs the remark-gfm plugin.
+  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown ?? '');
+  const content = tree.children.flatMap((c) => {
+    // A paragraph that is exactly $$…$$ is display math.
+    const para = c.type === 'paragraph' && c.children?.length === 1 && c.children[0].type === 'text'
+      ? /^\$\$([\s\S]+)\$\$$/.exec(c.children[0].value.trim())
+      : null;
+    if (para) return [{ type: 'equation', attrs: { latex: para[1].trim() } }];
+    const blocks = blockToPm(c, imageUrlMap);
+    return Array.isArray(blocks) ? blocks : blocks ? [blocks] : [];
+  }).filter(Boolean);
   return { type: 'doc', attrs: { schemaVersion: 'v1' }, content };
 }
 

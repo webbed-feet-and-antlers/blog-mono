@@ -290,6 +290,41 @@ test('substack.buildDraftPayload: full mode converts markdown + provenance foote
   assert.ok(!payload.draft_body.includes('<p>'), 'no literal HTML');
 });
 
+test('substack.markdownToProseMirrorDoc: GFM tables convert to table/table_row/table_cell', () => {
+  const doc = substack.markdownToProseMirrorDoc('| A | B |\n| --- | --- |\n| 1 | 2 |');
+  const table = doc.content.find((n) => n.type === 'table');
+  assert.ok(table, 'table node present');
+  assert.equal(table.content[0].type, 'table_row');
+  assert.equal(table.content[0].content.length, 2);
+  assert.equal(table.content[0].content[0].type, 'table_cell');
+  assert.equal(table.content[0].content[1].content[0].text, 'B');
+});
+
+test('substack.markdownToProseMirrorDoc: literal $math$ becomes inline equations, $$..$$ becomes block', () => {
+  const doc = substack.markdownToProseMirrorDoc(
+    'The energy is $E=mc^2$ in text.\n\n$$\\int_0^1 x\\,dx$$\n\nplain after'
+  );
+  const para = doc.content.find((n) => n.type === 'paragraph');
+  const eq = para.content.find((n) => n.type === 'equation');
+  assert.ok(eq, 'inline equation present');
+  assert.equal(eq.attrs.latex, 'E=mc^2');
+  const blockEq = doc.content.find((n) => n.type === 'equation');
+  assert.ok(blockEq, 'block equation present');
+  assert.ok(JSON.stringify(doc).includes('int_0^1'));
+  // No stray dollar signs left behind in text nodes.
+  assert.ok(!JSON.stringify(doc).includes('$E'), 'math text stripped of $ delimiters');
+});
+
+test('substack.markdownToProseMirrorDoc: inline <picture> blocks are hoisted to top level', () => {
+  const doc = substack.markdownToProseMirrorDoc(
+    'text before\n<picture><source srcset="l"><img src="https://inkpens.tech/sshot/x.png"></picture>\ntext after'
+  );
+  const img = doc.content.find((n) => n.type === 'captionedImage');
+  assert.ok(img, 'captionedImage at top level');
+  assert.ok(!JSON.stringify(doc.content.filter((n) => n.type === 'paragraph')).includes('captionedImage'),
+    'not nested inside a paragraph');
+});
+
 test('substack.markdownToProseMirrorDoc: re-hosted image map swaps srcs', () => {
   const map = new Map([['https://inkpens.tech/sshot/x.png', 'https://substack-post-media.s3.amazonaws.com/public/abc.png']]);
   // Top-level html img AND inline img inside a paragraph (mdxToMarkdown emits
