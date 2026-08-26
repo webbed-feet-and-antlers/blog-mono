@@ -113,8 +113,9 @@ pre-filled and the terminal waits while you review.
 In each tab: review, click **Publish**, and note the public URL. On the
 LinkedIn Article also set the canonical URL (⋯ → Settings → Canonical URL
 → your site's URL) so it doesn't cannibalize your SEO. Medium sets the
-canonical automatically via the import; the Substack default is a teaser +
-link (SEO-safe; `SUBSTACK_DRAFT_MODE=full` switches that).
+canonical automatically via the import; the Substack draft defaults to the
+full body (`SUBSTACK_DRAFT_MODE=teaser` switches to the SEO-safe blurb +
+link — note Substack has no canonical-URL support).
 
 Then record each publication:
 

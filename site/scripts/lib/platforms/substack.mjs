@@ -1,7 +1,9 @@
 // Substack — no OFFICIAL posting API exists anywhere (confirmed across Buffer,
 // Postiz, dlvr.it, Narrareach, and Substack's own read-only 2026 Developer
 // API). Also no canonical-URL support, so full-text cross-posts are an SEO
-// duplicate risk.
+// duplicate risk — the SEO-cautious "teaser" mode is available via
+// SUBSTACK_DRAFT_MODE=teaser, but the default is the FULL body (this is the
+// newsletter; a blurb-only email is not what subscribers signed up for).
 //
 // ASSISTED-DRAFT tier: the web editor talks to an internal JSON API
 // (POST /api/v1/drafts with the `substack.sid` session cookie — see the
@@ -12,9 +14,14 @@
 // The draft request rides the Playwright session's page (same-origin fetch
 // with real browser cookies) because Substack 403s plain non-browser clients.
 //
+// draft_body must be a STRINGIFIED PROSEMIRROR DOC — HTML strings are stored
+// as literal text (visible tags), and JSON objects render as markup. The
+// converter below walks the markdown AST (remark) and emits Substack's schema.
+//
 // Without a session (or on any failure), this is the MANUAL platform as
-// before: it contributes to the shared syndication package artifact with the
-// SEO-safe guidance (post a teaser + link rather than the full body).
+// before: it contributes to the shared syndication package artifact.
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
 import { seedPackage, addPlatformNote, packagePath, writeHtmlPackage, packageHtmlPath } from '../manual-package.mjs';
 import { hasSession } from '../assisted-session.mjs';
 import { withSessionBrowser, AuthError } from '../browser-draft.mjs';
@@ -25,68 +32,185 @@ export function available() {
   return true; // assisted (with session) or manual package — no env credentials
 }
 
-/** Minimal HTML escaping for the title/blurb we interpolate into draft_body. */
-function escapeHtml(s) {
-  return String(s ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;');
+// ── markdown AST → Substack ProseMirror ─────────────────────────────────────
+
+/** @returns {object} a text node, with marks only when present */
+function textNode(text, marks = []) {
+  return marks.length ? { type: 'text', text, marks } : { type: 'text', text };
+}
+
+function imageNode(url, imageUrlMap) {
+  const src = imageUrlMap?.get(url) ?? url;
+  return { type: 'captionedImage', attrs: { src } };
+}
+
+/** Inline mdast nodes → ProseMirror inline content. */
+function inlineToPm(nodes, marks = [], imageUrlMap) {
+  const out = [];
+  for (const n of nodes ?? []) {
+    switch (n.type) {
+      case 'text':
+        out.push(textNode(n.value, marks));
+        break;
+      case 'strong':
+        out.push(...inlineToPm(n.children, [...marks, { type: 'strong' }], imageUrlMap));
+        break;
+      case 'emphasis':
+        out.push(...inlineToPm(n.children, [...marks, { type: 'em' }], imageUrlMap));
+        break;
+      case 'inlineCode':
+        out.push(textNode(n.value, [...marks, { type: 'code' }]));
+        break;
+      case 'link':
+        out.push(...inlineToPm(n.children, [...marks, { type: 'link', attrs: { href: n.url, anchorType: 'LINK' } }], imageUrlMap));
+        break;
+      case 'break':
+        out.push({ type: 'hard_break' });
+        break;
+      case 'image':
+        out.push(imageNode(n.url, imageUrlMap));
+        break;
+      case 'html': {
+        // mdxToMarkdown inlines component screenshots as <picture>/<img> HTML.
+        const src = /<img [^>]*src="([^"]+)"/.exec(n.value)?.[1];
+        if (src) out.push(imageNode(src, imageUrlMap));
+        else {
+          const text = n.value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+          if (text.trim()) out.push(textNode(text.trim(), marks));
+        }
+        break;
+      }
+      default:
+        if (n.value) out.push(textNode(n.value, marks));
+        break;
+    }
+  }
+  return out;
+}
+
+/** Block mdast nodes → ProseMirror block nodes (null to skip). */
+function blockToPm(node, imageUrlMap) {
+  switch (node.type) {
+    case 'paragraph':
+      return { type: 'paragraph', content: inlineToPm(node.children, [], imageUrlMap) };
+    case 'heading':
+      // Substack's editor headings are levels 2–3; clamp the markdown depth.
+      return {
+        type: 'heading',
+        attrs: { level: Math.min(Math.max(node.depth ?? 2, 2), 3) },
+        content: inlineToPm(node.children, [], imageUrlMap),
+      };
+    case 'code':
+      return {
+        type: 'code_block',
+        ...(node.lang ? { attrs: { language: node.lang } } : {}),
+        content: [{ type: 'text', text: node.value }],
+      };
+    case 'blockquote':
+      return { type: 'blockquote', content: (node.children ?? []).flatMap((c) => blockToPm(c, imageUrlMap)).filter(Boolean) };
+    case 'list':
+      return {
+        type: node.ordered ? 'ordered_list' : 'bullet_list',
+        content: (node.children ?? []).map((li) => ({
+          type: 'list_item',
+          content: (li.children ?? []).flatMap((c) => blockToPm(c, imageUrlMap)).filter(Boolean),
+        })),
+      };
+    case 'thematicBreak':
+      return { type: 'horizontal_rule' };
+    case 'html': {
+      const src = /<img [^>]*src="([^"]+)"/.exec(node.value)?.[1];
+      return src ? imageNode(src, imageUrlMap) : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Convert sanitized markdown into a Substack ProseMirror doc object.
+ * imageUrlMap (optional) swaps original image srcs for re-hosted Substack
+ * URLs (foreign image URLs are stripped from posts).
+ *
+ * @param {string} markdown
+ * @param {Map<string, string>} [imageUrlMap]
+ * @returns {{ type: 'doc', attrs: object, content: object[] }}
+ */
+export function markdownToProseMirrorDoc(markdown, imageUrlMap) {
+  const tree = unified().use(remarkParse).parse(markdown);
+  const content = tree.children.map((c) => blockToPm(c, imageUrlMap)).filter(Boolean);
+  return { type: 'doc', attrs: { schemaVersion: 'v1' }, content };
 }
 
 /**
  * Build the POST /api/v1/drafts payload. Pure function (unit-tested).
  *
- * Modes (SUBSTACK_DRAFT_MODE, default "teaser"):
- *   teaser — blurb + "Read the full blog →" canonical link. SEO-safe default:
- *            Substack has no canonical-URL field, so a full-text cross-post
- *            would be treated as canonical by Google and cannibalize our site.
- *   full   — the whole body (paste-ready HTML) + an "Originally published at"
- *            footer link. Accepts the duplicate-content trade-off. Foreign
- *            <img> URLs are stripped by Substack, so callers must re-host
- *            images via /api/v1/image before sending (uploadInlineImages).
- *
  * @param {object} opts
  * @param {string} opts.title
- * @param {string} opts.bodyHtml        - full sanitized body as HTML
- * @param {string} opts.socialPost      - teaser blurb
+ * @param {string} opts.bodyMarkdown   - sanitized markdown (full mode body)
+ * @param {string} opts.socialPost     - teaser blurb
  * @param {string} opts.canonicalUrl
  * @param {'teaser'|'full'} [opts.mode]
+ * @param {Map<string, string>} [opts.imageUrlMap] - re-hosted image srcs
  */
-export function buildDraftPayload({ title, bodyHtml, socialPost, canonicalUrl, mode = 'teaser' }) {
-  let draftBody;
-  if (mode === 'full') {
-    draftBody = [
-      bodyHtml.trim(),
-      '<hr>',
-      `<p><em>Originally published at <a href="${canonicalUrl}">${canonicalUrl}</a></em>.</p>`,
-    ].join('\n');
+export function buildDraftPayload({ title, bodyMarkdown, socialPost, canonicalUrl, mode = 'full', imageUrlMap }) {
+  let doc;
+  if (mode === 'teaser') {
+    doc = {
+      type: 'doc',
+      attrs: { schemaVersion: 'v1' },
+      content: [
+        { type: 'paragraph', content: [textNode(socialPost || 'New post.')] },
+        {
+          type: 'paragraph',
+          content: [
+            textNode('Read the full blog → '),
+            textNode(canonicalUrl, [{ type: 'link', attrs: { href: canonicalUrl, anchorType: 'LINK' } }]),
+          ],
+        },
+      ],
+    };
   } else {
-    const blurb = escapeHtml(socialPost || 'New post.');
-    draftBody = [
-      `<p>${blurb}</p>`,
-      `<p><a href="${canonicalUrl}">Read the full blog →</a></p>`,
-    ].join('\n');
+    doc = markdownToProseMirrorDoc(bodyMarkdown ?? '', imageUrlMap);
+    doc.content.push({
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Originally published at ', marks: [{ type: 'em' }] },
+        {
+          type: 'text',
+          text: canonicalUrl,
+          marks: [
+            { type: 'em' },
+            { type: 'link', attrs: { href: canonicalUrl, anchorType: 'LINK' } },
+          ],
+        },
+      ],
+    });
   }
-  // draft_body must be a STRING (HTML), never a JSON object — objects render
-  // as visible markup in the editor.
-  return { draft_title: title, draft_body: draftBody, type: 'newsletter' };
+  return {
+    draft_title: title,
+    // MUST be a string — a JSON object here renders as visible markup.
+    draft_body: JSON.stringify(doc),
+    type: 'newsletter',
+  };
 }
 
 /**
  * Re-host inline images for full-body mode: Substack strips foreign <img>
  * srcs, so each is uploaded via POST /api/v1/image (base64 data URI — NOT
- * multipart) and the src rewritten to the returned S3 URL. Bytes are fetched
+ * multipart) and the src mapped to the returned S3 URL. Bytes are fetched
  * from Node (no CORS) and the upload runs as a same-origin page fetch.
  * Best-effort per image: failures leave the original src (image drops out).
  *
  * @param {import('playwright').Page} page - a page on the publication origin
- * @param {string} bodyHtml
- * @returns {Promise<string>} bodyHtml with re-hosted srcs
+ * @param {string} markdown
+ * @returns {Promise<Map<string, string>>} original src → re-hosted URL
  */
-async function uploadInlineImages(page, bodyHtml) {
-  const srcs = [...bodyHtml.matchAll(/<img [^>]*src="([^"]+)"/g)].map((m) => m[1]).slice(0, 12);
-  let next = bodyHtml;
+async function uploadInlineImages(page, markdown) {
+  const srcs = [...markdown.matchAll(/!\[[^\]]*\]\(([^)]+)\)|<img [^>]*src="([^"]+)"/g)]
+    .map((m) => m[1] || m[2])
+    .slice(0, 12);
+  const map = new Map();
   for (const src of srcs) {
     try {
       const buf = await fetch(src).then((r) => {
@@ -95,30 +219,37 @@ async function uploadInlineImages(page, bodyHtml) {
       });
       const dataUri = `data:image/png;base64,${Buffer.from(buf).toString('base64')}`;
       const res = await page.evaluate(async (dataUri) => {
-        const r = await fetch('/api/v1/image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: dataUri }),
-        });
-        return { status: r.status, json: await r.json().catch(() => null) };
+        try {
+          const r = await fetch('/api/v1/image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataUri }),
+          });
+          return { status: r.status, json: await r.json().catch(() => null) };
+        } catch (e) {
+          return { status: 0, json: null, error: String(e) };
+        }
       }, dataUri);
       if (res.status === 200 && res.json?.url) {
-        next = next.split(`src="${src}"`).join(`src="${res.json.url}"`);
+        map.set(src, res.json.url);
+        console.log(`    substack image re-hosted: ${src.split('/').pop()} → ${res.json.url.split('/').pop()}`);
+      } else {
+        console.warn(`    substack image upload failed (${res.status}) for ${src}: ${res.error ?? JSON.stringify(res.json)?.slice(0, 120)}`);
       }
-    } catch {
+    } catch (e) {
       // Leave the original src — Substack drops the image but the text survives.
+      console.warn(`    substack image fetch failed for ${src}: ${e.message}`);
     }
   }
-  return next;
+  return map;
 }
 
 /**
  * Create the draft via the session browser (same-origin fetch on the
  * publication — carries cookies + a real browser fingerprint, dodging the
- * 403s Substack gives plain HTTP clients). Full mode re-hosts inline images
- * first, on the same page.
+ * 403s Substack gives plain HTTP clients).
  */
-async function createDraftOnSubstack({ title, bodyHtml, socialPost, canonicalUrl, mode }) {
+async function createDraftOnSubstack({ title, bodyMarkdown, socialPost, canonicalUrl, mode }) {
   const pub = process.env.SUBSTACK_PUB || 'theinkpens';
   const origin = `https://${pub}.substack.com`;
 
@@ -137,21 +268,10 @@ async function createDraftOnSubstack({ title, bodyHtml, socialPost, canonicalUrl
       (pu) => pu.publication?.subdomain === pub || pu.publication === pub
     ) ?? profile?.publicationUsers?.[0];
 
-    let payload = buildDraftPayload({ title, bodyHtml, socialPost, canonicalUrl, mode });
+    const imageUrlMap = mode === 'full' ? await uploadInlineImages(page, bodyMarkdown ?? '') : undefined;
+    const payload = buildDraftPayload({ title, bodyMarkdown, socialPost, canonicalUrl, mode, imageUrlMap });
     if (profile && membership) {
       payload.draft_bylines = [{ id: profile.id, publicationUserId: membership.id }];
-    }
-    if (mode === 'full' && bodyHtml) {
-      payload = buildDraftPayload({
-        title,
-        bodyHtml: await uploadInlineImages(page, bodyHtml),
-        socialPost,
-        canonicalUrl,
-        mode,
-      });
-      if (profile && membership) {
-        payload.draft_bylines = [{ id: profile.id, publicationUserId: membership.id }];
-      }
     }
 
     const res = await page.evaluate(async (payload) => {
@@ -174,31 +294,29 @@ async function createDraftOnSubstack({ title, bodyHtml, socialPost, canonicalUrl
       : `${origin}/publish/post/${res.json.id}`;
     return { id: res.json.id, url };
   });
-  // { value } on success; { value: null, authFailed, reason } on any failure.
-  return result;
+  return result; // { value } | { value: null, authFailed, reason }
 }
 
 /**
  * @param {object} opts
  * @param {string} opts.title
  * @param {string} opts.bodyMarkdown
- * @param {string} opts.bodyHtml       - paste-ready HTML (teaser paste / full draft body)
+ * @param {string} opts.bodyHtml       - paste-ready HTML (manual fallback)
  * @param {string} opts.socialPost     - short blurb for a teaser intro
  * @param {string} opts.canonicalUrl
  * @param {string} opts.slug
  * @param {boolean} [opts.dryRun]      - never touch the network when true
- * @returns {Promise<{id: string, url: string}>} id is 'draft' (assisted),
- *   'manual' (package fallback), or 'dry-run' telemetry comes via the url.
+ * @returns {Promise<{id: string, url: string}>}
  */
 export async function publish({ title, bodyMarkdown, bodyHtml, socialPost, canonicalUrl, slug, dryRun }) {
-  const mode = process.env.SUBSTACK_DRAFT_MODE === 'full' ? 'full' : 'teaser';
+  const mode = process.env.SUBSTACK_DRAFT_MODE === 'teaser' ? 'teaser' : 'full';
 
   let assistedNote = null;
   if (hasSession('substack')) {
     if (dryRun) {
       return { id: 'draft', url: `(dry-run: would create a ${mode} draft on Substack)` };
     }
-    const { value: draft, authFailed, reason } = await createDraftOnSubstack({ title, bodyHtml, socialPost, canonicalUrl, mode });
+    const { value: draft, authFailed, reason } = await createDraftOnSubstack({ title, bodyMarkdown, socialPost, canonicalUrl, mode });
     if (draft) return { id: 'draft', url: draft.url };
     // Session exists but the draft failed (expired login, API drift). Record
     // why on the package and fall through — the manual path keeps the run green.

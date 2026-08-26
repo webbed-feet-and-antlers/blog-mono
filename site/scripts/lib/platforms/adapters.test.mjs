@@ -243,12 +243,12 @@ test('assisted adapters with a saved session + dryRun: id "draft", zero fetch, n
   }
 });
 
-// --- substack.buildDraftPayload: pure payload builder ---
+// --- substack.buildDraftPayload: pure payload builder (ProseMirror docs) ---
 
-test('substack.buildDraftPayload: teaser mode (default) is blurb + canonical link', () => {
+test('substack.buildDraftPayload: teaser mode is blurb + canonical link paragraphs', () => {
   const payload = substack.buildDraftPayload({
     title: 'A & B <post>',
-    bodyHtml: '<p>full body</p>',
+    bodyMarkdown: 'full body',
     socialPost: 'Short blurb',
     canonicalUrl: 'https://inkpens.tech/blog/x/',
     mode: 'teaser',
@@ -256,25 +256,52 @@ test('substack.buildDraftPayload: teaser mode (default) is blurb + canonical lin
   assert.equal(payload.draft_title, 'A & B <post>');
   assert.equal(payload.type, 'newsletter');
   assert.ok(typeof payload.draft_body === 'string', 'draft_body must be a string');
-  assert.ok(payload.draft_body.includes('Short blurb'));
-  assert.ok(payload.draft_body.includes('https://inkpens.tech/blog/x/'));
+  const doc = JSON.parse(payload.draft_body);
+  assert.equal(doc.type, 'doc');
+  assert.equal(doc.attrs.schemaVersion, 'v1');
+  assert.equal(doc.content.length, 2);
+  assert.equal(doc.content[0].type, 'paragraph');
+  assert.equal(doc.content[0].content[0].text, 'Short blurb');
+  const link = doc.content[1].content.find((n) => n.marks?.some((m) => m.type === 'link'));
+  assert.ok(link, 'canonical link present');
+  assert.equal(link.marks.find((m) => m.type === 'link').attrs.href, 'https://inkpens.tech/blog/x/');
   assert.ok(!payload.draft_body.includes('full body'), 'teaser omits the body');
-  // Blurb is HTML-escaped into the body.
-  const escaped = substack.buildDraftPayload({
-    title: 'T', bodyHtml: '', socialPost: 'a<b & c', canonicalUrl: 'https://x', mode: 'teaser',
-  });
-  assert.ok(escaped.draft_body.includes('a&lt;b &amp; c'));
+  assert.ok(!payload.draft_body.includes('<p>'), 'no literal HTML anywhere');
 });
 
-test('substack.buildDraftPayload: full mode embeds the body + provenance footer', () => {
+test('substack.buildDraftPayload: full mode converts markdown + provenance footer', () => {
   const payload = substack.buildDraftPayload({
     title: 'T',
-    bodyHtml: '<p>full body</p>',
+    bodyMarkdown: ['## Heading', '', 'A **bold** paragraph with `code` and a [link](https://example.com).', '', '```js', 'const x = 1;', '```'].join('\n'),
     socialPost: 's',
     canonicalUrl: 'https://inkpens.tech/blog/x/',
     mode: 'full',
   });
-  assert.ok(payload.draft_body.includes('<p>full body</p>'));
-  assert.ok(payload.draft_body.includes('Originally published at'));
-  assert.ok(payload.draft_body.includes('https://inkpens.tech/blog/x/'));
+  const doc = JSON.parse(payload.draft_body);
+  const types = doc.content.map((n) => n.type);
+  assert.ok(types.includes('heading'), `headings converted (${types})`);
+  assert.ok(types.includes('code_block'), 'code fences converted');
+  const para = doc.content.find((n) => n.type === 'paragraph' && n.content?.some((c) => c.marks?.some((m) => m.type === 'strong')));
+  assert.ok(para, 'bold marks converted');
+  assert.ok(JSON.stringify(doc).includes('"code"'), 'inline code marks converted');
+  const footer = doc.content[doc.content.length - 1];
+  assert.ok(footer.content.some((n) => n.text === 'Originally published at '), 'provenance footer present');
+  assert.ok(payload.draft_body.includes('https://inkpens.tech/blog/x/'), 'canonical link present');
+  assert.ok(!payload.draft_body.includes('<p>'), 'no literal HTML');
 });
+
+test('substack.markdownToProseMirrorDoc: re-hosted image map swaps srcs', () => {
+  const map = new Map([['https://inkpens.tech/sshot/x.png', 'https://substack-post-media.s3.amazonaws.com/public/abc.png']]);
+  // Top-level html img AND inline img inside a paragraph (mdxToMarkdown emits
+  // the picture block without surrounding blank lines — it lands INLINE).
+  const doc = substack.markdownToProseMirrorDoc(
+    'before\n\n<img src="https://inkpens.tech/sshot/x.png" />\n\nafter\n\ntext with inline <img src="https://inkpens.tech/sshot/x.png" /> image',
+    map
+  );
+  const srcs = JSON.stringify(doc).match(/"src":"([^"]+)"/g) ?? [];
+  assert.ok(srcs.length >= 2, `found ${srcs.length} image srcs`);
+  for (const s of srcs) {
+    assert.ok(s.includes('substack-post-media'), `image re-hosted, got ${s}`);
+  }
+});
+
