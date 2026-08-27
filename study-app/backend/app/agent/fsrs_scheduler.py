@@ -180,6 +180,57 @@ def retrievability(
 RISK_RATE_WEIGHT = 0.5
 RISK_FORGET_WEIGHT = 0.5
 
+# Recency mix within the difficulty component. The lifetime correct-rate
+# (correct/seen) goes stale for improving learners — early struggles keep a
+# concept "weak" long after it's fixed. The EMA of recent outcomes
+# (update_recent_rate) tracks current ability; this mix was tuned on the
+# recommend replay's TRAIN split only (see evals/README.md finding #10).
+RISK_RECENT_WEIGHT = 0.7
+
+# EMA decay for recent_rate — the last ~3 outcomes dominate.
+RECENT_RATE_ALPHA = 0.4
+
+# Activity window for due-deck targeting. Due concepts attempted within
+# this many days rank ahead of long-idle ones: they're in the learner's
+# active orbit (likely to be faced again soon — the EdNet replay measured
+# 82% of risk-ranked due concepts never re-attempted within 7 days),
+# while idle due concepts are mostly abandoned material the recommender
+# can't help with. Window length tuned on the recommend replay's TRAIN
+# split only (see evals/README.md finding #10).
+ACTIVE_WINDOW_DAYS = 7
+
+
+def is_recently_active(
+    last_attempt_ts: str | None, now: datetime | None = None
+) -> bool:
+    """True if the concept was attempted within ACTIVE_WINDOW_DAYS.
+
+    Unknown/malformed timestamps count as idle — never claim activity the
+    data doesn't show.
+    """
+    if not last_attempt_ts:
+        return False
+    now = now or datetime.now(timezone.utc)
+    try:
+        last = datetime.fromisoformat(str(last_attempt_ts))
+    except ValueError:
+        return False
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return (now - last).total_seconds() < ACTIVE_WINDOW_DAYS * 86400
+
+
+def update_recent_rate(recent_rate: float | None, correct: bool) -> float:
+    """Exponential moving average of per-concept outcomes — current ability.
+
+    One shared implementation for production mastery updates and the eval
+    replay, so both maintain (and measure) the same signal.
+    """
+    outcome = 1.0 if correct else 0.0
+    if recent_rate is None:
+        return outcome
+    return recent_rate + RECENT_RATE_ALPHA * (outcome - recent_rate)
+
 
 def failure_risk(
     mastery_entry: dict[str, Any] | None,
@@ -188,27 +239,39 @@ def failure_risk(
 ) -> float:
     """Predicted probability the learner FAILS this concept next attempt.
 
-    Blends the two signals the eval replays validated: the running
-    correct-rate (item difficulty) and the power-law forgetting curve.
+    Blends the signals the eval replays validated: item difficulty
+    (recency-weighted correct-rate) and the power-law forgetting curve.
     Used to rank due review decks and study sessions — putting the
     concepts most likely to be missed next in front.
 
-    Degrades to rate-only when no FSRS state exists (new concepts, replay
-    contexts without fsrs entries) and to neutral difficulty when the
-    concept has no history at all.
+    Degrades gracefully: to lifetime rate only when recent_rate is absent
+    (old entries, replay seeds), and to a neutral difficulty when the
+    concept has no history at all; the forgetting component drops out
+    when no FSRS state exists.
     """
     entry = mastery_entry or {}
     seen = entry.get("seen") or 0
     correct = entry.get("correct")
     if correct is None or not seen:
-        rate = entry.get("mastery_pct")
-        if not isinstance(rate, (int, float)):
-            rate = 0.5
+        lifetime = entry.get("mastery_pct")
+        if not isinstance(lifetime, (int, float)):
+            lifetime = 0.5
     else:
-        rate = correct / seen
-    rate = min(max(float(rate), 0.02), 0.98)
+        lifetime = correct / seen
+    lifetime = min(max(float(lifetime), 0.02), 0.98)
+
+    # Difficulty = current ability where tracked, mixed with the lifetime
+    # rate (a stable-but-lagging estimate).
+    recent = entry.get("recent_rate")
+    if isinstance(recent, (int, float)):
+        recent = min(max(float(recent), 0.02), 0.98)
+        fail_difficulty = RISK_RECENT_WEIGHT * (1 - recent) + (
+            1 - RISK_RECENT_WEIGHT
+        ) * (1 - lifetime)
+    else:
+        fail_difficulty = 1 - lifetime
 
     r = retrievability(fsrs_state, now=now) if fsrs_state else None
     if r is None:
-        return 1 - rate
-    return RISK_RATE_WEIGHT * (1 - rate) + RISK_FORGET_WEIGHT * (1 - r)
+        return fail_difficulty
+    return RISK_RATE_WEIGHT * fail_difficulty + RISK_FORGET_WEIGHT * (1 - r)

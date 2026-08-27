@@ -973,9 +973,13 @@ Notable recorded findings (report-only metrics, kept visible on purpose):
   data). Due-review decks and sessions therefore rank concepts by a
   failure-risk blend (correct-rate + forgetting curve).
 - On EdNet replay, the engine's weakness-precision lift over random
-  targeting was negative; risk-ranking the deck roughly halved the gap but
-  random still wins — lifetime correct-rate goes stale for improving
-  learners, and platform-driven re-exposure isn't FSRS-driven. Open.
+  targeting was negative — a diagnostic showed 82% of risk-ranked due
+  concepts were never attempted again (counting as non-failures) while
+  the conditional failure prediction already beat random. Fixed 2026-08:
+  due decks (recommender + session composer) tier recently-active
+  concepts (attempted ≤7 days ago, tracked per concept) ahead of idle
+  ones, ranked by failure risk within tiers. Lift now positive on train,
+  val, and held-out test (+0.04 to +0.08).
 - The reflection narrative **contradicted its grounding packet** on a
   synthetic archetype (claimed "has not reviewed any flashcards" over eight
   flashcard activities) — fixed 2026-08 with a labeled packet rendering,

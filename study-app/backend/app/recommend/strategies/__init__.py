@@ -72,18 +72,27 @@ class DueReviewReadyStrategy:
             "Review them before you forget."
         )
 
-        # Rank the deck by predicted failure risk — highest first. The
-        # recommend replay scores exactly this ordering: the concepts the
-        # engine puts in front should be the ones the learner fails next
-        # (README finding #10 — the old arbitrary order targeted below random).
-        from ...agent.fsrs_scheduler import failure_risk
+        # Rank the deck by predicted failure risk — highest first — with
+        # recently-active concepts tiered ahead of long-idle ones. Active
+        # material is in the learner's orbit (they'll face it again); idle
+        # due concepts are mostly abandoned (the EdNet replay: 82% of
+        # risk-ranked due concepts never attempted again within 7 days).
+        # The recommend replay scores exactly this ordering (README #10).
+        from ...agent.fsrs_scheduler import failure_risk, is_recently_active
 
+        now = datetime.now(timezone.utc)
         fsrs_by_concept = {d["concept"]: d.get("fsrs") for d in ctx.due_concepts}
+        last_by_concept = {
+            d["concept"]: d.get("last_attempt_ts") for d in ctx.due_concepts
+        }
         ranked = sorted(
             ctx.due_cards,
-            key=lambda c: failure_risk(
-                ctx.concept_mastery.get(c["concept"]),
-                fsrs_by_concept.get(c["concept"]),
+            key=lambda c: (
+                is_recently_active(last_by_concept.get(c["concept"]), now),
+                failure_risk(
+                    ctx.concept_mastery.get(c["concept"]),
+                    fsrs_by_concept.get(c["concept"]),
+                ),
             ),
             reverse=True,
         )

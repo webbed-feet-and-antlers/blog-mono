@@ -246,7 +246,8 @@ def _as_jsonable(value: Any) -> Any:
 #
 # concept_mastery lives at scope="user", ref_id="", key="concept_mastery" and
 # is a dict keyed by concept name:
-#   {concept: {"correct": int, "wrong": int, "seen": int, "mastery_pct": float}}
+#   {concept: {"correct": int, "wrong": int, "seen": int, "mastery_pct": float,
+#              "recent_rate": float}}
 #
 # Both quiz answers (right AND wrong) and flashcard reviews ("I know this" /
 # "Still learning") feed this tally. It's always-on (not gated like the
@@ -297,6 +298,14 @@ async def update_concept_mastery(
         else:
             entry["wrong"] = entry["wrong"] + 1
         entry["mastery_pct"] = round(entry["correct"] / entry["seen"], 3)
+        # Current ability — EMA of recent outcomes. The lifetime rate above
+        # goes stale for improving learners; failure_risk ranks by this.
+        entry["recent_rate"] = round(
+            fsrs_scheduler.update_recent_rate(entry.get("recent_rate"), correct), 3
+        )
+        # Last time the learner faced this concept — drives the
+        # active-orbit tiering of due-review decks (is_recently_active).
+        entry["last_attempt_ts"] = datetime.now(timezone.utc).isoformat()
 
         # Update FSRS spaced-repetition scheduling.
         existing_fsrs = entry.get("fsrs")
@@ -367,7 +376,8 @@ async def get_due_concepts(
                   returns all due concepts across all documents (for the
                   proactive agent).
 
-    Returns a list of {concept, due_in_days, stability, mastery_pct, fsrs}.
+    Returns a list of {concept, due_in_days, stability, mastery_pct,
+    recent_rate, last_attempt_ts, fsrs}.
     """
     from . import fsrs_scheduler
 
@@ -388,6 +398,8 @@ async def get_due_concepts(
             "due_in_days": fsrs_scheduler.due_in_days(fsrs),
             "stability": (fsrs or {}).get("stability"),
             "mastery_pct": (entry or {}).get("mastery_pct"),
+            "recent_rate": (entry or {}).get("recent_rate"),
+            "last_attempt_ts": (entry or {}).get("last_attempt_ts"),
             "fsrs": fsrs,
         })
 

@@ -125,7 +125,7 @@ async def compose_session(
 
     # 3. Classify concepts: due (review) vs untested (new) vs mastered (skip).
     now = datetime.now(timezone.utc)
-    due_concepts: list[tuple[str, float]] = []  # (concept, failure risk)
+    due_concepts: list[tuple[str, float, bool]] = []  # (concept, risk, active)
     new_concepts: list[str] = []
     for concept, cards in concept_cards.items():
         entry = mastery.get(concept, {})
@@ -135,13 +135,17 @@ async def compose_session(
             new_concepts.append(concept)
         elif fsrs_scheduler.is_due(fsrs, now):
             risk = fsrs_scheduler.failure_risk(entry, fsrs, now)
-            due_concepts.append((concept, risk))
+            active = fsrs_scheduler.is_recently_active(
+                entry.get("last_attempt_ts"), now
+            )
+            due_concepts.append((concept, risk, active))
         # else: not due — skip (review later at the optimal time)
 
-    # Review slots fill highest failure risk first — the concepts most
-    # likely to be forgotten or missed next attempt (the forgetting curve
-    # blended with per-concept difficulty; see fsrs_scheduler.failure_risk).
-    due_concepts.sort(key=lambda x: x[1], reverse=True)
+    # Review slots fill recently-active concepts first (the learner's
+    # current orbit), then by failure risk within each tier — matching the
+    # recommender's due-deck ordering (see fsrs_scheduler.failure_risk and
+    # is_recently_active).
+    due_concepts.sort(key=lambda x: (x[2], x[1]), reverse=True)
 
     # 4. Compute mix ratio from recent accuracy (desirable difficulty).
     profile = await memory_store.get_learner_profile(session)
@@ -176,8 +180,8 @@ async def compose_session(
     # 5. Assemble cards.
     composed_cards: list[SessionCard] = []
 
-    # Review slots: highest-risk concepts first, one card per concept.
-    for i, (concept, _) in enumerate(due_concepts[:review_count]):
+    # Review slots: active-orbit, highest-risk concepts first, one per concept.
+    for i, (concept, _, _) in enumerate(due_concepts[:review_count]):
         cards = concept_cards.get(concept, [])
         if not cards:
             continue

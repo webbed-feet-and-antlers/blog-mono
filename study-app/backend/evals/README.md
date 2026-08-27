@@ -190,23 +190,38 @@ are the honest starting point for improving the product:
    case died this way while passing standalone). `chat()` now backs off
    exponentially (1/2/4/8s across five attempts) and the planner suite
    sleeps between outer attempts. (`app/llm.py`, `evals/suites/test_planner.py`.)
-10. **The recommender's weakness targeting improved — lift is still
-    negative.** The original engine ordered its due-review deck arbitrarily
-    (macro lift −0.03 to −0.06: the "weak" concepts it surfaced failed
-    *less* often next than random ones). `DueReviewReadyStrategy` and the
-    session composer now rank due concepts by predicted failure risk —
-    running correct-rate blended with the power-law forgetting curve (the
-    two signals this harness validated; equal weights justified on the
-    train split, not tuned against val). Engine precision rose from
-    ~0.05 to ~0.07 and the lift gap roughly halved, but random targeting
-    (~0.11 failure precision) still wins. The residual cause: lifetime
-    correct-rate goes stale for improving learners (early struggles keep a
-    concept "weak" forever), and EdNet re-exposure is platform-driven, not
-    FSRS-driven — fixing it properly needs per-concept recent-outcome
-    tracking, which the replay (which builds its own mastery data) can't
-    even exercise. Still macro-averaged and report-only; the structural
-    gates (never-empty primary, due backlog keeps review on the slate)
-    remain gated. (`recommend` suite.)
+10. **The recommender's weakness targeting was structurally fixed — lift is
+    now positive on every split.** The original engine ordered its due-review
+    deck arbitrarily (macro lift −0.03 to −0.06). Two findings drove the fix:
+    risk-ranking the deck (item difficulty + forgetting curve) roughly
+    halved the gap but couldn't close it, and a diagnostic showed why —
+    82% of risk-ranked due concepts were never attempted again within the
+    7-day window (each counting as a non-failure), while conditioned on
+    re-attempt the risk ranking already beat random. The residual problem
+    was the target set, not the failure signal: due concepts skew toward
+    abandoned material the learner will never face. Production now tracks
+    `last_attempt_ts` per concept, and the deck (and session composer) rank
+    due concepts attempted within ACTIVE_WINDOW_DAYS (=7) ahead of idle
+    ones, by failure_risk within each tier (difficulty blends a
+    recent-outcome EMA with the lifetime rate — the EMA mix was also
+    train-tuned). The replay was fixed alongside to evaluate due-ness and
+    activity against the simulated decision time, not wall-clock now
+    (which had silently marked every seen concept due), and now records
+    `engine_precision_conditioned` / `engine_reattempt_fraction` so future
+    runs separate failure prediction from re-attempt availability.
+    Protocol: window swept on TRAIN only (3–30d, all positive, 7d chosen
+    as interior + product-natural), confirmed once on val, once on the
+    held-out test split:
+
+    | split | lift | engine | random |
+    |---|---|---|---|
+    | train | +0.069 | 0.156 | 0.087 |
+    | val | +0.040 | 0.154 | 0.114 |
+    | test | +0.084 | 0.173 | 0.090 |
+
+    Lift stays report-only until the next full-run cycle shows the numbers
+    stable — this metric's history is why the splits exist.
+    (`recommend` suite.)
 11. **Planner plans front-loaded zero review.** 3 of 5 plans scheduled no
     review item in the first days despite due concepts (weak_engaged_early
     0.40 vs the 0.60 gate) — the prompt's "interleave review" rule was

@@ -1,8 +1,8 @@
 {
   "suite": "fsrs",
-  "run": "20260827T192109Z",
+  "run": "20260827T222401Z",
   "split": "val",
-  "runtime_secs": 9.1,
+  "runtime_secs": 7.4,
   "metrics": {
     "constant_auc": {
       "mean": 0.5,

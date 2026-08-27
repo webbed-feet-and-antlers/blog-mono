@@ -7,17 +7,17 @@ run suites, and `reports/baselines/` for the committed reference run.
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| concept_f1 | 0.744 | 4 | 0.605 | +0.139 |
+| concept_f1 | 0.744 | 4 | 0.744 | +0.000 |
 | difficulty_accuracy | 1.000 | 10 | 1.000 | +0.000 |
-| prereq_edge_recall | 0.021 | 4 | 0.010 | +0.011 |
+| prereq_edge_recall | 0.021 | 4 | 0.021 | +0.000 |
 | summary_faithfulness | 1.000 | 4 | 1.000 | +0.000 |
 
 ## flashcards (46m), val
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| application_style_shift | 1.000 | 5 | 0.960 | +0.040 |
-| quality_rubric | 0.900 | 10 | 0.740 | +0.160 |
+| application_style_shift | 1.000 | 5 | 1.000 | +0.000 |
+| quality_rubric | 0.900 | 10 | 0.900 | +0.000 |
 | structural_pass | 1.000 | 10 | 1.000 | +0.000 |
 | variant_distinctness | 1.000 | 10 | 1.000 | +0.000 |
 
@@ -26,26 +26,26 @@ run suites, and `reports/baselines/` for the committed reference run.
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
 | constant_auc | 0.500 | 1 | 0.500 | +0.000 |
-| constant_brier | 0.079 | 1 | 0.079 | -0.001 |
-| finding_rate_vs_fsrs_auc | 0.032 | 1 | 0.031 | +0.001 |
-| finding_streak_vs_fsrs_auc | 0.002 | 1 | — | — |
-| fsrs_power_auc | 0.520 | 1 | 0.528 | -0.008 |
-| fsrs_power_brier | 0.088 | 1 | 0.083 | +0.005 |
-| fsrs_power_logloss | 0.325 | 1 | 0.312 | +0.012 |
-| majority_accuracy | 0.915 | 1 | 0.914 | +0.001 |
-| rate_auc | 0.552 | 1 | 0.559 | -0.008 |
-| retrievability_auc | 0.520 | 1 | — | — |
-| retrievability_brier | 0.088 | 1 | — | — |
-| retrievability_logloss | 0.325 | 1 | — | — |
-| streak_auc | 0.522 | 1 | 0.523 | -0.000 |
+| constant_brier | 0.079 | 1 | 0.079 | +0.000 |
+| finding_rate_vs_fsrs_auc | 0.032 | 1 | 0.032 | +0.000 |
+| finding_streak_vs_fsrs_auc | 0.002 | 1 | 0.002 | +0.000 |
+| fsrs_power_auc | 0.520 | 1 | 0.520 | +0.000 |
+| fsrs_power_brier | 0.088 | 1 | 0.088 | +0.000 |
+| fsrs_power_logloss | 0.325 | 1 | 0.325 | +0.000 |
+| majority_accuracy | 0.915 | 1 | 0.915 | +0.000 |
+| rate_auc | 0.552 | 1 | 0.552 | +0.000 |
+| retrievability_auc | 0.520 | 1 | 0.520 | +0.000 |
+| retrievability_brier | 0.088 | 1 | 0.088 | +0.000 |
+| retrievability_logloss | 0.325 | 1 | 0.325 | +0.000 |
+| streak_auc | 0.522 | 1 | 0.522 | +0.000 |
 
 ## notes (34m), val
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| faithfulness | 0.982 | 10 | 0.979 | +0.003 |
-| key_point_coverage | 0.910 | 10 | 0.600 | +0.310 |
-| rouge1_recall_vs_abstract | 0.035 | 10 | 0.028 | +0.006 |
+| faithfulness | 0.982 | 10 | 0.982 | +0.000 |
+| key_point_coverage | 0.910 | 10 | 0.910 | +0.000 |
+| rouge1_recall_vs_abstract | 0.035 | 10 | 0.035 | +0.000 |
 | structure_pass | 1.000 | 10 | 1.000 | +0.000 |
 
 ## planner (53m), val
@@ -53,43 +53,46 @@ run suites, and `reports/baselines/` for the committed reference run.
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
 | invariants_pass | 1.000 | 5 | 1.000 | +0.000 |
-| max_daily_minutes | 40.000 | 5 | 46.000 | -6.000 |
+| max_daily_minutes | 40.000 | 5 | 40.000 | +0.000 |
 | rationale_cites_evidence | 1.000 | 5 | 1.000 | +0.000 |
-| weak_engaged_early | 1.000 | 5 | 0.400 | +0.600 |
+| weak_engaged_early | 1.000 | 5 | 1.000 | +0.000 |
 
 ## quiz (20m), val
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| concept_tag_accuracy | 0.790 | 10 | 1.000 | -0.210 |
-| distractor_plausibility | 0.980 | 10 | 0.580 | +0.400 |
+| concept_tag_accuracy | 0.790 | 10 | 0.790 | +0.000 |
+| distractor_plausibility | 0.980 | 10 | 0.980 | +0.000 |
 | groundedness | 1.000 | 10 | 1.000 | +0.000 |
 | personalization_shift | 1.000 | 5 | 1.000 | +0.000 |
 | structural_pass | 1.000 | 10 | 1.000 | +0.000 |
 
-## recommend (0m), val
+## recommend (1m), val
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
 | due_backlog_top_slate | 1.000 | 1 | 1.000 | +0.000 |
 | empty_primary_rate | 0.000 | 1 | 0.000 | +0.000 |
-| engine_target_precision | 0.067 | 1 | 0.051 | +0.016 |
+| engine_precision_conditioned | 0.398 | 1 | 0.398 | +0.000 |
+| engine_reattempt_fraction | 0.364 | 1 | 0.364 | +0.000 |
+| engine_target_precision | 0.154 | 1 | 0.154 | +0.000 |
+| random_precision_conditioned | 0.468 | 1 | 0.468 | +0.000 |
 | random_target_precision | 0.114 | 1 | 0.114 | +0.000 |
-| weakness_precision_lift | -0.047 | 1 | -0.064 | +0.016 |
+| weakness_precision_lift | 0.040 | 1 | 0.040 | +0.000 |
 
 ## reflection (8m), val
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| faithfulness | 0.933 | 3 | 0.533 | +0.400 |
+| faithfulness | 0.933 | 3 | 0.933 | +0.000 |
 | format_clamps | 1.000 | 3 | 1.000 | +0.000 |
-| numbers_grounded | 0.952 | 3 | 1.000 | -0.048 |
+| numbers_grounded | 0.952 | 3 | 0.952 | +0.000 |
 
 ## rename (2m), val
 
 | metric | mean | n | baseline | Δ |
 |---|---|---|---|---|
-| descriptiveness | 0.500 | 10 | 0.450 | +0.050 |
+| descriptiveness | 0.500 | 10 | 0.500 | +0.000 |
 | gate_recall | 1.000 | 10 | 1.000 | +0.000 |
 | rule_pass | 1.000 | 10 | 1.000 | +0.000 |
 
