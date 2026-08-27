@@ -32,6 +32,7 @@ import { mdxToMarkdown, markdownToHtml } from './lib/markdown.mjs';
 import { normalizeSocial, teaserBlurb } from './lib/social.mjs';
 import { renderOgImage } from './lib/og-image.mjs';
 import { screenshotComponent, componentsInBody } from './lib/component-shot.mjs';
+import { enrichMarkdownVisuals } from './lib/rich-html.mjs';
 import * as devto from './lib/platforms/devto.mjs';
 import * as bluesky from './lib/platforms/bluesky.mjs';
 import * as mastodon from './lib/platforms/mastodon.mjs';
@@ -151,6 +152,16 @@ async function syndicateBlog(blog, opts) {
   // Paste-ready HTML companion for Medium/Substack rich-text editors. Derived
   // from the sanitized markdown, so JSX stripping / screenshot inlining is reused.
   const bodyHtml = await markdownToHtml(bodyMarkdown);
+  // Rich package body: tables + LaTeX rendered as embedded PNGs (data URIs)
+  // so they survive pasting into Medium/LinkedIn (no table/math support
+  // there). Best-effort — on any failure the plain bodyHtml is used.
+  let packageBodyHtml = bodyHtml;
+  try {
+    const enrichedMd = await enrichMarkdownVisuals(bodyMarkdown);
+    if (enrichedMd !== bodyMarkdown) packageBodyHtml = await markdownToHtml(enrichedMd);
+  } catch {
+    // enrichment is cosmetic — never fail the run for it
+  }
 
   // Pre-pass: render the OG image once if any platform wants it.
   let imagePath = null;
@@ -210,7 +221,7 @@ async function syndicateBlog(blog, opts) {
       key: 'linkedinArticle',
       label: linkedinArticle.name,
       available: () => linkedinArticle.available(),
-      run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
+      run: () => linkedinArticle.publish({ title: data.title, bodyMarkdown, bodyHtml: packageBodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
       skipIf: () => !opts.force && (syndication.linkedinArticle || draftLinks.linkedinArticle),
     },
     {
@@ -234,21 +245,21 @@ async function syndicateBlog(blog, opts) {
       key: 'medium',
       label: medium.name,
       available: () => medium.available(),
-      run: () => medium.publish({ title: data.title, bodyMarkdown, bodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
+      run: () => medium.publish({ title: data.title, bodyMarkdown, bodyHtml: packageBodyHtml, canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
       skipIf: () => !opts.force && (syndication.medium || draftLinks.medium),
     },
     {
       key: 'substack',
       label: substack.name,
       available: () => substack.available(),
-      run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: blog.slug, dryRun: opts.dryRun }),
+      run: () => substack.publish({ title: data.title, bodyMarkdown, bodyHtml: packageBodyHtml, socialPost: teaserBlurb(data), canonicalUrl, slug: blog.slug, dryRun: opts.dryRun }),
       skipIf: () => !opts.force && (syndication.substack || draftLinks.substack),
     },
     {
       key: 'indiehackers',
       label: indiehackers.name,
       available: () => indiehackers.available(),
-      run: () => indiehackers.publish({ title: data.title, bodyMarkdown, bodyHtml, socialPost: teaserBlurb(data), canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
+      run: () => indiehackers.publish({ title: data.title, bodyMarkdown, bodyHtml: packageBodyHtml, socialPost: teaserBlurb(data), canonicalUrl, tags: data.tags ?? [], slug: blog.slug, dryRun: opts.dryRun }),
       skipIf: () => !opts.force && (syndication.indiehackers || draftLinks.indiehackers),
     },
   ];

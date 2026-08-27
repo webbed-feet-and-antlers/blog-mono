@@ -12,6 +12,7 @@ import * as indiehackers from './indiehackers.mjs';
 import { rmSync, mkdirSync, existsSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SESSIONS_DIR } from '../assisted-session.mjs';
+import * as richHtml from '../rich-html.mjs';
 
 // --- available(): each API adapter reflects its env vars ---
 
@@ -209,7 +210,39 @@ test('bluesky.linkFacets: multiple URLs each get a facet', () => {
   assert.deepEqual(facets.map((f) => f.features[0].uri), ['https://one.com', 'https://two.com']);
 });
 
-// --- assisted tier: with a session saved, dry-run still touches nothing ---
+// --- rich-html: table + math scanning for the paste package ---
+
+test('rich-html.scanTableBlocks: finds pipe tables with separators, skips lookalikes', () => {
+  const md = 'para\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nafter\n\ntext with | pipe but no table';
+  const blocks = richHtml.scanTableBlocks(md);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].lines.length, 3);
+  assert.equal(blocks[0].start, 2);
+});
+
+test('rich-html.scanMath: finds display + inline math, skips code fences and bare dollars', () => {
+  const md = [
+    'Inline $E=mc^2$ here.',
+    '',
+    '$$',
+    '\\int_0^1 x\\,dx',
+    '$$',
+    '',
+    '```',
+    'const price = "$5 and $10"',
+    '```',
+    '',
+    'Costs $5 today (no pair).',
+  ].join('\n');
+  const maths = richHtml.scanMath(md);
+  assert.equal(maths.length, 2);
+  assert.ok(maths.some((m) => m.display && m.latex.includes('int_0^1')));
+  assert.ok(maths.some((m) => !m.display && m.latex === 'E=mc^2'));
+  // The code-fence dollars and the unpaired $5 must NOT be captured.
+  assert.ok(!maths.some((m) => m.latex.includes('5')));
+});
+
+
 
 function fakeSession() {
   // Minimal valid storageState — never actually used in dry-run, it only
