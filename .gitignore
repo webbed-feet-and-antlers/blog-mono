@@ -227,7 +227,7 @@ site/.syndication-output/
 *.tsbuildinfo
 .DS_Store
 # ZCode agent scratch/plans (not part of the project).
-.zcode/
+.zcode/plans
 # NOTE: the mkdocs `/site` rule above is overridden — we DO track our Astro app.
 !/site/
 # NOTE: the Python `lib/` rule above is overridden so our lib dirs are tracked.
