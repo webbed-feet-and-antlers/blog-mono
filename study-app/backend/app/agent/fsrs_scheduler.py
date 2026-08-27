@@ -139,10 +139,16 @@ def due_in_days(
 def retrievability(
     fsrs_state: dict[str, Any] | None, now: datetime | None = None
 ) -> float | None:
-    """The probability of recalling this concept right now: R(t) = exp(-elapsed/S).
+    """The probability of recalling this concept right now.
 
-    Uses the FSRS stability (memory strength in days) and the time since last
-    review. Returns None for new/untested concepts (no stability or last_review).
+    Delegates to the fsrs library's native forgetting curve — the power law
+    R(t) = (1 + FACTOR·t/S)^DECAY — which replay of the Duolingo HLR traces
+    calibrates at Brier ~0.08. (This wrapper previously computed an
+    exp(-t/S) approximation, which the fsrs eval suite measured as
+    catastrophically miscalibrated — Brier ~0.6 — and which it now gates
+    against ever returning.)
+
+    Returns None for new/untested concepts (no stability or last_review).
 
     R = 1.0 means perfect recall (just reviewed).
     R = 0.5 means 50/50 chance of recall.
@@ -152,22 +158,57 @@ def retrievability(
     which due concepts need review most urgently — a concept at R=0.5 is
     more urgent than one at R=0.85, even though both are "due."
     """
-    import math
-
     if not fsrs_state:
         return None  # new concept
 
-    stability = fsrs_state.get("stability")
-    last_review_str = fsrs_state.get("last_review")
-    if not stability or not last_review_str:
+    if not fsrs_state.get("stability") or not fsrs_state.get("last_review"):
         return None
 
     now = now or datetime.now(timezone.utc)
     try:
-        last_review = datetime.fromisoformat(last_review_str)
-        if last_review.tzinfo is None:
-            last_review = last_review.replace(tzinfo=timezone.utc)
-        elapsed_days = (now - last_review).total_seconds() / 86400
-        return round(math.exp(-elapsed_days / stability), 4)
+        card = Card.from_json(json.dumps(_state_to_card_json(fsrs_state)))
+        r = _scheduler.get_card_retrievability(card, now)
     except (ValueError, TypeError):
         return None
+    return round(float(r), 4) if r else None
+
+
+# Failure-risk blend (see failure_risk). Equal weights: both signals' ranking
+# quality was measured on the TRAIN replay (fsrs suite — rate AUC ~0.56,
+# forgetting curve ~0.53), so this is justified upstream of any eval split,
+# not tuned against one.
+RISK_RATE_WEIGHT = 0.5
+RISK_FORGET_WEIGHT = 0.5
+
+
+def failure_risk(
+    mastery_entry: dict[str, Any] | None,
+    fsrs_state: dict[str, Any] | None,
+    now: datetime | None = None,
+) -> float:
+    """Predicted probability the learner FAILS this concept next attempt.
+
+    Blends the two signals the eval replays validated: the running
+    correct-rate (item difficulty) and the power-law forgetting curve.
+    Used to rank due review decks and study sessions — putting the
+    concepts most likely to be missed next in front.
+
+    Degrades to rate-only when no FSRS state exists (new concepts, replay
+    contexts without fsrs entries) and to neutral difficulty when the
+    concept has no history at all.
+    """
+    entry = mastery_entry or {}
+    seen = entry.get("seen") or 0
+    correct = entry.get("correct")
+    if correct is None or not seen:
+        rate = entry.get("mastery_pct")
+        if not isinstance(rate, (int, float)):
+            rate = 0.5
+    else:
+        rate = correct / seen
+    rate = min(max(float(rate), 0.02), 0.98)
+
+    r = retrievability(fsrs_state, now=now) if fsrs_state else None
+    if r is None:
+        return 1 - rate
+    return RISK_RATE_WEIGHT * (1 - rate) + RISK_FORGET_WEIGHT * (1 - r)

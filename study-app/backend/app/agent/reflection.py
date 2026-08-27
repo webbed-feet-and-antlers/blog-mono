@@ -7,8 +7,12 @@ understanding: a grounded summary, a handful of traits, a habits line.
 
 Grounding rules:
   - The prompt contains only distilled facts (stats, histograms, top docs,
-    weakest/strongest/slowest concepts, activity-type counts).
+    weakest/strongest/slowest concepts, activity-type counts), rendered as
+    labeled sections — dense JSON is where misreads lived.
   - The system prompt forbids invention; every claim must trace to the data.
+  - A self-verify pass fact-checks the narrative against the same packet
+    and drops or corrects unsupported claims; its failure keeps the first
+    pass, never loses it.
   - The output is structured JSON {summary, traits, habits}.
 
 Cooldown: reflection costs an LLM call, so it only runs when there is
@@ -21,6 +25,7 @@ worker needed.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -71,6 +76,7 @@ async def reflect_on_learner(
     if not packet and not force:
         return {"status": "skipped", "reason": "not enough signal to reflect on"}
 
+    packet_text = _render_packet(packet)
     try:
         result = await chat_json(
             [
@@ -79,7 +85,7 @@ async def reflect_on_learner(
                     "role": "user",
                     "content": (
                         "Analyze this student's usage data and return the JSON:\n\n"
-                        + _render_packet(packet)
+                        + packet_text
                     ),
                 },
             ],
@@ -89,6 +95,39 @@ async def reflect_on_learner(
     except Exception as exc:
         logger.exception("[reflection] LLM call failed")
         return {"status": "error", "reason": str(exc)[:300]}
+
+    # Self-verify pass: check every claim against the packet and drop or
+    # correct unsupported ones. Any failure keeps the first-pass output —
+    # verification must never regress to no insights.
+    try:
+        checked = await chat_json(
+            [
+                {"role": "system", "content": _VERIFY_PROMPT},
+                {
+                    "role": "user",
+                    "content": (
+                        f"DATA PACKET:\n{packet_text}\n\n"
+                        "NARRATIVE TO CHECK:\n"
+                        + json.dumps(result, default=str)
+                    ),
+                },
+            ],
+            temperature=0,
+            max_tokens=700,
+        )
+        if (
+            isinstance(checked, dict)
+            and str(checked.get("summary") or "").strip()
+            and isinstance(checked.get("traits"), list)
+            and checked.get("traits")
+        ):
+            if checked != result:
+                logger.info("[reflection] self-verify revised the narrative")
+            result = checked
+        else:
+            logger.info("[reflection] self-verify returned nothing usable — keeping first pass")
+    except Exception:
+        logger.info("[reflection] self-verify pass failed — keeping first pass")
 
     summary = str(result.get("summary") or "").strip()
     traits = result.get("traits") or []
@@ -210,21 +249,115 @@ async def _build_grounding_packet(
 
 
 def _render_packet(packet: dict[str, Any]) -> str:
-    import json
+    """Render the grounding packet as labeled, human-readable sections.
 
-    return json.dumps(packet, default=str, indent=1)
+    The first calibration run's misreads lived in dense JSON — a narrative
+    claiming "no flashcard reviews" over eight flashcard activities. Every
+    number gets a plain label so the generator (and the eval judge, who
+    sees this same rendering) reads the facts the same way.
+    """
+    profile = packet.get("profile") or {}
+    stats = profile.get("stats") or {}
+    patterns = packet.get("study_patterns") or {}
+    sessions = patterns.get("sessions") or {}
+    engagement = packet.get("engagement") or {}
+    switches = engagement.get("tab_switches") or {}
+
+    lines: list[str] = []
+
+    lines.append("== LEARNER PROFILE ==")
+    lines.append(f"level: {profile.get('level', 'unknown')}")
+    if profile.get("preferred_difficulty"):
+        lines.append(f"preferred difficulty: {profile['preferred_difficulty']}")
+    if profile.get("study_goal"):
+        lines.append(f"study goal: {profile['study_goal']}")
+    lines.append(f"quizzes taken (total): {stats.get('total_quizzes', 0)}")
+    if stats.get("avg_score") is not None:
+        lines.append(f"average quiz score: {stats['avg_score']}")
+
+    lines.append("")
+    lines.append(
+        f"== ACTIVITY COUNTS (total activities: {packet.get('activity_totals', 0)}) =="
+    )
+    for atype, count in (packet.get("recent_activity_types") or {}).items():
+        lines.append(f"  {atype}: {count}")
+
+    lines.append("")
+    lines.append("== STUDY PATTERNS ==")
+    hist = patterns.get("hour_histogram_utc") or []
+    active = [f"hour {h}: {c}" for h, c in enumerate(hist) if c]
+    lines.append(
+        "active hours (UTC): " + (", ".join(active) if active else "none recorded")
+    )
+    if patterns.get("best_study_hour_utc") is not None:
+        lines.append(f"most active hour (UTC): {patterns['best_study_hour_utc']}")
+    if patterns.get("avg_quiz_duration_secs") is not None:
+        lines.append(f"average quiz duration: {patterns['avg_quiz_duration_secs']}s")
+    lines.append(
+        f"sessions: {sessions.get('completed', 0)} completed, "
+        f"{sessions.get('abandoned', 0)} abandoned"
+    )
+
+    lines.append("")
+    lines.append("== ENGAGEMENT ==")
+    lines.append(f"total document dwell time: {engagement.get('total_dwell_secs', 0)}s")
+    top = engagement.get("top_documents_by_dwell") or []
+    if top:
+        lines.append(
+            "top documents by dwell: "
+            + ", ".join(f"{d.get('doc_id')} ({d.get('dwell_secs')}s)" for d in top)
+        )
+    if switches:
+        lines.append(
+            "tab switches: " + ", ".join(f"{k}={v}" for k, v in switches.items())
+        )
+
+    lines.append("")
+    lines.append("== CONCEPT MASTERY ==")
+    if packet.get("weakest_concepts"):
+        lines.append(
+            "weakest tested concepts: " + ", ".join(packet["weakest_concepts"])
+        )
+    if packet.get("strongest_concepts"):
+        lines.append(
+            "strongest tested concepts: " + ", ".join(packet["strongest_concepts"])
+        )
+    slow = packet.get("slow_recall_concepts") or []
+    if slow:
+        lines.append(
+            "slow recall: "
+            + ", ".join(f"{c['concept']} ({c['avg_secs']}s avg)" for c in slow)
+        )
+    if packet.get("weak_topics"):
+        lines.append("flagged weak topics: " + ", ".join(packet["weak_topics"]))
+
+    return "\n".join(lines)
 
 
 _SYSTEM_PROMPT = (
     "You analyze a student's study-app usage data to build a short, honest "
-    "profile of them as a learner. You are given distilled signals: profile "
-    "stats, activity-type counts, an hour-of-day histogram (UTC), document "
+    "profile of them as a learner. You are given labeled signals: profile "
+    "stats, ACTIVITY COUNTS, study patterns (hour histogram, UTC), document "
     "engagement, and concept-level mastery/latency.\n\n"
     "RULES:\n"
     "- Write entirely in English.\n"
     "- Base EVERY claim on the provided data. Never invent, guess, or "
     "generalize beyond the evidence. If a signal is empty or 'unknown', "
     "say nothing about it.\n"
+    "- ACTIVITY COUNTS list exactly what the learner HAS done and how many "
+    "times. Before writing anything about an activity type (quizzes, "
+    "flashcards, reading), re-read its count. Never describe an activity "
+    "as absent, rare, or 'limited' unless its count is 0 or it is not "
+    "listed.\n"
+    "  BAD: 'has not reviewed any flashcards' when ACTIVITY COUNTS shows "
+    "flashcard_review: 8. GOOD: 'reviewed flashcards 8 times'.\n"
+    "- Copy numbers exactly as they appear. Do not round, convert, or mix "
+    "numbers across signals — a duration in seconds is never a percentage, "
+    "a quiz count is never a score.\n"
+    "- No absolutes without unambiguous data: never write 'always', "
+    "'only', 'never', 'exclusively', or 'all' unless every relevant data "
+    "point agrees. Two evening histogram bins means 'mostly active in the "
+    "evening', not 'exclusively at night'.\n"
     "- Be specific and behavioral (e.g. 'reviews flashcards more than "
     "quizzes', 'active in evening hours', 'slow recall on X') rather than "
     "vague praise.\n"
@@ -234,4 +367,21 @@ _SYSTEM_PROMPT = (
     '{"summary": "2-3 sentences describing this learner based on the data", '
     '"traits": ["3-6 short trait strings, each evidence-based"], '
     '"habits": "1 sentence on when/how they study"}'
+)
+
+_VERIFY_PROMPT = (
+    "You are a strict fact-checker. Below are a student's usage-data packet "
+    "and a JSON narrative written about it. Check EVERY claim in summary, "
+    "traits, and habits against the packet:\n"
+    "- Drop or rewrite any claim the packet does not directly support: "
+    "activities described as absent/rare that have nonzero counts, "
+    "invented or mismatched numbers, and generalizations or absolutes "
+    "('always', 'only', 'never', 'exclusively') the data does not "
+    "unambiguously show.\n"
+    "- Keep supported claims exactly as they are — do not add new claims "
+    "or new praise.\n"
+    "- Keep the voice kind and behavioral.\n"
+    "- Return the corrected JSON in the same shape, no commentary. If "
+    "everything is supported, return it unchanged.\n\n"
+    'Return ONLY JSON: {"summary": str, "traits": [str], "habits": str}'
 )

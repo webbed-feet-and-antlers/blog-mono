@@ -125,7 +125,7 @@ async def compose_session(
 
     # 3. Classify concepts: due (review) vs untested (new) vs mastered (skip).
     now = datetime.now(timezone.utc)
-    due_concepts: list[tuple[str, float]] = []  # (concept, retrievability)
+    due_concepts: list[tuple[str, float]] = []  # (concept, failure risk)
     new_concepts: list[str] = []
     for concept, cards in concept_cards.items():
         entry = mastery.get(concept, {})
@@ -134,12 +134,14 @@ async def compose_session(
         if seen == 0 or not fsrs:
             new_concepts.append(concept)
         elif fsrs_scheduler.is_due(fsrs, now):
-            r = fsrs_scheduler.retrievability(fsrs, now) or 0.5
-            due_concepts.append((concept, r))
+            risk = fsrs_scheduler.failure_risk(entry, fsrs, now)
+            due_concepts.append((concept, risk))
         # else: not due — skip (review later at the optimal time)
 
-    # Sort due concepts by retrievability ascending (most forgotten first).
-    due_concepts.sort(key=lambda x: x[1])
+    # Review slots fill highest failure risk first — the concepts most
+    # likely to be forgotten or missed next attempt (the forgetting curve
+    # blended with per-concept difficulty; see fsrs_scheduler.failure_risk).
+    due_concepts.sort(key=lambda x: x[1], reverse=True)
 
     # 4. Compute mix ratio from recent accuracy (desirable difficulty).
     profile = await memory_store.get_learner_profile(session)
@@ -174,7 +176,7 @@ async def compose_session(
     # 5. Assemble cards.
     composed_cards: list[SessionCard] = []
 
-    # Review slots: most-forgotten concepts first, one card per concept.
+    # Review slots: highest-risk concepts first, one card per concept.
     for i, (concept, _) in enumerate(due_concepts[:review_count]):
         cards = concept_cards.get(concept, [])
         if not cards:

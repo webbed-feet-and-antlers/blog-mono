@@ -485,20 +485,22 @@ OUTPUT: concept's mastery_pct and latency reflect the latest answer.
 
 ### Retrievability R(t)
 
-`fsrs_scheduler.retrievability(state, now)` computes
-**R(t) = exp(−elapsed / stability)** — an estimate of recall probability right
-now. It is the continuous urgency signal used to:
+`fsrs_scheduler.retrievability(state, now)` delegates to the FSRS library's
+native forgetting curve — the power law
+**R(t) = (1 + FACTOR·elapsed/stability)^DECAY** — an estimate of recall
+probability right now. It is the continuous urgency signal used to:
 
-- rank due concepts in the session composer (most-forgotten first, §6)
-- sort `get_due_concepts` (most-overdue first)
+- rank due concepts in the session composer (§6, blended with per-concept
+  difficulty into a failure-risk score — most at risk first)
+- rank the due-review deck the recommender surfaces (§7)
 - surface "average recall" on the concepts dashboard
 - ground the planner's weakest-concepts packet (§8)
 
-> **Calibration caveat (measured, see §13):** the exp approximation is a good
-> *ranking* key but miscalibrated *as a probability* — on real forgetting-curve
-> traces (Duolingo HLR) its Brier score is far worse than the FSRS library's
-> native power-law curve. Use it to order things, not to say "you have a 22%
-> chance of recall."
+> **Calibration (measured, see §13):** on real forgetting-curve traces
+> (Duolingo HLR) this calibrates at Brier ≈ 0.08 / log-loss ≈ 0.31 — usable
+> as a probability. The eval suite gates the wrapper against the library
+> curve and absolute calibration bars, so the old hand-rolled exp(−t/S)
+> approximation (Brier 0.3–0.6) cannot silently return.
 
 ---
 
@@ -961,18 +963,24 @@ datasets, so improvements and regressions in the agent are measured, not felt.
 
 Notable recorded findings (report-only metrics, kept visible on purpose):
 
-- The app's exp(-t/S) retrievability is **miscalibrated as a probability**
-  (Brier 0.3–0.6 vs the power-law's ~0.08) — hence the caveat in §5.
-- FSRS with default parameters beats chance and last-outcome streaks on
-  ranking, but does **not** beat the running correct-rate baseline on Duolingo
-  material (~93% base success rate; the defaults were fit on Anki data).
-- On the first EdNet replay runs, the engine's weakness-precision lift over a
-  random-concept baseline was **0.0** — invariants hold, targeting doesn't
-  (yet) outperform random.
-- The reflection's LLM narrative **contradicted its grounding packet** on a
+- The app's original exp(-t/S) retrievability was **miscalibrated as a
+  probability** (Brier 0.3–0.6 vs the power-law's ~0.08) — fixed 2026-08:
+  the wrapper now delegates to the library's power-law curve, gated against
+  drift (§5's caveat is retired).
+- FSRS with default parameters ranks within sampling noise of last-outcome
+  streaks, and does **not** beat the running correct-rate baseline on
+  Duolingo material (~93% base success rate; the defaults were fit on Anki
+  data). Due-review decks and sessions therefore rank concepts by a
+  failure-risk blend (correct-rate + forgetting curve).
+- On EdNet replay, the engine's weakness-precision lift over random
+  targeting was negative; risk-ranking the deck roughly halved the gap but
+  random still wins — lifetime correct-rate goes stale for improving
+  learners, and platform-driven re-exposure isn't FSRS-driven. Open.
+- The reflection narrative **contradicted its grounding packet** on a
   synthetic archetype (claimed "has not reviewed any flashcards" over eight
-  flashcard activities) — judge faithfulness gated at 0.45 as a regression
-  floor, not an aspiration.
+  flashcard activities) — fixed 2026-08 with a labeled packet rendering,
+  hardened prompt rules, and a self-verify pass; the faithfulness gate rose
+  from a 0.45 floor to 0.60.
 
 ### Running
 

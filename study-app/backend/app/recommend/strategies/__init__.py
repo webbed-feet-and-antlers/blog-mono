@@ -72,6 +72,22 @@ class DueReviewReadyStrategy:
             "Review them before you forget."
         )
 
+        # Rank the deck by predicted failure risk — highest first. The
+        # recommend replay scores exactly this ordering: the concepts the
+        # engine puts in front should be the ones the learner fails next
+        # (README finding #10 — the old arbitrary order targeted below random).
+        from ...agent.fsrs_scheduler import failure_risk
+
+        fsrs_by_concept = {d["concept"]: d.get("fsrs") for d in ctx.due_concepts}
+        ranked = sorted(
+            ctx.due_cards,
+            key=lambda c: failure_risk(
+                ctx.concept_mastery.get(c["concept"]),
+                fsrs_by_concept.get(c["concept"]),
+            ),
+            reverse=True,
+        )
+
         # Behavioral enrichment: a due concept the learner also answers
         # slowly is the one to call out.
         slow_by_concept = {c["concept"]: c for c in ctx.slow_concepts}
@@ -87,6 +103,9 @@ class DueReviewReadyStrategy:
                 f" {first['concept']} is one you recall slowly"
                 f" (~{first['avg_secs']}s avg){more}."
             )
+        elif ranked:
+            top = ranked[0]["concept"]
+            rationale += f" {top} is your most at-risk concept right now."
 
         return RecommendationResult(
             strategy_name=self.name,
@@ -102,7 +121,7 @@ class DueReviewReadyStrategy:
                 "title": f"Review: {count} due concepts",
                 "cards": [
                     {"id": c["id"], "front": c["front"], "back": c["back"], "concept": c["concept"]}
-                    for c in ctx.due_cards[:30]
+                    for c in ranked[:30]
                 ],
             },
         )

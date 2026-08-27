@@ -70,7 +70,7 @@ async def _seed_decks(session, doc_id_prefix: str, concepts: list[str]) -> str:
 
 def _mastery_entry(days_ago: float, stability: float, correct: int, seen: int) -> dict:
     """A concept_mastery entry whose FSRS state is due now, with controlled
-    retrievability R = exp(-elapsed/S)."""
+    retrievability R (power law, strictly decreasing in days_ago)."""
     from app.agent.fsrs_scheduler import schedule_review
 
     state = schedule_review(None, 3)
@@ -136,7 +136,12 @@ async def test_mix_ratio_by_accuracy_band():
 
 
 async def test_most_forgotten_first():
-    """Review slots must fill most-forgotten-first (retrievability ascending)."""
+    """Review slots must fill highest-failure-risk first.
+
+    Equal correct-rates across concepts, so the blended risk ordering (see
+    fsrs_scheduler.failure_risk) reduces to the forgetting curve: strictly
+    decreasing retrievability in elapsed days = most elapsed first.
+    """
     await init_db()
     # Elapsed days 1..20 with equal stability → R strictly decreasing.
     due = [f"forget{i}" for i in range(20)]
