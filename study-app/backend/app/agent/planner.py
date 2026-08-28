@@ -22,6 +22,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_ref_id
 from ..llm import chat_json
 from ..models import ContentItem, Document, Lesson, Module, StudyPlan
 from . import behavior as behavior_store
@@ -194,7 +195,12 @@ async def generate_study_plan(
         existing.version = existing.version + 1
         plan = existing
     else:
-        plan = StudyPlan(id=uuid.uuid4().hex[:12], module_id=module_id, version=1)
+        plan = StudyPlan(
+            id=uuid.uuid4().hex[:12],
+            user_id=user_ref_id(),
+            module_id=module_id,
+            version=1,
+        )
         session.add(plan)
 
     plan.items = items
@@ -238,8 +244,12 @@ async def get_plan_with_staleness(
 
 
 async def _get_plan(session: AsyncSession, module_id: str) -> StudyPlan | None:
+    """The current user's plan for the module (plans are per (user, module))."""
     result = await session.execute(
-        select(StudyPlan).where(StudyPlan.module_id == module_id)
+        select(StudyPlan).where(
+            StudyPlan.module_id == module_id,
+            StudyPlan.user_id == user_ref_id(),
+        )
     )
     return result.scalars().first()
 
@@ -293,7 +303,7 @@ async def _build_grounding(
 
     weak = await memory_store.get_weak_topics(session)
     profile = await memory_store.get_learner_profile(session)
-    insights = await memory_store.read_memory(session, "user", "", "learner_insights")
+    insights = await memory_store.read_memory(session, "user", user_ref_id(), "learner_insights")
     engagement = await behavior_store.get_engagement(session)
     read_docs = set((engagement.get("docs") or {}).keys())
 

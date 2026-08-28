@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..auth import get_current_user
 from ..db import get_session
 from ..models import Document, Lesson, Module
 from ..schemas import (
@@ -31,11 +32,28 @@ from ..schemas import (
 router = APIRouter(prefix="/api", tags=["modules"])
 
 
+async def _get_owned_lesson(
+    session: AsyncSession, lesson_id: str, user: str
+) -> Lesson:
+    """Fetch a lesson belonging to one of the user's modules (else 404)."""
+    lesson = await session.get(Lesson, lesson_id)
+    if lesson is None:
+        module = None
+    else:
+        module = await session.get(Module, lesson.module_id)
+    if lesson is None or module is None or module.user_id != user:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    return lesson
+
+
 # --- Tree ---
 
 
 @router.get("/modules", response_model=ModuleTreeResponse)
-async def get_module_tree(session: AsyncSession = Depends(get_session)):
+async def get_module_tree(
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
+):
     """Return the full hierarchy: modules → lessons → documents, plus unfiled docs."""
     from ..agent.memory import get_doc_topics
 
@@ -49,6 +67,7 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
             selectinload(Module.lessons).selectinload(Lesson.documents),
             selectinload(Module.documents),
         )
+        .where(Module.user_id == user)
         .order_by(Module.created_at)
     )
     modules = result.scalars().unique().all()
@@ -57,6 +76,7 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
     unfiled_result = await session.execute(
         select(Document)
         .where(
+            Document.user_id == user,
             Document.lesson_id.is_(None),
             Document.module_id.is_(None),
         )
@@ -146,10 +166,13 @@ async def get_module_tree(session: AsyncSession = Depends(get_session)):
 
 @router.post("/modules", response_model=ModuleOut, status_code=201)
 async def create_module(
-    req: ModuleCreate, session: AsyncSession = Depends(get_session)
+    req: ModuleCreate,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     module = Module(
         id=uuid.uuid4().hex[:12],
+        user_id=user,
         title=req.title,
         exam_date=req.exam_date,
         academic_year=req.academic_year,
@@ -166,11 +189,12 @@ async def update_module(
     module_id: str,
     req: ModuleUpdate,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     """Update a module's title and/or exam date (paces its study plan).
     Only fields actually present in the request body change."""
     module = await session.get(Module, module_id)
-    if module is None:
+    if module is None or module.user_id != user:
         raise HTTPException(status_code=404, detail="Module not found")
     if "title" in req.model_fields_set and req.title is not None:
         module.title = req.title
@@ -187,10 +211,12 @@ async def update_module(
 
 @router.delete("/modules/{module_id}", status_code=204)
 async def delete_module(
-    module_id: str, session: AsyncSession = Depends(get_session)
+    module_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     module = await session.get(Module, module_id)
-    if module is None:
+    if module is None or module.user_id != user:
         raise HTTPException(status_code=404, detail="Module not found")
     await session.delete(module)  # cascades to lessons; docs → unfiled (SET NULL)
     await session.commit()
@@ -206,9 +232,10 @@ async def create_lesson(
     module_id: str,
     req: LessonCreate,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     module = await session.get(Module, module_id)
-    if module is None:
+    if module is None or module.user_id != user:
         raise HTTPException(status_code=404, detail="Module not found")
     lesson = Lesson(
         id=uuid.uuid4().hex[:12], module_id=module_id, title=req.title
@@ -224,10 +251,9 @@ async def rename_lesson(
     lesson_id: str,
     req: LessonCreate,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
-    lesson = await session.get(Lesson, lesson_id)
-    if lesson is None:
-        raise HTTPException(status_code=404, detail="Lesson not found")
+    lesson = await _get_owned_lesson(session, lesson_id, user)
     lesson.title = req.title
     await session.commit()
     await session.refresh(lesson)
@@ -236,11 +262,11 @@ async def rename_lesson(
 
 @router.delete("/lessons/{lesson_id}", status_code=204)
 async def delete_lesson(
-    lesson_id: str, session: AsyncSession = Depends(get_session)
+    lesson_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
-    lesson = await session.get(Lesson, lesson_id)
-    if lesson is None:
-        raise HTTPException(status_code=404, detail="Lesson not found")
+    lesson = await _get_owned_lesson(session, lesson_id, user)
     await session.delete(lesson)  # docs → unfiled (SET NULL)
     await session.commit()
 

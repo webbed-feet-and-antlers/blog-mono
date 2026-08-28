@@ -11,7 +11,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
@@ -70,17 +70,25 @@ async def health():
     return {"status": "ok"}
 
 
-app.include_router(documents.router)
-app.include_router(generate.router)
-app.include_router(content.router)
-app.include_router(quiz.router)
-app.include_router(flashcards.router)
-app.include_router(memory.router)
-app.include_router(modules.router)
-app.include_router(recommend.router)
-app.include_router(concepts.router)
-app.include_router(lectures.router)
-app.include_router(study_session.router)
-app.include_router(events.router)
-app.include_router(activity.router)
-app.include_router(plans.router)
+# Every API router requires a verified Clerk session (see app/auth.py).
+# Handlers that need the user id take `Depends(get_current_user)` again —
+# FastAPI caches the dependency per request, so it runs once.
+from .auth import get_current_user  # noqa: E402
+
+for _router in (
+    documents.router,
+    generate.router,
+    content.router,
+    quiz.router,
+    flashcards.router,
+    memory.router,
+    modules.router,
+    recommend.router,
+    concepts.router,
+    lectures.router,
+    study_session.router,
+    events.router,
+    activity.router,
+    plans.router,
+):
+    app.include_router(_router, dependencies=[Depends(get_current_user)])

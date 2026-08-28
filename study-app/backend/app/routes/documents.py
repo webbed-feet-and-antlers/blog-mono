@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .. import storage
+from ..auth import get_current_user
 from ..config import settings
 from ..db import get_session
 from ..events import bus
@@ -28,6 +29,16 @@ from ..parsers import OFFICE_SUFFIXES, convert_office_to_pdf, extract_text
 from ..schemas import DocumentDetail, DocumentOut
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+
+async def get_owned_document(
+    session: AsyncSession, document_id: str, user: str
+) -> Document:
+    """Fetch a document owned by `user` — other users' documents 404."""
+    doc = await session.get(Document, document_id)
+    if doc is None or doc.user_id != user:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
 
 MAX_BYTES = 50 * 1024 * 1024  # 50 MB for text/PDF/office docs
 AUDIO_MAX_BYTES = settings.audio_max_bytes
@@ -55,6 +66,7 @@ async def upload_document(
     lesson_id: str | None = None,
     module_id: str | None = None,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     filename = file.filename or "upload"
     suffix = Path(filename).suffix.lower()
@@ -84,6 +96,7 @@ async def upload_document(
         # Audio: save file, create doc with pending transcription, return immediately.
         doc = Document(
             id=file_id,
+            user_id=user,
             filename=filename,
             mime=mime,
             file_path=str(dest),
@@ -127,6 +140,7 @@ async def upload_document(
 
     doc = Document(
         id=file_id,
+            user_id=user,
         filename=filename,
         mime=stored_mime,
         file_path=str(stored_path),
@@ -148,18 +162,25 @@ async def upload_document(
 
 
 @router.get("", response_model=list[DocumentOut])
-async def list_documents(session: AsyncSession = Depends(get_session)):
+async def list_documents(
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
+):
     result = await session.execute(
-        select(Document).order_by(Document.uploaded_at.desc())
+        select(Document)
+        .where(Document.user_id == user)
+        .order_by(Document.uploaded_at.desc())
     )
     return result.scalars().all()
 
 
 @router.get("/{document_id}", response_model=DocumentDetail)
-async def get_document(document_id: str, session: AsyncSession = Depends(get_session)):
-    doc = await session.get(Document, document_id)
-    if doc is None:
-        raise HTTPException(status_code=404, detail="Document not found")
+async def get_document(
+    document_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
+):
+    doc = await get_owned_document(session, document_id, user)
 
     # Attach the topic from the cached analysis (if available) so the
     # frontend can display it as a subtitle.
@@ -176,7 +197,9 @@ async def get_document(document_id: str, session: AsyncSession = Depends(get_ses
 
 @router.get("/{document_id}/file")
 async def get_document_file(
-    document_id: str, session: AsyncSession = Depends(get_session)
+    document_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     """Serve the raw file (audio, PDF) with correct Content-Type + Range support.
 
@@ -184,9 +207,7 @@ async def get_document_file(
     PDFs are served inline so the browser can render them in an <iframe>
     rather than forcing a download.
     """
-    doc = await session.get(Document, document_id)
-    if doc is None:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = await get_owned_document(session, document_id, user)
 
     file_path = Path(doc.file_path)
     if not file_path.exists():
@@ -207,11 +228,11 @@ async def get_document_file(
 
 @router.delete("/{document_id}", status_code=204)
 async def delete_document(
-    document_id: str, session: AsyncSession = Depends(get_session)
+    document_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
-    doc = await session.get(Document, document_id)
-    if doc is None:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc = await get_owned_document(session, document_id, user)
     await storage.delete_upload(doc.file_path)
     await session.delete(doc)
     await session.commit()
@@ -222,14 +243,13 @@ async def get_document_slide_image(
     document_id: str,
     page: int,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     """Render a specific page (slide) of an uploaded PDF document as a PNG image.
 
     page is 1-indexed (page=1 is the first slide).
     """
-    doc_obj = await session.get(Document, document_id)
-    if doc_obj is None:
-        raise HTTPException(status_code=404, detail="Document not found")
+    doc_obj = await get_owned_document(session, document_id, user)
 
     file_path = Path(doc_obj.file_path)
     if not file_path.exists() or file_path.suffix.lower() != ".pdf":

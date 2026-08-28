@@ -33,6 +33,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_ref_id
 from ..llm import chat_json
 from ..models import UserActivity
 from . import behavior as behavior_store
@@ -49,7 +50,7 @@ MIN_INTERVAL_SECS = 3600
 
 
 async def get_learner_insights(session: AsyncSession) -> dict[str, Any] | None:
-    val = await memory_store.read_memory(session, "user", "", INSIGHTS_KEY)
+    val = await memory_store.read_memory(session, "user", user_ref_id(), INSIGHTS_KEY)
     return val if isinstance(val, dict) else None
 
 
@@ -61,7 +62,11 @@ async def reflect_on_learner(
     {"status": "updated"|"skipped", "reason": ..., "insights": ...?}
     Never raises — a failed reflection keeps the previous insights.
     """
-    total_activities = await session.scalar(select(func.count(UserActivity.id)))
+    total_activities = await session.scalar(
+        select(func.count(UserActivity.id)).where(
+            UserActivity.user_id == user_ref_id()
+        )
+    )
     total_activities = int(total_activities or 0)
 
     if not force:
@@ -144,7 +149,7 @@ async def reflect_on_learner(
     }
     async with memory_store.blob_lock:
         await memory_store.write_memory(
-            session, "user", "", INSIGHTS_KEY, insights
+            session, "user", user_ref_id(), INSIGHTS_KEY, insights
         )
     logger.info(
         "[reflection] learner insights updated (%d traits, from %d activities)",
@@ -190,6 +195,7 @@ async def _build_grounding_packet(
     # Recent activity-type mix.
     rows = await session.execute(
         select(UserActivity.type, func.count(UserActivity.id))
+        .where(UserActivity.user_id == user_ref_id())
         .group_by(UserActivity.type)
         .order_by(func.count(UserActivity.id).desc())
         .limit(12)

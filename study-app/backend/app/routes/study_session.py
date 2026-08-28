@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import get_current_user, user_ref_id
 from ..agent import memory as memory_store
 from ..agent import fsrs_scheduler
 from ..db import get_session
@@ -91,7 +92,10 @@ async def compose_session(
 
     # 1. Load all flashcard cards across all documents (or scoped to one doc
     #    or one module — the module's doc set includes lesson docs).
-    stmt = select(ContentItem).where(ContentItem.type == "flashcards")
+    stmt = select(ContentItem).where(
+        ContentItem.type == "flashcards",
+        ContentItem.user_id == user_ref_id(),
+    )
     if req.scope == "document" and req.document_id:
         stmt = stmt.where(ContentItem.document_id == req.document_id)
     elif req.scope == "module" and req.module_id:

@@ -15,6 +15,7 @@ import {
   Sun,
 } from "lucide-react";
 import * as api from "../api/client";
+import { UserButton } from "@clerk/clerk-react";
 import { track } from "../api/track";
 import { toast } from "sonner";
 import { useTheme, type ThemeMode } from "../theme";
@@ -266,9 +267,10 @@ export function AppSidebar({
         onChange={(e) => handleFiles(e.target.files)}
       />
 
-      {/* Profile pinned to the bottom; theme switch above it */}
+      {/* Profile pinned to the bottom; theme switch + account above it */}
       <SidebarFooter>
-        <div className="mb-1 flex justify-end px-1">
+        <div className="mb-1 flex items-center justify-between px-1">
+          <UserButton afterSignOutUrl="/login" />
           <ThemeToggle />
         </div>
         <ProfileCard />

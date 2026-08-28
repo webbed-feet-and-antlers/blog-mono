@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...auth import user_ref_id
 from ...agent import behavior
 from ...models import UserActivity
 from .. import bus
@@ -37,6 +38,7 @@ async def log_activities(event: ActivitiesLogged, session: AsyncSession) -> None
         ts = _parse_ts(entry.ts)
         rows.append(
             UserActivity(
+                user_id=getattr(event, "user_id", "") or "",
                 id=uuid.uuid4().hex[:12],
                 ts=ts,
                 type=entry.type,

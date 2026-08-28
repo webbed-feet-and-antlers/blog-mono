@@ -87,15 +87,15 @@ event bus with a full audit ledger.
 │  │  recommendation_events · agent_events · user_activities          │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │                                                                        │
-│  External: OpenRouter — LLM (deepseek/deepseek-v4-flash) ·            │
-│            eval judge (deepseek/deepseek-v3.2) ·                      │
+│  External: OpenRouter — LLM (deepseek/deepseek-v4-flash-0731) ·            │
+│            eval judge (deepseek/deepseek-v4-flash-0731) ·                      │
 │            transcription (qwen/qwen3-asr-1.7b)                        │
 │  Local:    LibreOffice headless (office → PDF at upload)              │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 Organization model: **Module** (with academic year, term, exam date) →
-**Lesson** → **Document** (text or audio). A document belongs to a lesson *or*
+**Lesson** → **Document** (text or audio). A document belongs to a lesson _or_
 directly to a module — never both — or to neither (unfiled). Lectures group an
 audio recording + slide deck + notes + slide↔audio timestamps
 (`LectureSession`).
@@ -164,12 +164,12 @@ validate ──────────────── Structural check (no L
 
 ### What Triggers the Pipeline
 
-| Trigger | Entry Point | Streaming? | Origin tag |
-|---------|-------------|------------|-----------|
-| User clicks "Generate" | `POST /api/generate/stream` → `run_generation_streamed()` | Yes (SSE status events) | — |
-| User generate (non-stream) | `POST /api/generate` → `run_generation()` | No | — |
-| Auto-generation on upload | `DocumentAnalyzed` → ingestion handler (flag-gated) | No (background) | `"auto"` |
-| Proactive agent | `run_generation()` inside `proactive.py` | No (background) | `"proactive"` |
+| Trigger                    | Entry Point                                               | Streaming?              | Origin tag    |
+| -------------------------- | --------------------------------------------------------- | ----------------------- | ------------- |
+| User clicks "Generate"     | `POST /api/generate/stream` → `run_generation_streamed()` | Yes (SSE status events) | —             |
+| User generate (non-stream) | `POST /api/generate` → `run_generation()`                 | No                      | —             |
+| Auto-generation on upload  | `DocumentAnalyzed` → ingestion handler (flag-gated)       | No (background)         | `"auto"`      |
+| Proactive agent            | `run_generation()` inside `proactive.py`                  | No (background)         | `"proactive"` |
 
 ### AgentState Shape
 
@@ -198,6 +198,60 @@ AgentState = {
 ```
 
 ---
+
+### Auth & Multi-User Identity
+
+The app is multi-user: identity comes from [Clerk](https://clerk.com), and
+every piece of user data is owner-scoped by the Clerk user id.
+
+```
+BROWSER                          BACKEND
+┌──────────────────┐   JWT   ┌──────────────────────────────────┐
+│ ClerkProvider    │ ──────► │ get_current_user (app/auth.py)   │
+│  SignIn/SignUp   │  Bearer │  ├─ verify via clerk-backend-api│
+│  UserButton      │  or     │  ├─ 401 when invalid/expired    │
+│  TokenBridge ────┼─?token= │  └─ set current_user_id (ctxvar)│
+└──────────────────┘ (img/   └──────────┬───────────────────────┘
+                        beacon)         │ every query/write resolves
+                                        ▼ the owner from the contextvar
+                     documents/content/modules/plans/lectures/events
+                     agent_memory blobs (user scope: ref_id = user id)
+                     UserActivity / QuizAttempt / RecommendationEvent
+```
+
+Key mechanics:
+
+- **Token transport.** Clerk session JWTs (~60s TTL) ride as `Authorization:
+Bearer` on fetch/XHR/SSE; URLs that cannot carry headers (slide `<img>`,
+  file downloads, `sendBeacon` telemetry) append `?token=`. The frontend
+  keeps the freshest token in a small store (`src/auth.ts`) fed by
+  `<ClerkTokenBridge />` (50s refresh + on focus).
+- **Request identity.** `app/auth.py:get_current_user` verifies the JWT
+  (authorized parties = the dev origins), 401s without a valid session,
+  and stores the Clerk `sub` (user id) in a `ContextVar`. The contextvar
+  flows through the whole call tree, so memory helpers, agent nodes, and
+  event handlers resolve the owner without threading an explicit user
+  parameter through every signature. Ambient callers with no request
+  context (tests, evals, CLI) resolve to the implicit default user `""` —
+  the same single-user behavior those callers always had.
+- **Row ownership.** Every user-specific table carries `user_id` (Clerk
+  id; `""` = ambient). Lists filter by owner; cross-user ids 404
+  (existence is not disclosed). `study_plans` uniqueness moved from
+  `module_id` to `(user_id, module_id)` — one plan per module per user.
+- **Events.** Every domain event inherits `UserEvent`, capturing the
+  current owner at construction; the bus re-applies the event's user
+  around each handler run (handlers use fresh sessions outside the
+  request, so the request contextvar doesn't reach them).
+- **Background jobs.** The proactive loop and reflection iterate the
+  known user ids, running each user's pass inside `user_scope(uid)` with
+  per-user error isolation.
+- **Streamed generation.** The SSE generator outlives the request scope,
+  so it re-establishes `current_user_id` inside the generator before any
+  memory writes.
+- **Tests.** `get_current_user` is overridden via
+  `app.dependency_overrides` (ambient user `""`); `tests/test_auth.py`
+  pins the 401 contract and two-user isolation (documents, content,
+  memory blobs, concept mastery).
 
 ## 3. Memory System
 
@@ -264,35 +318,35 @@ this is a single-user POC; "user" is a scope.
 
 ### Who Writes What
 
-| Key | Scope | Written by... | When? |
-|-----|-------|---------------|-------|
-| `analysis` | doc | `events/handlers/ingestion.ingest_document` (background chain) | Upload / transcription completes |
-| `prior_generations` | doc | `finalize` node | Each successful generation |
-| `quiz_attempts` | doc | `study.detect_weak_topics` handler | Quiz score < threshold (gated) |
-| `concept_mastery` | user | `study.update_mastery` handler; `ingestion.merge_graph_and_retitle` | Every quiz answer, card review, doc analysis |
-| `weak_topics` | user | `study.detect_weak_topics` handler | Quiz score < threshold (gated) |
-| `learner_profile` | user | `study.update_profile_from_quiz` / `update_profile_from_cards` handlers | Quiz submit, flashcard/session review, generate hint |
-| `learner_insights` | user | `reflection.reflect_on_learner` | Proactive loop tick or `POST /api/memory/reflect` (cooldown-gated) |
-| `engagement` | user | `behavior.distill_activities` ← `ActivitiesLogged` | Every telemetry batch flush |
-| `study_patterns` | user | `behavior.distill_activities`; `record_quiz_duration`; `record_study_session_completed` | Telemetry flush; quiz submit; session complete |
-| `session` | user | `study.record_activity` handler | Quiz, flashcard, session, or generation completes |
-| `bandit_weights` | user | `LinUCBOptimizer.update_weights` | Proactive loop (every 30 min default) |
+| Key                 | Scope | Written by...                                                                           | When?                                                              |
+| ------------------- | ----- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `analysis`          | doc   | `events/handlers/ingestion.ingest_document` (background chain)                          | Upload / transcription completes                                   |
+| `prior_generations` | doc   | `finalize` node                                                                         | Each successful generation                                         |
+| `quiz_attempts`     | doc   | `study.detect_weak_topics` handler                                                      | Quiz score < threshold (gated)                                     |
+| `concept_mastery`   | user  | `study.update_mastery` handler; `ingestion.merge_graph_and_retitle`                     | Every quiz answer, card review, doc analysis                       |
+| `weak_topics`       | user  | `study.detect_weak_topics` handler                                                      | Quiz score < threshold (gated)                                     |
+| `learner_profile`   | user  | `study.update_profile_from_quiz` / `update_profile_from_cards` handlers                 | Quiz submit, flashcard/session review, generate hint               |
+| `learner_insights`  | user  | `reflection.reflect_on_learner`                                                         | Proactive loop tick or `POST /api/memory/reflect` (cooldown-gated) |
+| `engagement`        | user  | `behavior.distill_activities` ← `ActivitiesLogged`                                      | Every telemetry batch flush                                        |
+| `study_patterns`    | user  | `behavior.distill_activities`; `record_quiz_duration`; `record_study_session_completed` | Telemetry flush; quiz submit; session complete                     |
+| `session`           | user  | `study.record_activity` handler                                                         | Quiz, flashcard, session, or generation completes                  |
+| `bandit_weights`    | user  | `LinUCBOptimizer.update_weights`                                                        | Proactive loop (every 30 min default)                              |
 
 ### Who Reads What
 
-| Key | Read by... | For what? |
-|-----|-----------|-----------|
-| `analysis` | `analyze_document` (cache), `retrieve_memory`, `recommend/context.py`, weak-topic matching | Doc structure, concepts, difficulty |
-| `prior_generations` | `retrieve_memory` | What content already exists |
-| `quiz_attempts` | `retrieve_memory` | Difficulty calibration hint |
-| `concept_mastery` | `retrieve_memory`, `get_due_concepts`, `recommend/context.py`, `/api/concepts`, planner grounding, session composer | The core skill model |
-| `weak_topics` | `retrieve_memory`, `get_review_candidates`, planner, weak-spot + proactive-deck strategies | Proactive review triggers |
-| `learner_profile` | `retrieve_memory`, `recommend/context.py`, planner, `/api/memory/profile` | Personalization |
-| `learner_insights` | `tools._memory_hint`, planner grounding, understanding panel; rides (unscored) on recommend context | Behavioral narrative |
-| `engagement` | revisit strategy, planner (unread docs), recommend context (neglected docs) | Attention signals |
-| `study_patterns` | recommend engine (peak hour, format tilt), reflection packet | When/how the learner studies |
-| `session` | `recommend/context._get_session` | Fatigue, action chaining, dismissals |
-| `bandit_weights` | `recommend/bandit.get_weights` | ML-optimized strategy scoring (not yet wired into `decide()` — see §11) |
+| Key                 | Read by...                                                                                                          | For what?                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `analysis`          | `analyze_document` (cache), `retrieve_memory`, `recommend/context.py`, weak-topic matching                          | Doc structure, concepts, difficulty                                     |
+| `prior_generations` | `retrieve_memory`                                                                                                   | What content already exists                                             |
+| `quiz_attempts`     | `retrieve_memory`                                                                                                   | Difficulty calibration hint                                             |
+| `concept_mastery`   | `retrieve_memory`, `get_due_concepts`, `recommend/context.py`, `/api/concepts`, planner grounding, session composer | The core skill model                                                    |
+| `weak_topics`       | `retrieve_memory`, `get_review_candidates`, planner, weak-spot + proactive-deck strategies                          | Proactive review triggers                                               |
+| `learner_profile`   | `retrieve_memory`, `recommend/context.py`, planner, `/api/memory/profile`                                           | Personalization                                                         |
+| `learner_insights`  | `tools._memory_hint`, planner grounding, understanding panel; rides (unscored) on recommend context                 | Behavioral narrative                                                    |
+| `engagement`        | revisit strategy, planner (unread docs), recommend context (neglected docs)                                         | Attention signals                                                       |
+| `study_patterns`    | recommend engine (peak hour, format tilt), reflection packet                                                        | When/how the learner studies                                            |
+| `session`           | `recommend/context._get_session`                                                                                    | Fatigue, action chaining, dismissals                                    |
+| `bandit_weights`    | `recommend/bandit.get_weights`                                                                                      | ML-optimized strategy scoring (not yet wired into `decide()` — see §11) |
 
 ---
 
@@ -324,21 +378,21 @@ Delivery semantics:
 - **The ledger.** Every publish writes a dispatch row to `agent_events`; every
   handler run writes an `ok` row on the same transaction as its writes (the row
   commits iff the writes commit) or a `failed` row with the error. `GET
-  /api/events` exposes the whole log — the answer to "what did the agent do,
+/api/events` exposes the whole log — the answer to "what did the agent do,
   and when?"
 
 ### Domain Events
 
-| Event | Published when... | Handlers |
-|-------|-------------------|----------|
-| `DocumentIngested` | Upload committed (source="upload" \| "audio") | `ingest.ingest_document` (bg) |
-| `DocumentAnalyzed` | Rename + LLM analysis done, analysis cached | `ingestion.merge_graph_and_retitle` (inline); `ingestion.auto_generate_flashcards` (bg, flag); `plans.mark_stale_on_new_content` (inline) |
-| `QuizAttempted` | Quiz scored + attempt persisted | `study.update_mastery`, `study.update_profile_from_quiz`, `study.record_activity`, `study.detect_weak_topics` (gated); `plans.mark_progress_from_quiz`; `generation.record_activity` |
-| `FlashcardsReviewed` | Single-deck review persisted | `study.update_mastery`, `study.update_profile_from_cards`, `study.record_activity` |
-| `StudySessionReviewed` | Composed session results persisted | `study.update_mastery`, `study.update_profile_from_cards`, `study.record_activity`; `plans.mark_progress_from_session` |
-| `GenerationCompleted` | A ContentItem was generated (user-requested only) | `generation.record_activity`; `plans.mark_progress_from_generation` |
-| `ActivitiesLogged` | Frontend telemetry batch flushed | `activity.log_activities` (ledger); `activity.distill_engagement` |
-| `StudyPlanStaleDetected` | A module's plan no longer matches reality | `plans.regenerate_stale_plan` (bg, throttled) |
+| Event                    | Published when...                                 | Handlers                                                                                                                                                                             |
+| ------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DocumentIngested`       | Upload committed (source="upload" \| "audio")     | `ingest.ingest_document` (bg)                                                                                                                                                        |
+| `DocumentAnalyzed`       | Rename + LLM analysis done, analysis cached       | `ingestion.merge_graph_and_retitle` (inline); `ingestion.auto_generate_flashcards` (bg, flag); `plans.mark_stale_on_new_content` (inline)                                            |
+| `QuizAttempted`          | Quiz scored + attempt persisted                   | `study.update_mastery`, `study.update_profile_from_quiz`, `study.record_activity`, `study.detect_weak_topics` (gated); `plans.mark_progress_from_quiz`; `generation.record_activity` |
+| `FlashcardsReviewed`     | Single-deck review persisted                      | `study.update_mastery`, `study.update_profile_from_cards`, `study.record_activity`                                                                                                   |
+| `StudySessionReviewed`   | Composed session results persisted                | `study.update_mastery`, `study.update_profile_from_cards`, `study.record_activity`; `plans.mark_progress_from_session`                                                               |
+| `GenerationCompleted`    | A ContentItem was generated (user-requested only) | `generation.record_activity`; `plans.mark_progress_from_generation`                                                                                                                  |
+| `ActivitiesLogged`       | Frontend telemetry batch flushed                  | `activity.log_activities` (ledger); `activity.distill_engagement`                                                                                                                    |
+| `StudyPlanStaleDetected` | A module's plan no longer matches reality         | `plans.regenerate_stale_plan` (bg, throttled)                                                                                                                                        |
 
 ### Event-Trigger Map
 
@@ -478,10 +532,10 @@ OUTPUT: concept's mastery_pct and latency reflect the latest answer.
 
 ### FSRS Rating Mapping
 
-| User Action | FSRS Rating | Effect on scheduling |
-|-------------|-------------|---------------------|
-| "I know this" / quiz correct | Good (3) | Stability grows → next review further out |
-| "Still learning" / quiz wrong | Again (1) | Stability drops → review again soon (minutes) |
+| User Action                   | FSRS Rating | Effect on scheduling                          |
+| ----------------------------- | ----------- | --------------------------------------------- |
+| "I know this" / quiz correct  | Good (3)    | Stability grows → next review further out     |
+| "Still learning" / quiz wrong | Again (1)   | Stability drops → review again soon (minutes) |
 
 ### Retrievability R(t)
 
@@ -607,7 +661,7 @@ currently one-directional — a known limitation.)
 
 ## 8. Study Plans
 
-Per-module, exam-paced study plans: a commitment about the *future* that
+Per-module, exam-paced study plans: a commitment about the _future_ that
 adapts as the semester accretes. One `StudyPlan` row per module (unique
 `module_id`), versioned in place.
 
@@ -672,12 +726,12 @@ is ≤7 days away and the plan is ≥2 days old, it's flagged stale.
 
 The plan notices when it's followed — no separate reporting:
 
-| Trigger | Marks done |
-|---------|-----------|
-| `QuizAttempted` on a module doc | matching `take_quiz` / `review_deck` items (`auto · Quiz taken — 6/10`) |
-| `GenerationCompleted` (quiz/flashcards) | matching `generate_quiz` / `generate_flashcards` items |
-| `StudySessionReviewed` | any `review_concepts` item whose concepts are ≥50% covered |
-| Manual checkbox | any item (`PATCH /api/plans/{plan_id}/items/{item_id}`) |
+| Trigger                                 | Marks done                                                              |
+| --------------------------------------- | ----------------------------------------------------------------------- |
+| `QuizAttempted` on a module doc         | matching `take_quiz` / `review_deck` items (`auto · Quiz taken — 6/10`) |
+| `GenerationCompleted` (quiz/flashcards) | matching `generate_quiz` / `generate_flashcards` items                  |
+| `StudySessionReviewed`                  | any `review_concepts` item whose concepts are ≥50% covered              |
+| Manual checkbox                         | any item (`PATCH /api/plans/{plan_id}/items/{item_id}`)                 |
 
 Today's / overdue pending items also surface on the home card via the
 `plan_today` recommendation strategy (§11) — one voice, not two agents
@@ -766,14 +820,14 @@ proactive_loop:
 
 ### Config
 
-| Setting | Default | Effect |
-|---------|---------|--------|
-| `proactive_enabled` | `false` | Master switch for the loop |
-| `proactive_interval_seconds` | `1800` (30 min) | How often the loop runs |
-| `proactive_score_threshold` | `0.7` | Quiz score below this = "struggled" → weak_topics |
-| `proactive_cooldown_hours` | `24` | Don't regenerate a deck for the same doc within this window |
-| `auto_generate_flashcards` | `false` | Auto-generate a deck after each document is analyzed (`origin="auto"`) |
-| `auto_rename_files` | `true` | Rename machine-generated filenames after analysis |
+| Setting                      | Default         | Effect                                                                 |
+| ---------------------------- | --------------- | ---------------------------------------------------------------------- |
+| `proactive_enabled`          | `false`         | Master switch for the loop                                             |
+| `proactive_interval_seconds` | `1800` (30 min) | How often the loop runs                                                |
+| `proactive_score_threshold`  | `0.7`           | Quiz score below this = "struggled" → weak_topics                      |
+| `proactive_cooldown_hours`   | `24`            | Don't regenerate a deck for the same doc within this window            |
+| `auto_generate_flashcards`   | `false`         | Auto-generate a deck after each document is analyzed (`origin="auto"`) |
+| `auto_rename_files`          | `true`          | Rename machine-generated filenames after analysis                      |
 
 ---
 
@@ -832,20 +886,20 @@ engine.decide(ctx):
 
 ### Strategy Scoring Table
 
-| Strategy | Base | Condition | Boosts / notes |
-|----------|------|-----------|----------------|
-| Onboarding | 1.0 | No documents | Not dismissible |
-| DueReviewReady | 0.95 | Due concepts + existing cards | Soft override; rationale annotates slow-recall due concepts |
-| PlanToday | 0.92 | Today's / overdue plan items | Top authority under FSRS-due reviews; carries the plan's title, rationale, time estimate |
-| DueReviewGenerate | 0.85 | Due concepts, no cards | — |
-| ProactiveDeck | 0.80 | Unseen proactive deck | Ranked by overlap with slow/weak concepts |
-| QuizGap | 0.60 | Notes exist, no quiz | Neglected (never-opened) docs jump the queue |
-| WeakSpot | 0.55–0.75 | ≥2 slow-recall concepts (or 1 + weak-topic corroboration), nothing due | Latency-grounded targeted quiz; defers to due reviews |
-| StartNotes | 0.55 | Doc with no content | Neglected docs jump the queue |
-| Revisit | 0.40 | Previously-read doc untouched ≥5 days | "You haven't revisited this in N days" |
-| Quiz | 0.30 | Documents exist | +0.40 after flashcards (chaining), +0.10 momentum, −0.05 format tilt |
-| Flashcard | 0.25 | Documents exist | +min(due_count/20, 0.30) FSRS urgency, +0.10 format tilt |
-| Fallback | 0.10 | Always (documents exist) | — |
+| Strategy          | Base      | Condition                                                              | Boosts / notes                                                                           |
+| ----------------- | --------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Onboarding        | 1.0       | No documents                                                           | Not dismissible                                                                          |
+| DueReviewReady    | 0.95      | Due concepts + existing cards                                          | Soft override; rationale annotates slow-recall due concepts                              |
+| PlanToday         | 0.92      | Today's / overdue plan items                                           | Top authority under FSRS-due reviews; carries the plan's title, rationale, time estimate |
+| DueReviewGenerate | 0.85      | Due concepts, no cards                                                 | —                                                                                        |
+| ProactiveDeck     | 0.80      | Unseen proactive deck                                                  | Ranked by overlap with slow/weak concepts                                                |
+| QuizGap           | 0.60      | Notes exist, no quiz                                                   | Neglected (never-opened) docs jump the queue                                             |
+| WeakSpot          | 0.55–0.75 | ≥2 slow-recall concepts (or 1 + weak-topic corroboration), nothing due | Latency-grounded targeted quiz; defers to due reviews                                    |
+| StartNotes        | 0.55      | Doc with no content                                                    | Neglected docs jump the queue                                                            |
+| Revisit           | 0.40      | Previously-read doc untouched ≥5 days                                  | "You haven't revisited this in N days"                                                   |
+| Quiz              | 0.30      | Documents exist                                                        | +0.40 after flashcards (chaining), +0.10 momentum, −0.05 format tilt                     |
+| Flashcard         | 0.25      | Documents exist                                                        | +min(due_count/20, 0.30) FSRS urgency, +0.10 format tilt                                 |
+| Fallback          | 0.10      | Always (documents exist)                                               | —                                                                                        |
 
 **Format tilt** (grounded in `study_patterns`): quizzes averaging >2 min or
 more abandoned than completed sessions shift practice toward flashcards.
@@ -881,12 +935,12 @@ REWARD VALUES:                                                    mastery_gap)
 
 Automatically inferred from behavior — no forms, no onboarding. Four dimensions:
 
-| Dimension | Values | How Inferred |
-|-----------|--------|-------------|
-| **learner_level** | beginner / intermediate / advanced | Difficulty-weighted avg quiz score (last 10). Acing hard docs → advanced. |
-| **preferred_difficulty** | easy / medium / hard | Drifts from level: last 5 scores >80% → bump up, <50% → ease off |
-| **preferred_formats** | quiz_length, card_style, notes_depth | From hint input (persisted): "10 questions" → quiz_length=10, "concise" → notes_depth=concise |
-| **study_goal** | exam_prep / casual / skill_building | Cadence: 3+ quizzes within 6h → exam_prep. Hint keywords. |
+| Dimension                | Values                               | How Inferred                                                                                  |
+| ------------------------ | ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| **learner_level**        | beginner / intermediate / advanced   | Difficulty-weighted avg quiz score (last 10). Acing hard docs → advanced.                     |
+| **preferred_difficulty** | easy / medium / hard                 | Drifts from level: last 5 scores >80% → bump up, <50% → ease off                              |
+| **preferred_formats**    | quiz_length, card_style, notes_depth | From hint input (persisted): "10 questions" → quiz_length=10, "concise" → notes_depth=concise |
+| **study_goal**           | exam_prep / casual / skill_building  | Cadence: 3+ quizzes within 6h → exam_prep. Hint keywords.                                     |
 
 All inference is **deterministic** (no LLM) — pure math, thresholds, and regex.
 Updated on every quiz submit, flashcard review, and generate hint.
@@ -936,7 +990,7 @@ datasets, so improvements and regressions in the agent are measured, not felt.
 - **Suites run production chains, not mocks** — e.g. the quiz suite executes
   the same `analyze → plan → generate` LLM calls the LangGraph pipeline makes.
 - **The judge is a stronger model than the generator** (`evals_judge_model`,
-  default `deepseek/deepseek-v3.2`, temperature 0, routed through the app's
+  default `deepseek/deepseek-v4-flash-0731`, temperature 0, routed through the app's
   OpenRouter client via a DeepEval adapter) — a model never grades its own
   failure modes.
 - **Deterministic metrics where possible**: fuzzy concept F1 (rapidfuzz
@@ -948,18 +1002,18 @@ datasets, so improvements and regressions in the agent are measured, not felt.
 
 ### Suites
 
-| Suite | Measures | Dataset |
-|-------|----------|---------|
-| `analysis` | Concept extraction vs gold lists + prerequisite edges; difficulty calibration | AL-CPL (+ Wikipedia summaries), RACE |
-| `quiz` | Structure, groundedness, distractor plausibility, concept tags, novice-vs-advanced personalization | SciQ |
-| `flashcards` | Matuschak-style rubric (atomicity, grounding); application-style tilt when known-ratio is high | SciQ |
-| `notes` | Markdown structure, ROUGE-1 vs gold abstracts, judge faithfulness, key-point coverage | PubMed summarization |
-| `planner` | Plan invariants (type whitelist, horizon, daily load, weak-engaged-early) + judge: rationale cites evidence (≥0.60) | synthetic modules seeded from SciQ |
-| `reflection` | No-fabricated-numbers grounding + judge faithfulness | synthetic behavior archetypes |
-| `rename` | Heuristic gate recall, rule compliance, judge descriptiveness | synthetic filenames |
-| `session` | Composer property tests: mix ratios, ordering, fallbacks, scopes (no LLM) | — |
-| `fsrs` | Replays real forgetting traces through the production scheduler; AUC/Brier vs power-law, streak, and correct-rate baselines | Duolingo HLR (13M traces) |
-| `recommend` | Replays real learner logs through the real `engine.decide()`; invariants + weakness precision vs random | EdNet-KT1 |
+| Suite        | Measures                                                                                                                    | Dataset                              |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `analysis`   | Concept extraction vs gold lists + prerequisite edges; difficulty calibration                                               | AL-CPL (+ Wikipedia summaries), RACE |
+| `quiz`       | Structure, groundedness, distractor plausibility, concept tags, novice-vs-advanced personalization                          | SciQ                                 |
+| `flashcards` | Matuschak-style rubric (atomicity, grounding); application-style tilt when known-ratio is high                              | SciQ                                 |
+| `notes`      | Markdown structure, ROUGE-1 vs gold abstracts, judge faithfulness, key-point coverage                                       | PubMed summarization                 |
+| `planner`    | Plan invariants (type whitelist, horizon, daily load, weak-engaged-early) + judge: rationale cites evidence (≥0.60)         | synthetic modules seeded from SciQ   |
+| `reflection` | No-fabricated-numbers grounding + judge faithfulness                                                                        | synthetic behavior archetypes        |
+| `rename`     | Heuristic gate recall, rule compliance, judge descriptiveness                                                               | synthetic filenames                  |
+| `session`    | Composer property tests: mix ratios, ordering, fallbacks, scopes (no LLM)                                                   | —                                    |
+| `fsrs`       | Replays real forgetting traces through the production scheduler; AUC/Brier vs power-law, streak, and correct-rate baselines | Duolingo HLR (13M traces)            |
+| `recommend`  | Replays real learner logs through the real `engine.decide()`; invariants + weakness precision vs random                     | EdNet-KT1                            |
 
 Notable recorded findings (report-only metrics, kept visible on purpose):
 

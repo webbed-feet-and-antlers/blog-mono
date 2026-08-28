@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # changing OPENROUTER_MODEL (e.g. "anthropic/claude-sonnet-4",
     # "openai/gpt-4o", "google/gemini-flash-1.5").
     openrouter_api_key: str | None = None
-    openrouter_model: str = "deepseek/deepseek-v4-flash"
+    openrouter_model: str = "deepseek/deepseek-v4-flash-0731"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # Transcription — uses OpenRouter's /audio/transcriptions endpoint (same key,
@@ -29,13 +29,24 @@ class Settings(BaseSettings):
     # Evals (backend/evals/) — the judge is a *stronger* model than the
     # generator so a model never grades its own failure modes. Runs at
     # temperature 0 via the same OpenRouter client as everything else.
-    evals_judge_model: str = "deepseek/deepseek-v3.2"
+    evals_judge_model: str = "deepseek/deepseek-v4-flash-0731"
     evals_n: int = 10  # cases per suite (EVALS_N; a 25-case deep run takes hours)
 
     # Paths
     base_dir: Path = Path(__file__).resolve().parent.parent
     storage_dir: Path = base_dir / "storage"
     db_path: Path = base_dir / "study_app.db"
+
+    # Auth — Clerk (dashboard.clerk.com). The frontend holds the
+    # publishable key (VITE_CLERK_PUBLISHABLE_KEY) and sends the session
+    # JWT as a Bearer token (or ?token= for <img>/beacon URLs, which
+    # cannot carry headers); the backend verifies it with the secret key.
+    clerk_secret_key: str | None = None
+    # Origins allowed to hold Clerk sessions (the SDK's azp check).
+    clerk_authorized_parties: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
     # Proactive agent — a background job that learns from quiz misses and
     # pre-generates flashcard review decks for weak topics. Default OFF so

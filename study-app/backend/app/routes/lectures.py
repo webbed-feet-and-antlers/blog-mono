@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import get_current_user
 from ..db import get_session
 from ..models import Document, LectureSession
 from ..schemas import (
@@ -28,12 +29,25 @@ from ..schemas import (
 router = APIRouter(prefix="/api/lectures", tags=["lectures"])
 
 
+async def _get_owned_lecture(
+    session: AsyncSession, lecture_id: str, user: str
+) -> LectureSession:
+    """Fetch a lecture session owned by `user` (else 404)."""
+    lecture = await session.get(LectureSession, lecture_id)
+    if lecture is None or lecture.user_id != user:
+        raise HTTPException(status_code=404, detail="Lecture session not found")
+    return lecture
+
+
 @router.post("", response_model=LectureSessionOut, status_code=201)
 async def create_lecture_session(
-    req: LectureSessionCreate, session: AsyncSession = Depends(get_session)
+    req: LectureSessionCreate,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     lecture = LectureSession(
         id=uuid.uuid4().hex[:12],
+        user_id=user,
         lesson_id=req.lesson_id,
         title=req.title,
         audio_doc_id=req.audio_doc_id,
@@ -51,20 +65,25 @@ async def create_lecture_session(
 
 
 @router.get("", response_model=list[LectureSessionOut])
-async def list_lectures(session: AsyncSession = Depends(get_session)):
+async def list_lectures(
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
+):
     result = await session.execute(
-        select(LectureSession).order_by(LectureSession.created_at.desc())
+        select(LectureSession)
+        .where(LectureSession.user_id == user)
+        .order_by(LectureSession.created_at.desc())
     )
     return result.scalars().all()
 
 
 @router.get("/{lecture_id}", response_model=LectureSessionDetail)
 async def get_lecture(
-    lecture_id: str, session: AsyncSession = Depends(get_session)
+    lecture_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
-    lecture = await session.get(LectureSession, lecture_id)
-    if lecture is None:
-        raise HTTPException(status_code=404, detail="Lecture session not found")
+    lecture = await _get_owned_lecture(session, lecture_id, user)
 
     # Eager-load the audio and slides documents.
     audio_doc = None
@@ -85,10 +104,9 @@ async def update_notes(
     lecture_id: str,
     req: LectureSessionNotesUpdate,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
-    lecture = await session.get(LectureSession, lecture_id)
-    if lecture is None:
-        raise HTTPException(status_code=404, detail="Lecture session not found")
+    lecture = await _get_owned_lecture(session, lecture_id, user)
     lecture.notes = req.notes
     await session.commit()
     await session.refresh(lecture)
@@ -100,14 +118,13 @@ async def get_slide_image(
     lecture_id: str,
     page: int,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     """Render a specific PDF page (slide) as a PNG image.
 
     page is 1-indexed (page=1 is the first slide).
     """
-    lecture = await session.get(LectureSession, lecture_id)
-    if lecture is None:
-        raise HTTPException(status_code=404, detail="Lecture session not found")
+    lecture = await _get_owned_lecture(session, lecture_id, user)
     if lecture.slides_doc_id is None:
         raise HTTPException(status_code=404, detail="No slides uploaded")
 

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@clerk/ui/themes/shadcn.css";
 @import "tw-animate-css";
 
 /* The hand-rolled stylesheet, imported into the base layer AFTER preflight:

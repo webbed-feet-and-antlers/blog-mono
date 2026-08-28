@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useUser } from "@clerk/clerk-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -400,7 +401,8 @@ function ProactiveBanner({
 }) {
   const title = (deck.content as any)?.title ?? "Review deck";
   const cardCount = (deck.content as any)?.cards?.length ?? 0;
-  const seenKey = `proactive-seen-${deck.id}`;
+  const { user } = useUser();
+  const seenKey = `proactive-seen:${user?.id ?? "anon"}:${deck.id}`;
   const [seen, setSeen] = useState(() => {
     try {
       return localStorage.getItem(seenKey) === "1";

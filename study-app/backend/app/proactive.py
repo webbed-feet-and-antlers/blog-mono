@@ -20,23 +20,45 @@ from sqlalchemy import select
 
 from .agent import memory as memory_store
 from .agent.graph import run_generation
+from .auth import user_scope, user_ref_id
 from .config import settings
 from .db import SessionLocal
-from .models import ContentItem
+from .models import AgentMemory, ContentItem
 
 logger = logging.getLogger(__name__)
 
 
-async def run_proactive_review() -> dict:
-    """Run one iteration of the proactive review-job.
+async def _known_user_ids() -> list[str]:
+    """Distinct owners that have user-scope memory ("" = ambient user)."""
+    async with SessionLocal() as session:
+        rows = await session.execute(
+            select(AgentMemory.user_id).where(
+                AgentMemory.scope == "user",
+                AgentMemory.user_id != "",
+            ).distinct()
+        )
+        # The ambient user (legacy/tests) runs too so nothing silently stops.
+        return [""] + [r[0] for r in rows.all()]
 
-    Finds documents with weak topics (that don't already have a recent proactive
-    deck), generates a review flashcard deck for each, and tags it as proactive.
+
+async def run_proactive_review() -> dict:
+    """Run one proactive iteration per user, isolated per user.
+
+    Finds each user's documents with weak topics (that don't already have a
+    recent proactive deck), generates a review flashcard deck for each, and
+    tags it as proactive.
 
     Returns a summary dict (useful for tests / the debug endpoint).
     """
     summary = {"checked": 0, "generated": 0, "skipped": 0, "errors": 0, "details": []}
 
+    for uid in await _known_user_ids():
+        with user_scope(uid):
+            user_summary = await _run_proactive_for_current_user(summary)
+    return summary
+
+
+async def _run_proactive_for_current_user(summary: dict) -> dict:
     async with SessionLocal() as session:
         candidates = await memory_store.get_review_candidates(
             session, cooldown_hours=settings.proactive_cooldown_hours
@@ -107,7 +129,8 @@ async def run_proactive_review() -> dict:
                 logger.exception("[agent] proactive: doc %s raised", doc_id)
 
     logger.info(
-        "[agent] proactive run complete: %d checked, %d generated, %d errors",
+        "[agent] proactive run complete for user %r: %d checked, %d generated, %d errors",
+        user_ref_id() or "<ambient>",
         summary["checked"],
         summary["generated"],
         summary["errors"],
