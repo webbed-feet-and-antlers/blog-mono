@@ -11,8 +11,9 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from .config import settings
 from .db import init_db
@@ -52,13 +53,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Study App Backend", lifespan=lifespan)
 
-# Allow the Vite dev server (default 5173) to call the API during local dev.
+# Allowed browser origins (settings.cors_origins — env-configurable so
+# production is an env change, not a code change; keep in sync with
+# CLERK_AUTHORIZED_PARTIES).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,3 +92,36 @@ for _router in (
     plans.router,
 ):
     app.include_router(_router, dependencies=[Depends(get_current_user)])
+
+
+# --- SPA serving (production: single origin) ---------------------------------
+#
+# When the built frontend exists (the Docker image copies it in), this
+# process serves it: hashed assets straight from disk, every other
+# non-API GET gets index.html so client-side routing works from any URL.
+# In dev (no dist) the backend is API-only and Vite serves the SPA.
+
+if settings.frontend_dist_dir.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    _index_html = settings.frontend_dist_dir / "index.html"
+
+    # Hashed build assets — cache forever (filenames change on rebuild).
+    _assets = settings.frontend_dist_dir / "assets"
+    if _assets.is_dir():
+        app.mount(
+            "/assets",
+            StaticFiles(directory=_assets),
+            name="assets",
+        )
+
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    async def serve_spa(spa_path: str):
+        if spa_path.startswith(("api/", "health")):
+            raise HTTPException(status_code=404, detail="Not found")
+        # Known top-level files (favicon, fonts, clerk logo, …) served
+        # directly; everything else is a client route → index.html.
+        candidate = settings.frontend_dist_dir / spa_path
+        if spa_path and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_index_html)

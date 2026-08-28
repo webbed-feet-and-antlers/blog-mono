@@ -36,14 +36,27 @@ class Settings(BaseSettings):
     base_dir: Path = Path(__file__).resolve().parent.parent
     storage_dir: Path = base_dir / "storage"
     db_path: Path = base_dir / "study_app.db"
+    # The built SPA served by this same process in production (single
+    # origin). In dev the dir doesn't exist and the backend is API-only.
+    frontend_dist_dir: Path = base_dir.parent / "frontend" / "dist"
 
     # Auth — Clerk (dashboard.clerk.com). The frontend holds the
     # publishable key (VITE_CLERK_PUBLISHABLE_KEY) and sends the session
     # JWT as a Bearer token (or ?token= for <img>/beacon URLs, which
     # cannot carry headers); the backend verifies it with the secret key.
     clerk_secret_key: str | None = None
-    # Origins allowed to hold Clerk sessions (the SDK's azp check).
+    # Origins allowed to hold Clerk sessions (the SDK's azp check). MUST
+    # include the production origin when shipping (env: JSON list), or
+    # every token 401s.
     clerk_authorized_parties: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+    # CORS — the browser origins that may call the API (env: JSON list).
+    # Keep in sync with clerk_authorized_parties: one says "this origin
+    # may call us", the other "Clerk tokens from this origin are valid".
+    cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ]

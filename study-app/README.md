@@ -176,10 +176,37 @@ OPENROUTER_MODEL=deepseek/deepseek-v4-flash-0731   # default — cheap + fast
 
 No code changes needed.
 
+## Deployment (study.inkpens.tech)
+
+One Fly.io container serves both the API and the built SPA — single origin,
+automatic TLS, a persistent volume at `/data` for SQLite + uploads.
+Deploy config: `study-app/Dockerfile` + `study-app/fly.toml`; CI:
+`.github/workflows/deploy-study.yml` (deploys on merge to main touching
+`study-app/**`).
+
+### One-time setup
+
+1. **Fly**: `brew install flyctl && fly auth login`, then from `study-app/`:
+   `fly apps create inkpens-study && fly volume create study_data --region lhr --size 1`
+   and `fly secrets set OPENROUTER_API_KEY=… CLERK_SECRET_KEY=sk_live_…
+   CLERK_AUTHORIZED_PARTIES='["https://study.inkpens.tech"]' PROACTIVE_ENABLED=true`.
+2. **DNS** (registrar): add `study` CNAME → `inkpens-study.fly.dev`, then
+   `fly certs add study.inkpens.tech` (Let's Encrypt issues automatically).
+3. **Clerk production**: claim the app (`clerk auth login`), pull live keys
+   (`clerk env pull --instance prod`), enable Email/Password **on the
+   production instance** (sign-in methods are per-instance), and register
+   `https://study.inkpens.tech` as a production domain. Set the repo
+   variable `STUDY_CLERK_PUBLISHABLE_KEY` (pk_live_…) and the
+   `study-app` GitHub environment secret `FLY_API_TOKEN`
+   (`fly tokens create deploy -a inkpens-study`).
+4. Deploy: `cd study-app && fly deploy --build-arg VITE_CLERK_PUBLISHABLE_KEY=pk_live_…`.
+
+Cost lever: always-on is ~$4/month (`min_machines_running = 1` in fly.toml);
+set it to 0 to park when idle at the cost of cold starts and delayed
+background jobs.
+
 ## Out of scope (for now)
 
-- Deployment / cloud hosting (local dev only)
-- Authentication / multi-user
 - Streaming agent steps (could add SSE for an "agent is thinking…" UX)
 - Semantic search / RAG over documents (structured memory only for v1; the
   repo's `embeddings/` service is a natural future integration point)
