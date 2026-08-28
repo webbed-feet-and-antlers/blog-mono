@@ -6,7 +6,10 @@ import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./router";
 import { ThemeProvider } from "./theme";
 import { ClerkTokenBridge } from "./components/Auth";
+import { initAnalytics } from "./analytics";
 import "./index.css";
+
+initAnalytics();
 
 const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 

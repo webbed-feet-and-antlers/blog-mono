@@ -9,6 +9,12 @@ FROM node:22-slim AS frontend
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 
+# Umami analytics — unset ships zero analytics (see src/analytics.ts).
+ARG VITE_UMAMI_WEBSITE_ID
+ARG VITE_UMAMI_HOST
+ENV VITE_UMAMI_WEBSITE_ID=$VITE_UMAMI_WEBSITE_ID \
+    VITE_UMAMI_HOST=$VITE_UMAMI_HOST
+
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci

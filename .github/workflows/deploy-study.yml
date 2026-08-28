@@ -31,3 +31,4 @@ jobs:
         run: >
           flyctl deploy --remote-only
           --build-arg VITE_CLERK_PUBLISHABLE_KEY="${{ vars.STUDY_CLERK_PUBLISHABLE_KEY }}"
+          --build-arg VITE_UMAMI_WEBSITE_ID="${{ vars.STUDY_UMAMI_WEBSITE_ID }}"
