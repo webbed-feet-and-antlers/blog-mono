@@ -16,7 +16,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Same validation as study-app-check.yml — the deploy is gated on it so
+  # a red test suite never reaches production.
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: study-app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run pytest tests/ -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: study-app/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
   deploy:
+    needs: [backend, frontend]
     runs-on: ubuntu-latest
     environment: study-app
     defaults:

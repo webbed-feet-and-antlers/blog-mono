@@ -1,0 +1,46 @@
+name: Study app checks
+
+# PR-time validation for the study app: backend tests + frontend
+# typecheck/build. The deploy workflow (deploy-study.yml) runs the same
+# jobs before deploying, so main is never deployed red even without
+# branch protection.
+
+on:
+  pull_request:
+    paths: ["study-app/**", ".github/workflows/study-app-check.yml"]
+  push:
+    branches-ignore: [main]
+    paths: ["study-app/**", ".github/workflows/study-app-check.yml"]
+
+concurrency:
+  group: study-app-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: study-app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      # Unit tests only — no LLM keys needed (conftest sets its own env).
+      - run: uv run pytest tests/ -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: study-app/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+      # Builds without a Clerk key on purpose — the app renders its
+      # missing-key setup screen; prod keys arrive as deploy build-args.
+      - run: npm run build
