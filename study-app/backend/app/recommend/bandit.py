@@ -23,6 +23,7 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_ref_id
 from ..agent.memory import read_memory, write_memory
 from ..models import RecommendationEvent
 from .context import UserContext
@@ -149,7 +150,7 @@ class LinUCBOptimizer:
             params[strategy_name]["weights"] = W.tolist()
             summary[strategy_name] = float(np.linalg.norm(W))
 
-        await write_memory(session, "user", "", BANDIT_KEY, params)
+        await write_memory(session, "user", user_ref_id(), BANDIT_KEY, params)
         logger.info(
             "[bandit] updated weights for %d strategies from %d events",
             len(updates),
@@ -167,7 +168,7 @@ class LinUCBOptimizer:
 
     async def _load_all_params(self, session: AsyncSession) -> dict:
         """Load all strategy parameters from agent_memory."""
-        val = await read_memory(session, "user", "", BANDIT_KEY)
+        val = await read_memory(session, "user", user_ref_id(), BANDIT_KEY)
         return val if isinstance(val, dict) else {}
 
     def _init_params(self) -> dict:

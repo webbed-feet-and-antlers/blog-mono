@@ -22,6 +22,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_ref_id
 from ..llm import chat_json
 from ..models import ContentItem, Document, Lesson, Module, StudyPlan
 from . import behavior as behavior_store
@@ -76,6 +77,10 @@ _SYSTEM_PROMPT = (
     "requested horizon. Aim for ≤45 minutes of work per day.\n"
     "- Sequence along prerequisite chains (foundations first). Interleave "
     "spaced review of due/weak concepts with new material.\n"
+    "- If the grounding lists ANY due or weak concepts (fsrs.due_now > 0 "
+    "or weakest_concepts non-empty), the plan MUST include at least one "
+    "review_concepts or review_deck item on day 0 or day 1 — engaging "
+    "weak material early is the plan's first job, not later-week filler.\n"
     "- If the exam date is close, weight heavily toward due review and weak "
     "concepts; if far, balance new coverage with light maintenance review.\n"
     "- Schedule generate_quiz/generate_flashcards for documents that have "
@@ -162,6 +167,27 @@ async def generate_study_plan(
                 "heaviest day", _max_daily_minutes(items),
             )
 
+    # Weak-first enforcement — the eval suite caught plans scheduling zero
+    # review items in the first days despite due concepts (weak_engaged_early
+    # 0.4 vs the 0.6 gate). One regeneration; if the LLM still won't
+    # front-load review, inject an item on the lightest early day ourselves.
+    due_names = grounding["fsrs"].get("due_names") or []
+    if due_names and not _has_early_review(items):
+        logger.info(
+            "[planner] no review item in the first days with %d due — "
+            "regenerating once", len(due_names),
+        )
+        retry = await _ask_for_items()
+        if _has_early_review(retry):
+            items = retry
+        else:
+            day = _lightest_day(items)
+            logger.info(
+                "[planner] injecting a day-%d review item (%d due concepts)",
+                day, len(due_names),
+            )
+            items.append(_early_review_item(due_names, day))
+
     # Carry over completion from the previous version (match type + target).
     existing = await _get_plan(session, module_id)
     if existing is not None:
@@ -169,7 +195,12 @@ async def generate_study_plan(
         existing.version = existing.version + 1
         plan = existing
     else:
-        plan = StudyPlan(id=uuid.uuid4().hex[:12], module_id=module_id, version=1)
+        plan = StudyPlan(
+            id=uuid.uuid4().hex[:12],
+            user_id=user_ref_id(),
+            module_id=module_id,
+            version=1,
+        )
         session.add(plan)
 
     plan.items = items
@@ -213,8 +244,12 @@ async def get_plan_with_staleness(
 
 
 async def _get_plan(session: AsyncSession, module_id: str) -> StudyPlan | None:
+    """The current user's plan for the module (plans are per (user, module))."""
     result = await session.execute(
-        select(StudyPlan).where(StudyPlan.module_id == module_id)
+        select(StudyPlan).where(
+            StudyPlan.module_id == module_id,
+            StudyPlan.user_id == user_ref_id(),
+        )
     )
     return result.scalars().first()
 
@@ -268,7 +303,7 @@ async def _build_grounding(
 
     weak = await memory_store.get_weak_topics(session)
     profile = await memory_store.get_learner_profile(session)
-    insights = await memory_store.read_memory(session, "user", "", "learner_insights")
+    insights = await memory_store.read_memory(session, "user", user_ref_id(), "learner_insights")
     engagement = await behavior_store.get_engagement(session)
     read_docs = set((engagement.get("docs") or {}).keys())
 
@@ -326,6 +361,53 @@ def _max_daily_minutes(items: list[dict]) -> int:
         day = int(it.get("day_offset", 0))
         per_day[day] = per_day.get(day, 0) + int(it.get("estimate_mins", 0))
     return max(per_day.values(), default=0)
+
+
+# "Early" for review engagement — the window the planner eval gates on
+# (weak_engaged_early: a review item within the first days when concepts
+# are due).
+_EARLY_REVIEW_WINDOW = 2
+
+
+def _has_early_review(items: list[dict]) -> bool:
+    """Any review item within the first days of the plan."""
+    return any(
+        str(it.get("type", "")).startswith("review")
+        and int(it.get("day_offset", 0)) <= _EARLY_REVIEW_WINDOW
+        for it in items
+    )
+
+
+def _lightest_day(items: list[dict]) -> int:
+    """The least-loaded day inside the early window (for injected items)."""
+    per_day: dict[int, int] = {}
+    for it in items:
+        day = int(it.get("day_offset", 0))
+        if day <= _EARLY_REVIEW_WINDOW:
+            per_day[day] = per_day.get(day, 0) + int(it.get("estimate_mins", 0))
+    return min(range(_EARLY_REVIEW_WINDOW + 1), key=lambda d: per_day.get(d, 0))
+
+
+def _early_review_item(due_names: list[str], day: int) -> dict:
+    """A review fallback item when the LLM won't front-load one itself."""
+    named = ", ".join(due_names[:3]) + (", …" if len(due_names) > 3 else "")
+    return {
+        "id": uuid.uuid4().hex[:10],
+        "type": "review_concepts",
+        "title": "Review your due concepts",
+        "rationale": _clip_rationale(
+            f"{len(due_names)} concepts are due for spaced repetition"
+            + (f" ({named})" if named else "")
+            + " — reviewing them now interrupts forgetting before it compounds."
+        ),
+        "day_offset": day,
+        "estimate_mins": 15,
+        "status": "pending",
+        "done_at": None,
+        "done_reason": None,
+        "done_kind": None,
+        "target": {"document_id": None, "concepts": due_names[:12]},
+    }
 
 
 def _validate_items(

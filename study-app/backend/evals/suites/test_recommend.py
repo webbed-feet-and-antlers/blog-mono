@@ -2,10 +2,12 @@
 through the production recommendation engine.
 
 Per user: every question answer advances a per-concept FSRS state through
-the app's own scheduler (binary mapping, same as quiz submissions). At each
-simulated day boundary we snapshot the learner's state into a UserContext
-and run the REAL engine.decide() — the same strategies, boosts, and ranking
-the /api/recommend endpoint uses — then score the policy two ways:
+the app's own scheduler (binary mapping, same as quiz submissions), and
+maintains the same per-concept mastery signals production carries —
+lifetime correct-rate and the recent_rate EMA. At each simulated day
+boundary we snapshot the learner's state into a UserContext and run the
+REAL engine.decide() — the same strategies, boosts, and ranking the
+/api/recommend endpoint uses — then score the policy two ways:
 
   1. Invariants: a due backlog must keep FSRS review at the top of the
      slate; the engine must never recommend nothing.
@@ -49,7 +51,12 @@ def _replay() -> dict:
     import pandas as pd
     from fsrs import Card, Rating
 
-    from app.agent.fsrs_scheduler import _scheduler, _state_to_card_json, is_due
+    from app.agent.fsrs_scheduler import (
+        _scheduler,
+        _state_to_card_json,
+        is_due,
+        update_recent_rate,
+    )
     from app.models import Document
     from app.recommend.context import UserContext
     from app.recommend.engine import engine
@@ -57,6 +64,7 @@ def _replay() -> dict:
     import sys as _sys
 
     engine_mod = _sys.modules["app.recommend.engine"]  # module, not the singleton
+    strategies_mod = _sys.modules["app.recommend.strategies"]  # for the clock pin
 
     users_path = DATA_DIR / f"ednet_{EVALS_SPLIT}.parquet"
     questions_path = DATA_DIR / "ednet_questions.parquet"
@@ -81,8 +89,8 @@ def _replay() -> dict:
     invariants_total = 0
     invariants_ok = 0
     decided_points = 0
-    targeted, targeted_failed = 0, 0
-    random_targets, random_failed = 0, 0
+    targeted, targeted_failed, targeted_with_next = 0, 0, 0
+    random_targets, random_failed, random_with_next = 0, 0, 0
     empty_primary = 0
     # Per-user tallies — precision is macro-averaged so one heavy learner
     # can't dominate the pooled rate.
@@ -91,10 +99,12 @@ def _replay() -> dict:
     for i, (subject, udf) in enumerate(df.groupby("subject_id", sort=True)):
         if i >= MAX_USERS:
             break
-        u_t, u_tf, u_rt, u_rf = 0, 0, 0, 0
+        u_t, u_tf, u_twn, u_rt, u_rf, u_rwn = 0, 0, 0, 0, 0, 0
         udf = udf.sort_values("timestamp")
         states: dict[str, dict] = {}     # concept → fsrs state dict
         counts: dict[str, tuple] = {}    # concept → (seen, correct)
+        recent: dict[str, float] = {}    # concept → recent_rate EMA
+        last_ts: dict[str, int] = {}     # concept → last attempt (epoch ms)
         last_day = None
         for row in udf.itertuples(index=False):
             ts = datetime.fromtimestamp(int(row.timestamp) / 1000, tz=timezone.utc)
@@ -104,12 +114,35 @@ def _replay() -> dict:
             day = ts.date()
             if last_day is not None and day != last_day and len(states) >= MIN_CONCEPTS_SEEN:
                 # --- A decision point: snapshot + run the real engine. ---
-                due_names = [c for c, st in states.items() if is_due(st)]
+                # `ts` is the simulated decision time — is_due is evaluated
+                # against it (NOT wall-clock now: the traces are historical,
+                # so real-now would mark every seen concept due).
+                due_names = [c for c, st in states.items() if is_due(st, ts)]
                 concepts_list = list(states.keys())
                 ctx = UserContext(
-                    due_concepts=[{"concept": c} for c in due_names],
+                    due_concepts=[
+                        {
+                            "concept": c,
+                            # Same signals the production get_due_concepts
+                            # entries carry — the deck's failure-risk ranking
+                            # and active-orbit tiering read them.
+                            "fsrs": states[c],
+                            "last_attempt_ts": datetime.fromtimestamp(
+                                last_ts[c] / 1000, tz=timezone.utc
+                            ).isoformat(),
+                        }
+                        for c in due_names
+                    ],
                     concept_mastery={
-                        c: {"seen": s, "correct": k, "mastery_pct": round(k / s, 3)}
+                        c: {
+                            "seen": s,
+                            "correct": k,
+                            "mastery_pct": round(k / s, 3),
+                            # Same EMA the production mastery update
+                            # maintains — the deck's failure-risk ranking
+                            # (failure_risk) reads it.
+                            "recent_rate": round(recent[c], 3),
+                        }
                         for c, (s, k) in counts.items()
                     },
                     documents={
@@ -142,13 +175,26 @@ def _replay() -> dict:
                     1 for c, (s, k) in counts.items() if s and k / s >= 0.8
                 )
 
-                # Kill epsilon-greedy randomness for reproducibility.
+                # Kill epsilon-greedy randomness for reproducibility, and
+                # pin the strategies' clock to the simulated decision time
+                # (production ranks activity against wall-clock now; the
+                # traces are historical).
                 real_random = engine_mod.random.random
                 engine_mod.random.random = lambda: 0.99
+                real_dt = strategies_mod.datetime
+                sim_now = ts
+
+                class _sim_dt(real_dt):
+                    @classmethod
+                    def now(cls, tz=None):
+                        return sim_now if tz is None else sim_now.astimezone(tz)
+
+                strategies_mod.datetime = _sim_dt
                 try:
                     response = engine.decide(ctx)
                 finally:
                     engine_mod.random.random = real_random
+                    strategies_mod.datetime = real_dt
 
                 decided_points += 1
                 primary = response["primary"]
@@ -165,7 +211,11 @@ def _replay() -> dict:
                             invariants_ok += 1
 
                     # Weakness precision: concepts the primary targets vs
-                    # what the learner fails next within 7 days.
+                    # what the learner fails next within 7 days. with_next
+                    # counts targets the learner actually faced again —
+                    # the conditional metrics separate the engine's
+                    # failure prediction from re-attempt availability
+                    # (platform-driven, not ours).
                     targets = _primary_concepts(primary, due_names)
                     if targets:
                         for t in targets:
@@ -173,6 +223,9 @@ def _replay() -> dict:
                             u_t += 1
                             nxt = _next_attempt(future, qmap, t, row.timestamp,
                                                 window_ms=7 * 86400 * 1000)
+                            if nxt is not None:
+                                targeted_with_next += 1
+                                u_twn += 1
                             if nxt is False:
                                 targeted_failed += 1
                                 u_tf += 1
@@ -184,6 +237,9 @@ def _replay() -> dict:
                         u_rt += 1
                         nxt = _next_attempt(future, qmap, r_concept, row.timestamp,
                                             window_ms=7 * 86400 * 1000)
+                        if nxt is not None:
+                            random_with_next += 1
+                            u_rwn += 1
                         if nxt is False:
                             random_failed += 1
                             u_rf += 1
@@ -210,10 +266,14 @@ def _replay() -> dict:
             }
             seen, k = counts.get(concept, (0, 0))
             counts[concept] = (seen + 1, k + (1 if correct else 0))
+            recent[concept] = update_recent_rate(recent.get(concept), correct)
+            last_ts[concept] = int(row.timestamp)
             last_day = day
         user_stats[str(subject)] = {
             "targeted": u_t, "targeted_failed": u_tf,
+            "targeted_with_next": u_twn,
             "random_targets": u_rt, "random_failed": u_rf,
+            "random_with_next": u_rwn,
         }
 
     _REPLAY = {
@@ -223,8 +283,10 @@ def _replay() -> dict:
         "empty_primary": empty_primary,
         "targeted": targeted,
         "targeted_failed": targeted_failed,
+        "targeted_with_next": targeted_with_next,
         "random_targets": random_targets,
         "random_failed": random_failed,
+        "random_with_next": random_with_next,
         "user_stats": user_stats,
     }
     return _REPLAY
@@ -328,5 +390,47 @@ async def test_recommend_policy_on_real_traces():
             reason=(
                 "engine-targeted vs random-targeted failure precision "
                 "(macro); cohort-dependent — do not tune against"
+            ),
+        )
+
+    # 4. Conditional view (report-only): precision among targets the
+    # learner actually faced again, plus how often that happened. Raw
+    # precision conflates failure prediction (the engine's job) with
+    # re-attempt availability (platform-driven); these split the two.
+    eng_wn_users = [v for v in stats.values() if v["targeted_with_next"] > 0]
+    rnd_wn_users = [v for v in stats.values() if v["random_with_next"] > 0]
+    if eng_users and eng_wn_users:
+        eng_cond = (
+            sum(v["targeted_failed"] / v["targeted_with_next"]
+                for v in eng_wn_users) / len(eng_wn_users)
+        )
+        eng_reattempt = (
+            sum(v["targeted_with_next"] / v["targeted"]
+                for v in eng_users) / len(eng_users)
+        )
+        record(
+            "recommend", "engine_precision_conditioned", case="ednet-replay",
+            score=eng_cond, threshold=None, success=None,
+            reason=(
+                f"failures among re-attempted targets "
+                f"(macro over {len(eng_wn_users)} users)"
+            ),
+        )
+        record(
+            "recommend", "engine_reattempt_fraction", case="ednet-replay",
+            score=eng_reattempt, threshold=None, success=None,
+            reason="fraction of engine targets faced again within 7d (macro)",
+        )
+    if rnd_wn_users:
+        rnd_cond = (
+            sum(v["random_failed"] / v["random_with_next"]
+                for v in rnd_wn_users) / len(rnd_wn_users)
+        )
+        record(
+            "recommend", "random_precision_conditioned", case="ednet-replay",
+            score=rnd_cond, threshold=None, success=None,
+            reason=(
+                f"failures among re-attempted random draws "
+                f"(macro over {len(rnd_wn_users)} users)"
             ),
         )

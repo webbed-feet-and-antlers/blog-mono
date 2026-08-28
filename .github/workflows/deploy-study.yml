@@ -1,0 +1,62 @@
+name: Deploy study app
+
+# Deploys study.inkpens.tech (Fly.io): one container serving the API and
+# the built SPA. Requires a `study-app` environment with FLY_API_TOKEN,
+# and the repo variable STUDY_CLERK_PUBLISHABLE_KEY (pk_live_… — public
+# by design, baked into the frontend bundle at build time).
+
+on:
+  push:
+    branches: [main]
+    paths: ["study-app/**", ".github/workflows/deploy-study.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: study-app-deploy
+  cancel-in-progress: true
+
+jobs:
+  # Same validation as study-app-check.yml — the deploy is gated on it so
+  # a red test suite never reaches production.
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: study-app/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run pytest tests/ -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: study-app/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+
+  deploy:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    environment: study-app
+    defaults:
+      run:
+        working-directory: study-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy
+        run: >
+          flyctl deploy --remote-only
+          --build-arg VITE_CLERK_PUBLISHABLE_KEY="${{ vars.STUDY_CLERK_PUBLISHABLE_KEY }}"
+          --build-arg VITE_UMAMI_WEBSITE_ID="${{ vars.STUDY_UMAMI_WEBSITE_ID }}"

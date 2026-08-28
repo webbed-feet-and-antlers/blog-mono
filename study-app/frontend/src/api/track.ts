@@ -9,6 +9,8 @@
  *   Blob (no CORS preflight; the backend parses the raw body).
  */
 
+import { withToken } from "../auth";
+
 export type ActivityProps = Record<string, string | number | boolean | null | undefined>;
 
 interface BufferedEvent {
@@ -49,7 +51,7 @@ export async function flush(): Promise<void> {
   const events = buffer;
   buffer = [];
   try {
-    await fetch("/api/activity", {
+    await fetch(withToken("/api/activity"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ events }),
@@ -67,7 +69,7 @@ function flushWithBeacon(): void {
   try {
     // text/plain avoids a CORS preflight on the beacon.
     const blob = new Blob([JSON.stringify({ events })], { type: "text/plain" });
-    navigator.sendBeacon("/api/activity", blob);
+    navigator.sendBeacon(withToken("/api/activity"), blob);
   } catch {
     // Best effort.
   }

@@ -2,7 +2,8 @@
 
 Scope:
   - "doc":  ref_id = document_id. Caches analysis, extracted concepts, prior generations.
-  - "user": ref_id = "" (single local user for the POC). Cross-document learnings.
+  - "user": ref_id = the owner's user id (from the request context — see
+    app/auth.py; "" for ambient callers like tests/evals). Cross-document learnings.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_ref_id
 from ..models import AgentMemory
 
 # Serializes read-modify-write cycles on the user-scope JSON blobs
@@ -63,6 +65,7 @@ async def write_memory(
         id=uuid.uuid4().hex[:12],
         scope=scope,
         ref_id=ref_id,
+        user_id=user_ref_id(),
         key=key,
         value=value,
     )
@@ -95,24 +98,32 @@ async def list_memory(
 
 
 async def get_doc_topics(session: AsyncSession) -> dict[str, str]:
-    """Return {document_id: topic} from every cached doc analysis.
+    """Return {document_id: topic} from the current user's cached doc
+    analyses.
 
-    One query for all docs — used by the module-tree and concept-reference
-    endpoints to subtitle documents with their analysis topic.
+    One query for all of the user's docs — used by the module-tree and
+    concept-reference endpoints to subtitle documents with their analysis
+    topic.
     """
-    rows = await list_memory(session, scope="doc")
+    rows = await session.execute(
+        select(AgentMemory.ref_id, AgentMemory.value).where(
+            AgentMemory.scope == "doc",
+            AgentMemory.key == "analysis",
+            AgentMemory.user_id == user_ref_id(),
+        )
+    )
     topics: dict[str, str] = {}
-    for m in rows:
-        if m.key == "analysis" and isinstance(m.value, dict):
-            topic = m.value.get("topic")
+    for ref_id, value in rows.all():
+        if isinstance(value, dict):
+            topic = value.get("topic")
             if topic:
-                topics[m.ref_id] = str(topic)
+                topics[ref_id] = str(topic)
     return topics
 
 
 # --- Weak-topic tracking (the proactive agent's signal source) -------------
 #
-# weak_topics lives at scope="user", ref_id="", key="weak_topics" and is a
+# weak_topics lives at scope="user" (owner ref), key="weak_topics" and is a
 # list of {"topic": str, "missed_count": int, "last_seen": iso8601} dicts.
 # missed_count accumulates across quizzes; last_seen marks recency. The list
 # is capped at MAX_WEAK_TOPICS entries, sorted by missed_count desc so the
@@ -133,7 +144,7 @@ async def add_weak_topics(session: AsyncSession, topics: list[str]) -> None:
 
     now = datetime.now(timezone.utc).isoformat()
     async with blob_lock:
-        existing = await read_memory(session, "user", "", "weak_topics")
+        existing = await read_memory(session, "user", user_ref_id(), "weak_topics")
         by_topic: dict[str, dict[str, Any]] = {}
         if isinstance(existing, list):
             for entry in existing:
@@ -149,12 +160,12 @@ async def add_weak_topics(session: AsyncSession, topics: list[str]) -> None:
                 by_topic[topic] = {"topic": topic, "missed_count": 1, "last_seen": now}
 
         merged = sorted(by_topic.values(), key=lambda e: e.get("missed_count", 0), reverse=True)
-        await write_memory(session, "user", "", "weak_topics", merged[:MAX_WEAK_TOPICS])
+        await write_memory(session, "user", user_ref_id(), "weak_topics", merged[:MAX_WEAK_TOPICS])
 
 
 async def get_weak_topics(session: AsyncSession) -> list[dict[str, Any]]:
     """Return the user-wide weak-topics list (empty if none recorded)."""
-    val = await read_memory(session, "user", "", "weak_topics")
+    val = await read_memory(session, "user", user_ref_id(), "weak_topics")
     if isinstance(val, list):
         return val
     return []
@@ -190,12 +201,18 @@ async def get_review_candidates(
 
     cooldown_cutoff = datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)
 
-    # Load all docs that have an analysis (only those are useful targets).
-    analyses = await list_memory(session, scope="doc")
-    doc_ids_with_analysis: dict[str, dict[str, Any]] = {}
-    for m in analyses:
-        if m.key == "analysis":
-            doc_ids_with_analysis[m.ref_id] = m.value or {}
+    # Load the current user's docs that have an analysis (only those are
+    # useful targets).
+    analyses = await session.execute(
+        select(AgentMemory.ref_id, AgentMemory.value).where(
+            AgentMemory.scope == "doc",
+            AgentMemory.key == "analysis",
+            AgentMemory.user_id == user_ref_id(),
+        )
+    )
+    doc_ids_with_analysis: dict[str, dict[str, Any]] = {
+        ref_id: value or {} for ref_id, value in analyses.all()
+    }
 
     candidates: list[dict[str, Any]] = []
     for doc_id, analysis in doc_ids_with_analysis.items():
@@ -246,7 +263,8 @@ def _as_jsonable(value: Any) -> Any:
 #
 # concept_mastery lives at scope="user", ref_id="", key="concept_mastery" and
 # is a dict keyed by concept name:
-#   {concept: {"correct": int, "wrong": int, "seen": int, "mastery_pct": float}}
+#   {concept: {"correct": int, "wrong": int, "seen": int, "mastery_pct": float,
+#              "recent_rate": float}}
 #
 # Both quiz answers (right AND wrong) and flashcard reviews ("I know this" /
 # "Still learning") feed this tally. It's always-on (not gated like the
@@ -297,6 +315,14 @@ async def update_concept_mastery(
         else:
             entry["wrong"] = entry["wrong"] + 1
         entry["mastery_pct"] = round(entry["correct"] / entry["seen"], 3)
+        # Current ability — EMA of recent outcomes. The lifetime rate above
+        # goes stale for improving learners; failure_risk ranks by this.
+        entry["recent_rate"] = round(
+            fsrs_scheduler.update_recent_rate(entry.get("recent_rate"), correct), 3
+        )
+        # Last time the learner faced this concept — drives the
+        # active-orbit tiering of due-review decks (is_recently_active).
+        entry["last_attempt_ts"] = datetime.now(timezone.utc).isoformat()
 
         # Update FSRS spaced-repetition scheduling.
         existing_fsrs = entry.get("fsrs")
@@ -310,12 +336,12 @@ async def update_concept_mastery(
             entry["latency"] = {"avg_secs": round(avg, 1), "samples": n + 1}
 
         mastery[concept] = entry
-        await write_memory(session, "user", "", "concept_mastery", mastery)
+        await write_memory(session, "user", user_ref_id(), "concept_mastery", mastery)
 
 
 async def get_concept_mastery(session: AsyncSession) -> dict[str, dict]:
     """Return the full concept_mastery dict (empty if none recorded)."""
-    val = await read_memory(session, "user", "", "concept_mastery")
+    val = await read_memory(session, "user", user_ref_id(), "concept_mastery")
     if isinstance(val, dict):
         return val
     return {}
@@ -367,7 +393,8 @@ async def get_due_concepts(
                   returns all due concepts across all documents (for the
                   proactive agent).
 
-    Returns a list of {concept, due_in_days, stability, mastery_pct, fsrs}.
+    Returns a list of {concept, due_in_days, stability, mastery_pct,
+    recent_rate, last_attempt_ts, fsrs}.
     """
     from . import fsrs_scheduler
 
@@ -388,6 +415,8 @@ async def get_due_concepts(
             "due_in_days": fsrs_scheduler.due_in_days(fsrs),
             "stability": (fsrs or {}).get("stability"),
             "mastery_pct": (entry or {}).get("mastery_pct"),
+            "recent_rate": (entry or {}).get("recent_rate"),
+            "last_attempt_ts": (entry or {}).get("last_attempt_ts"),
             "fsrs": fsrs,
         })
 
@@ -532,7 +561,7 @@ def _infer_formats_from_hint(hint: str) -> dict[str, Any]:
 
 async def get_learner_profile(session: AsyncSession) -> dict[str, Any]:
     """Return the learner profile, with defaults if none exists yet."""
-    val = await read_memory(session, "user", "", PROFILE_KEY)
+    val = await read_memory(session, "user", user_ref_id(), PROFILE_KEY)
     if isinstance(val, dict):
         # Merge with defaults so new fields appear on old profiles.
         profile = _default_profile()
@@ -645,5 +674,5 @@ async def update_learner_profile(
 
         profile["stats"] = stats
         profile["updated_at"] = now
-        await write_memory(session, "user", "", PROFILE_KEY, profile)
+        await write_memory(session, "user", user_ref_id(), PROFILE_KEY, profile)
         return profile

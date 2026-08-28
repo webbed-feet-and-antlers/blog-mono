@@ -122,3 +122,56 @@ async def init_db() -> None:
             await conn.execute(
                 text("ALTER TABLE documents ADD COLUMN transcription_error TEXT")
             )
+
+        # Multi-user migration: add the owner column to every user-scoped
+        # table (additive — ALTERable in place). study_plans additionally
+        # changed its uniqueness (module_id → (user_id, module_id)), which
+        # SQLite cannot ALTER: an old study_plans table forces a DB reset.
+        owner_columns = {
+            "modules": "user_id",
+            "documents": "user_id",
+            "content_items": "user_id",
+            "quiz_attempts": "user_id",
+            "agent_memory": "user_id",
+            "recommendation_events": "user_id",
+            "agent_events": "user_id",
+            "user_activities": "user_id",
+            "lecture_sessions": "user_id",
+            "study_plans": "user_id",
+        }
+        for table, col in owner_columns.items():
+            tbl_cols = {
+                row[1]
+                for row in (
+                    await conn.execute(text(f"PRAGMA table_info({table})"))
+                ).fetchall()
+            }
+            if tbl_cols and col not in tbl_cols:
+                await conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {col} VARCHAR DEFAULT ''")
+                )
+                logger.info("Migrated %s table: added %s column", table, col)
+
+        # An old study_plans table (module_id UNIQUE, pre-multi-user) can't
+        # be ALTERed to the composite uniqueness — refuse loudly instead of
+        # failing with cryptic constraint errors later.
+        plans_idx = (
+            await conn.execute(text("PRAGMA index_list(study_plans)"))
+        ).fetchall()
+        unique_cols = {
+            tuple(
+                row[2]
+                for row in (
+                    await conn.execute(text(f"PRAGMA index_info({row[1]})"))
+                ).fetchall()
+            )
+            for row in plans_idx
+            if row[2]  # unique indexes only
+        }
+        if ("module_id",) in unique_cols:
+            raise RuntimeError(
+                "study_plans has the pre-multi-user UNIQUE(module_id) "
+                "constraint. Multi-user support requires a fresh database: "
+                "delete backend/study_app.db (uploads/mastery/plans are "
+                "regenerable; see study-app/README.md) and restart."
+            )

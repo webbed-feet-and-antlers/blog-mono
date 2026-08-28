@@ -127,22 +127,31 @@ Hugging Face cache.
 These are recorded in the reports (some as explicit `finding_*` metrics) and
 are the honest starting point for improving the product:
 
-1. **`retrievability` is the wrong formula.** The app computes
-   exp(−t/S); FSRS's memory model is a power law. On real Duolingo traces
-   the exponential is catastrophically miscalibrated (Brier ~0.28–0.6 vs
-   ~0.08 for the power law) — fine as a ranking key, wrong as the recall
-   probability the dashboard shows. (`fsrs` suite.)
+1. **`retrievability` was the wrong formula — FIXED (2026-08).** The wrapper
+   computed exp(−t/S); FSRS's memory model is a power law. On real Duolingo
+   traces the exponential was catastrophically miscalibrated (Brier ~0.28–0.6
+   vs ~0.08 for the power law) — fine as a ranking key, wrong as the recall
+   probability the dashboard shows. The wrapper now delegates to the
+   library's `get_card_retrievability`; the suite gates the wrapper against
+   the library curve plus absolute calibration bars (Brier ≤ 0.12, log-loss
+   ≤ 0.50) so neither a hand-rolled formula nor silent drift can return.
+   (`fsrs` suite.)
 2. **Time-decay does not beat item difficulty on this data.** FSRS ranking
-   beats chance and the last-outcome streak, but a simple running
-   correct-rate baseline outranks the forgetting curve on Duolingo
-   material — and the recommender's due-concept targeting shows zero lift
-   over random at predicting next failures on EdNet. Parameters were fit
-   on Anki data; study-app material is not vocabulary. (`fsrs`, `recommend`.)
-3. **Reflection narratives contradict their grounding packet.** On the
-   strong-but-neglectful archetype the generator claimed "has not reviewed
-   any flashcards" over eight flashcard activities. The faithfulness gate
-   is set at 0.45 as a regression floor, not an aspiration — improve the
-   reflection layer, then raise the bar. (`reflection` suite.)
+   sits within sampling noise of the last-outcome streak (|gap| ≤ 0.006
+   across draws at n≈1k, AUC SE ≈0.02 — superiority was never a defensible
+   gate), and a simple running correct-rate baseline outranks the forgetting
+   curve on Duolingo material. Parameters were fit on Anki data; study-app
+   material is not vocabulary. Recorded as findings; the gate is a
+   collapse floor (AUC > 0.51). (`fsrs` suite.)
+3. **Reflection narratives contradicted their grounding packet — FIXED
+   (2026-08).** On the strong-but-neglectful archetype the generator claimed
+   "has not reviewed any flashcards" over eight flashcard activities (mean
+   faithfulness 0.53). The layer was reworked: the packet renders as
+   labeled sections instead of dense JSON, the prompt carries explicit
+   count/absolute-claiming rules with a contrastive example, and a
+   temperature-0 self-verify pass drops or corrects unsupported claims (a
+   failed verify keeps the first pass). The faithfulness gate rose from a
+   0.45 floor to 0.60. (`reflection` suite.)
 4. **Passage→difficulty inference has no signal.** Grading
    `analyze_document`'s difficulty field against RACE's middle/high tiers
    scored 0.40 — below the ~0.50 majority-class baseline. The tiers label
@@ -151,8 +160,10 @@ are the honest starting point for improving the product:
 5. **Notes go generic on some papers.** Key-point coverage vs the expert
    abstract averages ~0.74 but hits 0.0 on papers where the notes
    discussed the field instead of the study's aim/methods/findings.
-   (`notes` suite; ROUGE vs the abstract is report-only — good notes
-   restructure and simplify, so lexical overlap is structurally low.)
+   `generate_notes` now demands the document's own aim/methods/findings
+   before field background. (`notes` suite; ROUGE vs the abstract is
+   report-only — good notes restructure and simplify, so lexical overlap
+   is structurally low.)
 6. **Planner days ran over budget.** The prompt promises ≤45min/day but
    nothing enforced it — the suite caught 68–75-minute days. Fixed in
    production: `generate_study_plan` now regenerates once when the
@@ -168,27 +179,56 @@ are the honest starting point for improving the product:
    fully covered"), and `judge_score()` retries/skips unparseable
    verdicts instead of clamping them to 0. (`evals/suites/__init__.py`.)
 8. **Renamed files lost their material type.** The descriptiveness judge
-   scored names like "Cellular Respiration" as half-done — "identifies
-   the topic but does not clearly specify the material type". Fixed in
+   scored names like "Cellular Respiration" as half-done — "identifies the
+   topic but does not clearly specify the material type". Fixed in
    production: `suggest_filename` now requires topic **plus** material
-   type (lecture notes, chapter summary, problem set…). (`rename` suite.)
+   type (lecture notes, chapter summary, problem set…), and prefers a
+   distinguishing subtopic when the content supports one. (`rename` suite.)
 9. **Free-tier empty-response storms outlast linear backoff.** Under full
    -N concurrency, OpenRouter's free tier occasionally returns empty
    responses long enough to exhaust the old 1s/2s retry window (a planner
    case died this way while passing standalone). `chat()` now backs off
    exponentially (1/2/4/8s across five attempts) and the planner suite
    sleeps between outer attempts. (`app/llm.py`, `evals/suites/test_planner.py`.)
-10. **The recommender's "zero lift" was a replay artifact — it's negative.**
-    Two measurement flaws hid this: the pooled precision let one heavy
-    learner dominate, and the 60-decision-point cap only ever replayed the
-    first few users in subject_id order. Scoring a full per-user macro
-    average over a whole split shows the engine's weakness-targeting below
-    random on *every* split (macro lift −0.03 to −0.06): the FSRS-due
-    "weak" concepts it targets fail less often next than random concepts
-    do. The lift metric is now macro-averaged and report-only; the
-    structural gates (never-empty primary, due backlog keeps review on the
-    slate) remain gated. Fixing the engine's weakness signal is open work.
+10. **The recommender's weakness targeting was structurally fixed — lift is
+    now positive on every split.** The original engine ordered its due-review
+    deck arbitrarily (macro lift −0.03 to −0.06). Two findings drove the fix:
+    risk-ranking the deck (item difficulty + forgetting curve) roughly
+    halved the gap but couldn't close it, and a diagnostic showed why —
+    82% of risk-ranked due concepts were never attempted again within the
+    7-day window (each counting as a non-failure), while conditioned on
+    re-attempt the risk ranking already beat random. The residual problem
+    was the target set, not the failure signal: due concepts skew toward
+    abandoned material the learner will never face. Production now tracks
+    `last_attempt_ts` per concept, and the deck (and session composer) rank
+    due concepts attempted within ACTIVE_WINDOW_DAYS (=7) ahead of idle
+    ones, by failure_risk within each tier (difficulty blends a
+    recent-outcome EMA with the lifetime rate — the EMA mix was also
+    train-tuned). The replay was fixed alongside to evaluate due-ness and
+    activity against the simulated decision time, not wall-clock now
+    (which had silently marked every seen concept due), and now records
+    `engine_precision_conditioned` / `engine_reattempt_fraction` so future
+    runs separate failure prediction from re-attempt availability.
+    Protocol: window swept on TRAIN only (3–30d, all positive, 7d chosen
+    as interior + product-natural), confirmed once on val, once on the
+    held-out test split:
+
+    | split | lift | engine | random |
+    |---|---|---|---|
+    | train | +0.069 | 0.156 | 0.087 |
+    | val | +0.040 | 0.154 | 0.114 |
+    | test | +0.084 | 0.173 | 0.090 |
+
+    Lift stays report-only until the next full-run cycle shows the numbers
+    stable — this metric's history is why the splits exist.
     (`recommend` suite.)
+11. **Planner plans front-loaded zero review.** 3 of 5 plans scheduled no
+    review item in the first days despite due concepts (weak_engaged_early
+    0.40 vs the 0.60 gate) — the prompt's "interleave review" rule was
+    unenforced. Fixed in production, mirroring the minute-cap pattern: a
+    prompt MUST-rule for a day-0/1 review item, one regeneration when it's
+    violated, and a deterministic day-0 injection targeting the due
+    concepts when the LLM still won't comply. (`planner` suite.)
 
 Judge-scored metrics gate on the run's **mean**, not per-case: judge scores
 are stochastic, and a single harsh (or numerically erratic — judges

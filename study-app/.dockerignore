@@ -1,0 +1,12 @@
+# Keep secrets, local state, and stale builds out of the image.
+**/.env
+**/.env.*
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+frontend/dist
+backend/storage
+backend/study_app.db*
+backend/evals
+backend/tests

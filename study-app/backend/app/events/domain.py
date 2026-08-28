@@ -12,6 +12,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..auth import user_ref_id
+
+
+@dataclass
+class UserEvent:
+    """Base for events tied to a specific user's data.
+
+    ``user_id`` captures the current owner at construction time — every
+    publisher runs either inside a request (the auth dependency has set
+    the contextvar) or inside a handler already scoped to the source
+    event's owner. The bus re-applies it around handler runs so reactions
+    write as the same user.
+    """
+
+    user_id: str = field(default="", kw_only=True)
+
+    def __post_init__(self) -> None:
+        if not self.user_id:
+            self.user_id = user_ref_id()
+
 
 @dataclass
 class QuestionOutcome:
@@ -37,7 +57,7 @@ class CardOutcome:
 
 
 @dataclass
-class DocumentIngested:
+class DocumentIngested(UserEvent):
     """A document landed and is ready for the background ingestion chain.
 
     source="upload"  — text/PDF/office doc; text already extracted.
@@ -49,7 +69,7 @@ class DocumentIngested:
 
 
 @dataclass
-class DocumentAnalyzed:
+class DocumentAnalyzed(UserEvent):
     """The agent finished analyzing a document (rename + LLM analysis done)."""
 
     document_id: str
@@ -57,7 +77,7 @@ class DocumentAnalyzed:
 
 
 @dataclass
-class QuizAttempted:
+class QuizAttempted(UserEvent):
     """A quiz attempt was scored and persisted."""
 
     content_id: str
@@ -70,7 +90,7 @@ class QuizAttempted:
 
 
 @dataclass
-class FlashcardsReviewed:
+class FlashcardsReviewed(UserEvent):
     """A single-deck flashcard review was persisted."""
 
     content_id: str
@@ -79,7 +99,7 @@ class FlashcardsReviewed:
 
 
 @dataclass
-class StudySessionReviewed:
+class StudySessionReviewed(UserEvent):
     """A composed study session's results were persisted (cards span decks)."""
 
     session_id: str
@@ -88,7 +108,7 @@ class StudySessionReviewed:
 
 
 @dataclass
-class GenerationCompleted:
+class GenerationCompleted(UserEvent):
     """The agent finished generating a ContentItem (any origin)."""
 
     document_id: str
@@ -114,7 +134,7 @@ class ActivityEntry:
 
 
 @dataclass
-class ActivitiesLogged:
+class ActivitiesLogged(UserEvent):
     """A flushed batch of frontend activity events.
 
     One publish per flush (not per event) keeps the agent_events log quiet —
@@ -128,7 +148,7 @@ class ActivitiesLogged:
 
 
 @dataclass
-class StudyPlanStaleDetected:
+class StudyPlanStaleDetected(UserEvent):
     """A module's study plan no longer matches reality (new content analyzed,
     quiz results). The regen handler regenerates it behind a per-module
     cooldown so a semester's uploads don't burn unbounded LLM calls."""

@@ -16,12 +16,19 @@ class Base(DeclarativeBase):
     pass
 
 
+# Owner column shared by every user-specific table: the Clerk user id of
+# the request that created the row ("" for rows created by ambient
+# contexts — tests/evals — which run as the implicit default user).
+# Declared per-table rather than via a mixin to keep each model explicit.
+
+
 class Module(Base):
     """A course module (e.g. 'BIO201 - Cell Biology')."""
 
     __tablename__ = "modules"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     # Optional target/exam date — paces the module's study plan.
     exam_date: Mapped[date | None] = mapped_column(Date, nullable=True, default=None)
@@ -62,6 +69,7 @@ class Document(Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     filename: Mapped[str] = mapped_column(String, nullable=False)
     mime: Mapped[str] = mapped_column(String, nullable=False)
     file_path: Mapped[str] = mapped_column(String, nullable=False)
@@ -107,6 +115,9 @@ class ContentItem(Base):
     document_id: Mapped[str] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
     )
+    # Denormalized from the parent Document at creation so deck/quiz scans
+    # (the session composer, build_context) filter by owner without a join.
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     type: Mapped[str] = mapped_column(String, nullable=False)  # notes|quiz|flashcards
     # Structured payload whose shape depends on `type`:
     #   notes      -> {markdown: str}
@@ -132,6 +143,7 @@ class QuizAttempt(Base):
     content_id: Mapped[str] = mapped_column(
         ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
     )
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     # answers: {question_id: selected_option_index}
     answers: Mapped[dict] = mapped_column(JSON, default=dict)
     score: Mapped[float] = mapped_column(default=0.0)  # 0..1 fraction correct
@@ -146,7 +158,8 @@ class AgentMemory(Base):
     """Key/value memory the agent reads and writes across runs.
 
     scope "doc"  -> keyed by document_id (analysis cache, extracted concepts)
-    scope "user" -> cross-document learnings (style prefs, weak topics)
+    scope "user" -> cross-document learnings (style prefs, weak topics);
+                    ref_id holds the owner's user id ("" = ambient default)
     """
 
     __tablename__ = "agent_memory"
@@ -158,6 +171,9 @@ class AgentMemory(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     scope: Mapped[str] = mapped_column(String, nullable=False)  # doc|user
     ref_id: Mapped[str] = mapped_column(String, nullable=False, default="")
+    # Owner stamped on write from the request context — lets doc-scope
+    # listings (get_doc_topics) filter per user without joining documents.
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     key: Mapped[str] = mapped_column(String, nullable=False)
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
@@ -176,6 +192,7 @@ class RecommendationEvent(Base):
     __tablename__ = "recommendation_events"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     impression_id: Mapped[str] = mapped_column(String, index=True)
     strategy_name: Mapped[str] = mapped_column(String, nullable=False)
     action: Mapped[str] = mapped_column(String, default="")
@@ -200,6 +217,8 @@ class AgentEvent(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    # Whose action triggered the event (nullable — some events are global).
+    user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     # Event class name, e.g. "QuizAttempted", "DocumentIngested".
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     # "module.function" of the handler; NULL for dispatch rows.
@@ -221,6 +240,7 @@ class UserActivity(Base):
     __tablename__ = "user_activities"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     ts: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
     # Dot-namespaced action type, e.g. "document.opened", "quiz.answered".
     type: Mapped[str] = mapped_column(String, nullable=False, index=True)
@@ -230,7 +250,7 @@ class UserActivity(Base):
 
 class StudyPlan(Base):
     """The agent-generated study plan for one module (one active plan per
-    module, versioned in place).
+    module per user, versioned in place).
 
     items JSON shape (per item):
       {id, type, title, rationale, day_offset, estimate_mins,
@@ -241,11 +261,16 @@ class StudyPlan(Base):
     """
 
     __tablename__ = "study_plans"
+    __table_args__ = (
+        # One active plan per (user, module).
+        UniqueConstraint("user_id", "module_id", name="uq_study_plans_user_module"),
+    )
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     module_id: Mapped[str] = mapped_column(
-        ForeignKey("modules.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+        ForeignKey("modules.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     version: Mapped[int] = mapped_column(default=1)
     generated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     # Staleness signals appended by event handlers ("new document analyzed",
@@ -266,6 +291,7 @@ class LectureSession(Base):
     __tablename__ = "lecture_sessions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     lesson_id: Mapped[str | None] = mapped_column(
         ForeignKey("lessons.id", ondelete="SET NULL"), nullable=True, default=None
     )

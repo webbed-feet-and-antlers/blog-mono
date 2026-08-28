@@ -1,11 +1,11 @@
 {
   "suite": "rename",
-  "run": "20260819T111804Z",
+  "run": "20260827T192109Z",
   "split": "val",
-  "runtime_secs": 56.9,
+  "runtime_secs": 96.8,
   "metrics": {
     "descriptiveness": {
-      "mean": 0.45,
+      "mean": 0.5,
       "min": 0.2,
       "n": 10,
       "threshold": 0.45,
@@ -13,32 +13,22 @@
         {
           "case": "sciq-33",
           "score": 0.2,
-          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output is a generic name ('Ecology Lecture Notes') that lacks specificity about the document's content or material type, failing to distinguish it among similar files despite the detailed context provided."
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The filename 'Ecology Lecture Notes' correctly identifies the broad topic (ecology) but fails the evaluation steps: it uses the generic term 'Lecture Notes' instead of specifying the material type more precisely (e.g., 'Ecosystems Summary'), and it lacks distinctiveness among many files on the same subject, as it does not name the actual content described (definitions of biotic/abiotic factors, ecosystem components)."
+        },
+        {
+          "case": "sciq-33",
+          "score": 0.4,
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output includes the specific topic 'Ecology' but uses the generic material type 'Lecture Notes' instead of a more precise type like 'Summary' or 'Slides'. It does not uniquely identify the document within a larger set, as it lacks details from the context such as 'biotic/abiotic factors' or 'ecosystems', making it insufficiently specific."
         },
         {
           "case": "sciq-33",
           "score": 0.3,
-          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic as 'Ecology' but uses the generic label 'Lecture Notes' without specifying a unique focus or material type, making it insufficiently detailed for easy identification among many similar files."
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic ('Ecology') but uses a generic material type ('Lecture Notes'), which does not clarify the specific document format or content. It lacks the specificity needed to distinguish it among 50 similar documents, as it does not reference key details from the context like 'biotic/abiotic factors' or 'ecosystem interactions'."
         },
         {
           "case": "sciq-33",
           "score": 0.4,
-          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
-        },
-        {
-          "case": "sciq-33",
-          "score": 0.4,
-          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
-        },
-        {
-          "case": "sciq-33",
-          "score": 0.4,
-          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
-        },
-        {
-          "case": "sciq-33",
-          "score": 0.4,
-          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The output identifies the topic 'Ecology' from the context but uses a generic placeholder 'Lecture Notes' for material type, which is not specified in the context and lacks specificity for unique identification."
+          "reason": "1689023401_lecture.pdf \u2192 Ecology Lecture Notes: The filename topic 'Ecology' is a broad subject area rather than a specific concept, and the material type 'Lecture Notes' is descriptive but not highly specific. The combination is somewhat clear but lacks detail to stand out in a crowded folder (e.g., no event, date, or subtopic)."
         }
       ]
     },

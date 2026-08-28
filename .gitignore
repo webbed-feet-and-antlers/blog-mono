@@ -14,8 +14,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anchored: unanchored lib/ also ignored frontend/src/lib (source, not build output).
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -227,7 +228,7 @@ site/.syndication-output/
 *.tsbuildinfo
 .DS_Store
 # ZCode agent scratch/plans (not part of the project).
-.zcode/
+.zcode/plans
 # NOTE: the mkdocs `/site` rule above is overridden — we DO track our Astro app.
 !/site/
 # NOTE: the Python `lib/` rule above is overridden so our lib dirs are tracked.
@@ -243,3 +244,6 @@ study-app/frontend/dist/
 study-app/backend/evals/data/
 study-app/backend/evals/reports/*
 !study-app/backend/evals/reports/baselines/
+
+.env
+.env.local

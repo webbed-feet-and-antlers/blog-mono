@@ -1,8 +1,8 @@
 {
   "suite": "fsrs",
-  "run": "20260819T105549Z",
+  "run": "20260827T222401Z",
   "split": "val",
-  "runtime_secs": 9.8,
+  "runtime_secs": 7.4,
   "metrics": {
     "constant_auc": {
       "mean": 0.5,
@@ -12,78 +12,85 @@
       "failures": []
     },
     "constant_brier": {
-      "mean": 0.0791,
-      "min": 0.0791,
-      "n": 1,
-      "threshold": null,
-      "failures": []
-    },
-    "exp_approx_auc": {
-      "mean": 0.5272,
-      "min": 0.5272,
-      "n": 1,
-      "threshold": null,
-      "failures": []
-    },
-    "exp_approx_brier": {
-      "mean": 0.6049,
-      "min": 0.6049,
-      "n": 1,
-      "threshold": null,
-      "failures": []
-    },
-    "exp_approx_logloss": {
-      "mean": 1.9545,
-      "min": 1.9545,
+      "mean": 0.0785,
+      "min": 0.0785,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "finding_rate_vs_fsrs_auc": {
-      "mean": 0.0309,
-      "min": 0.0309,
+      "mean": 0.0316,
+      "min": 0.0316,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "finding_streak_vs_fsrs_auc": {
+      "mean": 0.0023,
+      "min": 0.0023,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "fsrs_power_auc": {
-      "mean": 0.5284,
-      "min": 0.5284,
+      "mean": 0.5202,
+      "min": 0.5202,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "fsrs_power_brier": {
-      "mean": 0.0831,
-      "min": 0.0831,
+      "mean": 0.0879,
+      "min": 0.0879,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "fsrs_power_logloss": {
-      "mean": 0.3125,
-      "min": 0.3125,
+      "mean": 0.3249,
+      "min": 0.3249,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "majority_accuracy": {
-      "mean": 0.9143,
-      "min": 0.9143,
+      "mean": 0.9151,
+      "min": 0.9151,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "rate_auc": {
-      "mean": 0.5593,
-      "min": 0.5593,
+      "mean": 0.5518,
+      "min": 0.5518,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "retrievability_auc": {
+      "mean": 0.5201,
+      "min": 0.5201,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "retrievability_brier": {
+      "mean": 0.0879,
+      "min": 0.0879,
+      "n": 1,
+      "threshold": null,
+      "failures": []
+    },
+    "retrievability_logloss": {
+      "mean": 0.3249,
+      "min": 0.3249,
       "n": 1,
       "threshold": null,
       "failures": []
     },
     "streak_auc": {
-      "mean": 0.5229,
-      "min": 0.5229,
+      "mean": 0.5225,
+      "min": 0.5225,
       "n": 1,
       "threshold": null,
       "failures": []

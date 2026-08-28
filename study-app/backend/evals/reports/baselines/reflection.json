@@ -1,26 +1,15 @@
 {
   "suite": "reflection",
-  "run": "20260819T111804Z",
+  "run": "20260827T192109Z",
   "split": "val",
-  "runtime_secs": 246.3,
+  "runtime_secs": 486.3,
   "metrics": {
     "faithfulness": {
-      "mean": 0.5333,
-      "min": 0.4,
+      "mean": 0.9333,
+      "min": 0.8,
       "n": 3,
-      "threshold": 0.45,
-      "failures": [
-        {
-          "case": "strong_neglectful",
-          "score": 0.4,
-          "reason": "The narrative contains several unsupported or contradictory claims: it states 'no flashcard reviews' but later mentions 'reviewing flashcards', incorrectly claims 'limited attempts' despite 9 quizzes, and misstates 'avg 95 sec' for quiz duration (actual is 95 secs, not 95% accuracy). It also includes unsupported claims like 'deep engagement' and 'mix of quizzes and flashcard reviews' without direct data backing. Only 4 out of 9 claims are fully supported."
-        },
-        {
-          "case": "exam_crammer",
-          "score": 0.4,
-          "reason": "The narrative contains several unsupported or generalized claims: 'mostly around thermochemistry' (context only lists concepts, not topic), 'exclusively in late-night hours' (histogram shows only two non-zero hours, but not exclusive), 'balanced ratio of completed and abandoned sessions' (3 completed, 3 abandoned is accurate), 'spending all your time on a single chemistry notes document' (supported by top_documents_by_dwell). However, 'relies on quizzes more than flashcards' is contradicted by r"
-        }
-      ]
+      "threshold": 0.6,
+      "failures": []
     },
     "format_clamps": {
       "mean": 1.0,
@@ -30,8 +19,8 @@
       "failures": []
     },
     "numbers_grounded": {
-      "mean": 1.0,
-      "min": 1.0,
+      "mean": 0.9523,
+      "min": 0.857,
       "n": 3,
       "threshold": 0.7,
       "failures": []

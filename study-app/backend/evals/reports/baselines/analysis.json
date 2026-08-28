@@ -1,12 +1,12 @@
 {
   "suite": "analysis",
-  "run": "20260819T105549Z",
+  "run": "20260827T192109Z",
   "split": "val",
-  "runtime_secs": 149.6,
+  "runtime_secs": 159.4,
   "metrics": {
     "concept_f1": {
-      "mean": 0.6052,
-      "min": 0.3846,
+      "mean": 0.7437,
+      "min": 0.5714,
       "n": 4,
       "threshold": 0.3,
       "failures": []
@@ -19,7 +19,7 @@
       "failures": []
     },
     "prereq_edge_recall": {
-      "mean": 0.01,
+      "mean": 0.0213,
       "min": 0.0,
       "n": 4,
       "threshold": null,
