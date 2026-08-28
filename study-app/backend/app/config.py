@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     # origin). In dev the dir doesn't exist and the backend is API-only.
     frontend_dist_dir: Path = base_dir.parent / "frontend" / "dist"
 
+    # Postgres (Supabase or any Postgres). Unset → SQLite at db_path, so
+    # local dev and tests need zero setup. Supabase's pooler strings
+    # (postgres://…:6543/…) are accepted as-is; the asyncpg driver is
+    # injected automatically. Use the transaction pooler (port 6543) for
+    # the app; alembic/migrations use the same URL via its session mode.
+    database_url: str | None = None
+
     # Auth — Clerk (dashboard.clerk.com). The frontend holds the
     # publishable key (VITE_CLERK_PUBLISHABLE_KEY) and sends the session
     # JWT as a Bearer token (or ?token= for <img>/beacon URLs, which
@@ -79,9 +86,23 @@ class Settings(BaseSettings):
     # descriptive title derived from the content. Descriptive names are kept.
     auto_rename_files: bool = True
 
-    # SQLite URL is derived from db_path.
+    # Activity-ledger retention: prune the newest N rows, delete the rest
+    # while logging. 5000 keeps SQLite lean; on Postgres set 0 to disable
+    # pruning entirely — the ledger is the agent's behavioral memory and
+    # storage is cheap there.
+    activity_ledger_max_rows: int = 5_000
+
+    # SQLite URL is derived from db_path; Postgres wins when DATABASE_URL
+    # is set (driver normalized to asyncpg in app.db).
     @property
     def db_url(self) -> str:
+        if self.database_url:
+            url = self.database_url
+            if url.startswith("postgres://"):
+                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+            elif url.startswith("postgresql://"):
+                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+            return url
         return f"sqlite+aiosqlite:///{self.db_path}"
 
 

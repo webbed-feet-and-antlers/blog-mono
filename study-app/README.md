@@ -205,6 +205,48 @@ Cost lever: always-on is ~$4/month (`min_machines_running = 1` in fly.toml);
 set it to 0 to park when idle at the cost of cold starts and delayed
 background jobs.
 
+## Database (SQLite → Postgres)
+
+The default database is SQLite at `DB_PATH` — zero setup for dev and
+tests. Set `DATABASE_URL` to any Postgres and the app switches dialects:
+asyncpg driver, JSONB payloads, timezone-aware timestamps, and the
+Postgres-only pillar tables (`document_chunks` + pgvector, with HNSW
+index; RLS enabled on every table so Supabase's public REST API denies
+anon access while the app's direct owner connection is unaffected).
+
+Schema management is Alembic (`backend/migrations/`) — `init_db()`
+upgrades to head on startup; legacy pre-alembic SQLite files are stamped
+and migrated, not replayed. `uv run alembic revision --autogenerate -m …`
+after model changes (run it against a fresh `DB_PATH` to get full-table
+diffs).
+
+### Supabase (free tier) in production
+
+Free tier: 500 MB, pgvector, always-on while in use. Two footguns are
+already handled by the workflows in `.github/`:
+
+1. **7-day inactivity pause** — direct SQL connections don't reliably
+   count as activity; `supabase-keepalive.yml` pings the REST gateway
+   weekly.
+2. **No automated backups on free** — `supabase-backup.yml` runs a weekly
+   `pg_dump` to a 90-day workflow artifact.
+
+Cutover (one-time):
+1. Create a project (London region, next to the `lhr` app). Grab the
+   **transaction pooler** string (port 6543 — the app) and the
+   **session/direct** string (port 5432 — pg_dump).
+2. `fly secrets set DATABASE_URL='postgres://…:6543/postgres'
+   ACTIVITY_LEDGER_MAX_ROWS=0` — the ledger becomes an unpruned history.
+3. Set the repo variable `SUPABASE_PROJECT_REF` and the secrets
+   `SUPABASE_ANON_KEY`, `SUPABASE_DB_URL_DIRECT` to arm the two workflows.
+4. Optional data copy from an existing SQLite file:
+   `DATABASE_URL='postgres://…' uv run python scripts/sqlite_to_pg.py`.
+
+CI runs the whole test suite against a real Postgres+pgvector service
+container (PR checks and the deploy gate), so dialect drift can't reach
+production unnoticed. Rollback: unset `DATABASE_URL` and redeploy — all
+schema changes are additive.
+
 ## Out of scope (for now)
 
 - Streaming agent steps (could add SSE for an "agent is thinking…" UX)

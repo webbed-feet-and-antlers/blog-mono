@@ -20,14 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...auth import user_ref_id
 from ...agent import behavior
+from ...config import settings
 from ...models import UserActivity
 from .. import bus
 from ..domain import ActivitiesLogged
 
 logger = logging.getLogger(__name__)
-
-# POC retention: keep the newest N rows, prune the rest during logging.
-MAX_LEDGER_ROWS = 5_000
 
 
 @bus.on(ActivitiesLogged)
@@ -49,9 +47,14 @@ async def log_activities(event: ActivitiesLogged, session: AsyncSession) -> None
     await session.flush()
 
     # Prune oldest rows past the retention cap (cheap count + delete).
+    # settings.activity_ledger_max_rows=0 disables pruning — set that on
+    # Postgres, where the ledger is the agent's full behavioral memory.
+    cap = settings.activity_ledger_max_rows
+    if not cap:
+        return
     count = await session.scalar(select(func.count(UserActivity.id)))
-    if count and count > MAX_LEDGER_ROWS:
-        overflow = count - MAX_LEDGER_ROWS
+    if count and count > cap:
+        overflow = count - cap
         cutoff = await session.scalar(
             select(UserActivity.ts)
             .order_by(UserActivity.ts.asc())

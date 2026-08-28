@@ -38,9 +38,12 @@ WORKDIR /app/study-app/backend
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# App code, then the built SPA where app/main.py expects it
-# (frontend_dist_dir = backend/../frontend/dist).
+# App code + alembic migrations (init_db upgrades on startup), then the
+# built SPA where app/main.py expects it (frontend_dist_dir =
+# backend/../frontend/dist).
 COPY backend/app ./app
+COPY backend/alembic.ini ./
+COPY backend/migrations ./migrations
 COPY --from=frontend /build/dist /app/study-app/frontend/dist
 
 # Persistent state lives on the Fly volume mounted at /data (mkdir'd here

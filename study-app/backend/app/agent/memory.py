@@ -15,11 +15,21 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import user_ref_id
+from ..db import engine
 from ..models import AgentMemory
+
+
+def _upsert_stmt():
+    """Dialect-aware INSERT statement for the AgentMemory upsert — both
+    dialects share the identical on_conflict_do_update API, just different
+    modules."""
+    insert = pg_insert if engine.dialect.name == "postgresql" else sqlite_insert
+    return insert(AgentMemory)
 
 # Serializes read-modify-write cycles on the user-scope JSON blobs
 # (concept_mastery, weak_topics, learner_profile, session). Each blob is one
@@ -60,8 +70,8 @@ async def read_memory_scope(
 async def write_memory(
     session: AsyncSession, scope: str, ref_id: str, key: str, value: Any
 ) -> None:
-    """Upsert a memory entry (SQLite ON CONFLICT update)."""
-    stmt = sqlite_insert(AgentMemory).values(
+    """Upsert a memory entry (ON CONFLICT update; works on SQLite + Postgres)."""
+    stmt = _upsert_stmt().values(
         id=uuid.uuid4().hex[:12],
         scope=scope,
         ref_id=ref_id,
@@ -70,15 +80,12 @@ async def write_memory(
         value=value,
     )
     # On conflict (same scope+ref_id+key), update value + updated_at.
-    update_cols = {
-        "value": stmt.excluded.value,
-    }
-    from datetime import datetime, timezone
-
-    update_cols["updated_at"] = datetime.now(timezone.utc)
     stmt = stmt.on_conflict_do_update(
         index_elements=[AgentMemory.scope, AgentMemory.ref_id, AgentMemory.key],
-        set_=update_cols,
+        set_={
+            "value": stmt.excluded.value,
+            "updated_at": datetime.now(timezone.utc),
+        },
     )
     await session.execute(stmt)
 

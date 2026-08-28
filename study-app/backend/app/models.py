@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, Date, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -14,6 +16,14 @@ def _utcnow() -> datetime:
 
 class Base(DeclarativeBase):
     pass
+
+
+# Dialect-portable column types. datetime columns are timezone-aware —
+# asyncpg refuses naive columns fed tz-aware values (and SQLite ignores
+# the flag, so dev/test behave identically). JSON payloads become JSONB
+# on Postgres (compact, indexable) and stay plain JSON on SQLite.
+_TZDateTime = DateTime(timezone=True)
+_JsonCol = JSON().with_variant(JSONB(), "postgresql")
 
 
 # Owner column shared by every user-specific table: the Clerk user id of
@@ -37,7 +47,7 @@ class Module(Base):
     # modules surface in the "No semester set" group until assigned.
     academic_year: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
     term: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
 
     lessons: Mapped[list["Lesson"]] = relationship(
         back_populates="module", cascade="all, delete-orphan"
@@ -59,7 +69,7 @@ class Lesson(Base):
         ForeignKey("modules.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
 
     module: Mapped["Module"] = relationship(back_populates="lessons")
     documents: Mapped[list["Document"]] = relationship(back_populates="lesson")
@@ -76,7 +86,7 @@ class Document(Base):
     text: Mapped[str] = mapped_column(Text, default="")
     page_count: Mapped[int] = mapped_column(default=0)
     char_count: Mapped[int] = mapped_column(default=0)
-    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    uploaded_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
     # Document kind: "text" (PDF/TXT/MD) or "audio" (lecture recording).
     kind: Mapped[str] = mapped_column(String, default="text")
     # Audio-specific fields (nullable, only set when kind == "audio").
@@ -127,8 +137,8 @@ class ContentItem(Base):
     #                 variants: [{front, back}]}]}
     # The `concept` field on each question/card links it to a per-concept FSRS
     # mastery entry, so quiz + flashcard outcomes share one mastery store.
-    content: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    content: Mapped[dict] = mapped_column(_JsonCol, default=dict)
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
 
     document: Mapped[Document] = relationship(back_populates="content_items")
     quiz_attempts: Mapped[list[QuizAttempt]] = relationship(
@@ -145,11 +155,11 @@ class QuizAttempt(Base):
     )
     user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     # answers: {question_id: selected_option_index}
-    answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    answers: Mapped[dict] = mapped_column(_JsonCol, default=dict)
     score: Mapped[float] = mapped_column(default=0.0)  # 0..1 fraction correct
     correct_count: Mapped[int] = mapped_column(default=0)
     total_count: Mapped[int] = mapped_column(default=0)
-    taken_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    taken_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
 
     content_item: Mapped[ContentItem] = relationship(back_populates="quiz_attempts")
 
@@ -175,9 +185,9 @@ class AgentMemory(Base):
     # listings (get_doc_topics) filter per user without joining documents.
     user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     key: Mapped[str] = mapped_column(String, nullable=False)
-    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    value: Mapped[dict] = mapped_column(_JsonCol, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=_utcnow, onupdate=_utcnow
+        _TZDateTime, default=_utcnow, onupdate=_utcnow
     )
 
 
@@ -201,8 +211,8 @@ class RecommendationEvent(Base):
     rank: Mapped[int] = mapped_column(default=0)
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     reward: Mapped[float | None] = mapped_column(nullable=True)
-    context_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    context_snapshot: Mapped[dict] = mapped_column(_JsonCol, default=dict)
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
 
 
 class AgentEvent(Base):
@@ -216,7 +226,7 @@ class AgentEvent(Base):
     __tablename__ = "agent_events"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow, index=True)
     # Whose action triggered the event (nullable — some events are global).
     user_id: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     # Event class name, e.g. "QuizAttempted", "DocumentIngested".
@@ -224,7 +234,7 @@ class AgentEvent(Base):
     # "module.function" of the handler; NULL for dispatch rows.
     handler: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="ok")  # ok | failed
-    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    payload: Mapped[dict] = mapped_column(_JsonCol, default=dict)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -241,11 +251,11 @@ class UserActivity(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
-    ts: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, index=True)
+    ts: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow, index=True)
     # Dot-namespaced action type, e.g. "document.opened", "quiz.answered".
     type: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # Type-specific payload, e.g. {document_id, tab, dwell_secs}.
-    props: Mapped[dict] = mapped_column(JSON, default=dict)
+    props: Mapped[dict] = mapped_column(_JsonCol, default=dict)
 
 
 class StudyPlan(Base):
@@ -272,12 +282,12 @@ class StudyPlan(Base):
     )
     user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
     version: Mapped[int] = mapped_column(default=1)
-    generated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    generated_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
     # Staleness signals appended by event handlers ("new document analyzed",
     # "quiz results") — cleared on regeneration.
-    stale_reasons: Mapped[list] = mapped_column(JSON, default=list)
-    items: Mapped[list] = mapped_column(JSON, default=list)
-    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    stale_reasons: Mapped[list] = mapped_column(_JsonCol, default=list)
+    items: Mapped[list] = mapped_column(_JsonCol, default=list)
+    meta: Mapped[dict] = mapped_column(_JsonCol, default=dict)
 
 
 class LectureSession(Base):
@@ -304,7 +314,103 @@ class LectureSession(Base):
     )
     notes: Mapped[str] = mapped_column(Text, default="")
     duration_seconds: Mapped[int] = mapped_column(default=0)
-    slide_timestamps: Mapped[list] = mapped_column(JSON, default=list)
+    slide_timestamps: Mapped[list] = mapped_column(_JsonCol, default=list)
     slide_count: Mapped[int] = mapped_column(default=0)
     status: Mapped[str] = mapped_column(String, default="completed")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
+
+
+# --- Knowledge / skill graph -------------------------------------------------
+#
+# Concepts as first-class rows (rather than strings inside the mastery blob)
+# plus typed edges between them. The mastery store's per-concept FSRS state
+# stays in agent_memory; these tables own the *structure* — what depends on
+# what — which the planner traverses and the UI renders.
+
+
+class Concept(Base):
+    """A named concept in the user's knowledge graph.
+
+    Names are the join key against the mastery store (quiz questions and
+    flashcards tag items by concept name), so (user_id, name) is unique.
+    """
+
+    __tablename__ = "concepts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_concepts_user_name"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
+    # Which module the concept was extracted under, when known. Nullable —
+    # cross-module concepts are legitimate.
+    module_id: Mapped[str | None] = mapped_column(
+        ForeignKey("modules.id", ondelete="SET NULL"), nullable=True, default=None
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
+
+    outgoing_edges: Mapped[list["ConceptEdge"]] = relationship(
+        foreign_keys="ConceptEdge.source_id",
+        back_populates="source",
+        cascade="all, delete-orphan",
+    )
+    incoming_edges: Mapped[list["ConceptEdge"]] = relationship(
+        foreign_keys="ConceptEdge.target_id",
+        back_populates="target",
+        cascade="all, delete-orphan",
+    )
+
+
+class ConceptEdge(Base):
+    """A typed, directed relationship between two of the user's concepts.
+
+    relation: "prerequisite" (target must be understood before source),
+    "part_of" (source is a component of target), or "related" (weaker link).
+    """
+
+    __tablename__ = "concept_edges"
+    __table_args__ = (
+        UniqueConstraint("source_id", "target_id", "relation", name="uq_concept_edges_str"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    target_id: Mapped[str] = mapped_column(
+        ForeignKey("concepts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    relation: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
+
+    source: Mapped["Concept"] = relationship(
+        foreign_keys="ConceptEdge.source_id", back_populates="outgoing_edges"
+    )
+    target: Mapped["Concept"] = relationship(
+        foreign_keys="ConceptEdge.target_id", back_populates="incoming_edges"
+    )
+
+
+class DocumentChunk(Base):
+    """A chunk of document text with its embedding — the retrieval pillar.
+
+    The table (and the pgvector extension) only exists on Postgres; the
+    embeddings pipeline that fills it is a follow-up. 384 dims matches the
+    in-process fastembed BGE-small model — the table starts empty, so
+    changing the model later is a re-embed, not a rescue.
+    """
+
+    __tablename__ = "document_chunks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Denormalized owner, like content_items — retrieval filters by user.
+    user_id: Mapped[str] = mapped_column(String, nullable=False, default="", index=True)
+    chunk_index: Mapped[int] = mapped_column(default=0)
+    text: Mapped[str] = mapped_column(Text, default="")
+    embedding = mapped_column(Vector(384))
+    created_at: Mapped[datetime] = mapped_column(_TZDateTime, default=_utcnow)
