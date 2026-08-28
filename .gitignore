@@ -243,3 +243,6 @@ study-app/frontend/dist/
 study-app/backend/evals/data/
 study-app/backend/evals/reports/*
 !study-app/backend/evals/reports/baselines/
+
+.env
+.env.local
