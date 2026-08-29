@@ -43,8 +43,35 @@ jobs:
       - run: npm run check
       - run: npm run build
 
+  # Production dialect check — the deploy is gated on it too.
+  backend-postgres:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: study-app/backend
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: study_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen
+      - run: uv run pytest tests/ -q
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/study_test
+
   deploy:
-    needs: [backend, frontend]
+    needs: [backend, backend-postgres, frontend]
     runs-on: ubuntu-latest
     environment: study-app
     defaults:

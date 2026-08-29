@@ -8,6 +8,12 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     "sqlalchemy[asyncio]>=2.0",
     "aiosqlite>=0.20",
+    # Postgres path (DATABASE_URL → asyncpg, e.g. Supabase in prod).
+    "asyncpg>=0.30",
+    # Schema migrations (migrations/) — runs on both SQLite and Postgres.
+    "alembic>=1.14",
+    # vector(384) column type for document_chunks (Postgres-only table).
+    "pgvector>=0.3",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "python-multipart>=0.0.9",
@@ -44,8 +50,10 @@ dev = [
 asyncio_mode = "auto"
 # One event loop for the whole session — mirrors production (module-level
 # asyncio primitives like the memory blob lock bind to the running loop).
+# The fixture option mattered only once asyncpg arrived: async fixtures on
+# per-test loops share pooled connections whose protocols are loop-bound.
 asyncio_default_test_loop_scope = "session"
-asyncio_fixture_loop_scope = "session"
+asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
 markers = [
     # Dataset-backed evaluation suites — run explicitly with

@@ -1,11 +1,19 @@
-"""Async SQLAlchemy database session + engine setup (SQLite via aiosqlite)."""
+"""Async SQLAlchemy database session + engine setup.
+
+SQLite (aiosqlite) by default; Postgres (asyncpg) when DATABASE_URL is set
+(Supabase in production). Schema management is alembic (migrations/) —
+init_db() upgrades to head at startup, stamping legacy pre-alembic SQLite
+files to the baseline revision instead of replaying it.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
+from pathlib import Path
 
-from sqlalchemy import text
+from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -16,13 +24,27 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+
+def _engine_kwargs() -> dict:
+    if settings.db_url.startswith("sqlite"):
+        # SQLite busy timeout (seconds): concurrent event-bus handler
+        # sessions retry on a locked database instead of raising immediately.
+        return {"connect_args": {"timeout": 30}}
+    # asyncpg through Supabase's transaction pooler: the pooler doesn't
+    # support session-level prepared statements, and asyncpg's automatic
+    # statement cache then fails subtly (protocol errors, rare wrong
+    # results) — disable it. pool_pre_ping survives the pooler recycling
+    # server connections under us.
+    return {"pool_pre_ping": True, "connect_args": {"statement_cache_size": 0}}
+
+
 engine = create_async_engine(
     settings.db_url,
     echo=False,
     future=True,
-    # SQLite busy timeout (seconds): concurrent event-bus handler sessions
-    # retry on a locked database instead of raising immediately.
-    connect_args={"timeout": 30},
+    **_engine_kwargs(),
 )
 
 SessionLocal = async_sessionmaker(
@@ -38,140 +60,53 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
+def _alembic_config():
+    from alembic.config import Config
+
+    cfg = Config(str(_BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_BACKEND_DIR / "migrations"))
+    return cfg
+
+
 async def init_db() -> None:
-    """Create all tables and run lightweight migrations. Called from lifespan."""
-    from .models import Base
+    """Bring the schema to head via alembic. Called from the app lifespan.
 
-    # Enable WAL once, up front: readers don't block writers, which matters
-    # now that the event bus runs handler sessions alongside request sessions.
-    # Must happen outside any transaction and before pooled connections exist
-    # — journal_mode cannot change mid-transaction (a switch attempted inside
-    # one leaves the WAL index in a state where writers deadlock until an
-    # external connection recovers it).
-    import sqlite3
+    SQLite additionally gets WAL enabled first: readers don't block
+    writers, which matters now that the event bus runs handler sessions
+    alongside request sessions. The switch must happen outside any
+    transaction and before pooled connections exist — journal_mode cannot
+    change mid-transaction (a switch attempted inside one leaves the WAL
+    index in a state where writers deadlock until an external connection
+    recovers it).
+    """
+    from alembic import command
 
-    raw = sqlite3.connect(settings.db_path)
-    try:
-        raw.execute("PRAGMA journal_mode=WAL")
-    finally:
-        raw.close()
+    if engine.dialect.name == "sqlite":
+        settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+        import sqlite3
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Guarded migration: add lesson_id to existing documents table.
-        # create_all won't mutate an existing table, so we check + ALTER.
-        result = await conn.execute(
-            text("PRAGMA table_info(documents)")
-        )
-        columns = {row[1] for row in result.fetchall()}
-        # Module exam date (paces study plans).
-        mod_cols = {
-            row[1]
-            for row in (
-                await conn.execute(text("PRAGMA table_info(modules)"))
-            ).fetchall()
-        }
-        if "exam_date" not in mod_cols:
-            await conn.execute(
-                text("ALTER TABLE modules ADD COLUMN exam_date DATE")
-            )
-            logger.info("Migrated modules table: added exam_date column")
-        # Semester organization (academic year + term).
-        if "academic_year" not in mod_cols:
-            await conn.execute(
-                text("ALTER TABLE modules ADD COLUMN academic_year VARCHAR")
-            )
-            logger.info("Migrated modules table: added academic_year column")
-        if "term" not in mod_cols:
-            await conn.execute(
-                text("ALTER TABLE modules ADD COLUMN term VARCHAR")
-            )
-            logger.info("Migrated modules table: added term column")
-        if "lesson_id" not in columns:
-            await conn.execute(
-                text(
-                    "ALTER TABLE documents ADD COLUMN lesson_id VARCHAR "
-                    "REFERENCES lessons(id)"
-                )
-            )
-            logger.info("Migrated documents table: added lesson_id column")
-        # Guarded migration: add module_id so documents can be filed directly
-        # under a module (not just a lesson).
-        if "module_id" not in columns:
-            await conn.execute(
-                text(
-                    "ALTER TABLE documents ADD COLUMN module_id VARCHAR "
-                    "REFERENCES modules(id)"
-                )
-            )
-            logger.info("Migrated documents table: added module_id column")
-        # Audio recording support columns.
-        if "kind" not in columns:
-            await conn.execute(
-                text("ALTER TABLE documents ADD COLUMN kind VARCHAR DEFAULT 'text'")
-            )
-        if "duration_seconds" not in columns:
-            await conn.execute(
-                text("ALTER TABLE documents ADD COLUMN duration_seconds INTEGER")
-            )
-        if "transcription_status" not in columns:
-            await conn.execute(
-                text("ALTER TABLE documents ADD COLUMN transcription_status VARCHAR")
-            )
-        if "transcription_error" not in columns:
-            await conn.execute(
-                text("ALTER TABLE documents ADD COLUMN transcription_error TEXT")
-            )
+        raw = sqlite3.connect(settings.db_path)
+        try:
+            raw.execute("PRAGMA journal_mode=WAL")
+        finally:
+            raw.close()
 
-        # Multi-user migration: add the owner column to every user-scoped
-        # table (additive — ALTERable in place). study_plans additionally
-        # changed its uniqueness (module_id → (user_id, module_id)), which
-        # SQLite cannot ALTER: an old study_plans table forces a DB reset.
-        owner_columns = {
-            "modules": "user_id",
-            "documents": "user_id",
-            "content_items": "user_id",
-            "quiz_attempts": "user_id",
-            "agent_memory": "user_id",
-            "recommendation_events": "user_id",
-            "agent_events": "user_id",
-            "user_activities": "user_id",
-            "lecture_sessions": "user_id",
-            "study_plans": "user_id",
-        }
-        for table, col in owner_columns.items():
-            tbl_cols = {
-                row[1]
-                for row in (
-                    await conn.execute(text(f"PRAGMA table_info({table})"))
-                ).fetchall()
-            }
-            if tbl_cols and col not in tbl_cols:
-                await conn.execute(
-                    text(f"ALTER TABLE {table} ADD COLUMN {col} VARCHAR DEFAULT ''")
-                )
-                logger.info("Migrated %s table: added %s column", table, col)
+        # A pre-alembic dev DB already carries the baseline schema (the
+        # old guarded-ALTER path applied it); stamp it so `upgrade head`
+        # only applies revisions after the baseline instead of failing on
+        # CREATE TABLE duplicates. "Pre-alembic" = no version rows yet —
+        # alembic_version can exist but be empty (e.g. an autogenerate
+        # run against this DB created the table without stamping).
+        def _probe(sync_conn) -> tuple[str | None, set[str]]:
+            from alembic.migration import MigrationContext
 
-        # An old study_plans table (module_id UNIQUE, pre-multi-user) can't
-        # be ALTERed to the composite uniqueness — refuse loudly instead of
-        # failing with cryptic constraint errors later.
-        plans_idx = (
-            await conn.execute(text("PRAGMA index_list(study_plans)"))
-        ).fetchall()
-        unique_cols = {
-            tuple(
-                row[2]
-                for row in (
-                    await conn.execute(text(f"PRAGMA index_info({row[1]})"))
-                ).fetchall()
-            )
-            for row in plans_idx
-            if row[2]  # unique indexes only
-        }
-        if ("module_id",) in unique_cols:
-            raise RuntimeError(
-                "study_plans has the pre-multi-user UNIQUE(module_id) "
-                "constraint. Multi-user support requires a fresh database: "
-                "delete backend/study_app.db (uploads/mastery/plans are "
-                "regenerable; see study-app/README.md) and restart."
-            )
+            current = MigrationContext.configure(sync_conn).get_current_revision()
+            return current, set(inspect(sync_conn).get_table_names())
+
+        async with engine.connect() as conn:
+            current_rev, tables = await conn.run_sync(_probe)
+        if current_rev is None and "modules" in tables:
+            await asyncio.to_thread(command.stamp, _alembic_config(), "baseline")
+            logger.info("Stamped legacy pre-alembic database at 'baseline'")
+
+    await asyncio.to_thread(command.upgrade, _alembic_config(), "head")
