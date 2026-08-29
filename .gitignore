@@ -247,3 +247,5 @@ study-app/backend/evals/reports/*
 
 .env
 .env.local
+
+supabase/.temp
