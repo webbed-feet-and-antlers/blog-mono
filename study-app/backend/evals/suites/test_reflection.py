@@ -262,10 +262,11 @@ async def test_reflection_faithfulness(db):
     archetype dipping below the bar is a FINDING, visible in the report);
     the run gates on the mean.
 
-    Regression floor, not the aspiration: the first calibrated run showed
-    the generator contradicting its packet (e.g. "has not reviewed any
-    flashcards" over 8 flashcard activities). Improve the layer, then
-    raise this bar."""
+    Regression floor, not the aspiration — raised to 0.60 after the
+    grounding layer was reworked (labeled packet rendering + prompt
+    discipline + a self-verify fact-check pass; the first calibrated run
+    sat at mean 0.53 with narratives contradicting their packet, e.g.
+    "has not reviewed any flashcards" over 8 flashcard activities)."""
     from sqlalchemy import delete
 
     from app.agent import reflection
@@ -273,7 +274,7 @@ async def test_reflection_faithfulness(db):
 
     from evals.suites import judge_score
 
-    threshold = 0.45
+    threshold = 0.60
     scores = []
     for archetype, seed in ARCHETYPES.items():
         # Fresh world per archetype — wiped through THIS session (a second

@@ -8,7 +8,8 @@
 //
 // The canonical URL is appended to the LAST post for thread-capable platforms
 // (twitter/bluesky/mastodon). For LinkedIn it is NOT appended here — that
-// adapter posts the link as a separate comment (LinkedIn demotes in-body links).
+// adapter shares the confirmed LinkedIn Article's URL as the caption link
+// (see linkedin.mjs), not the canonical URL.
 
 const THREAD_PLATFORMS = new Set(['twitter', 'bluesky', 'mastodon']);
 

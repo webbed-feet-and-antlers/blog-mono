@@ -9,22 +9,31 @@ interface Props {
   description?: string;
   /** OG image path relative to base, e.g. "/og/embeddings.png" */
   image?: string;
+  /** "article" for blog posts, "website" (default) everywhere else. */
+  ogType?: 'website' | 'article';
 }
 
 const {
   title,
   description = 'Data science and machine learning notes from Nathan & Becky Inkpen.',
   image,
+  ogType = 'website',
 } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site).toString();
 const ogImage = image ? new URL(image, Astro.site).toString() : undefined;
+// Dimension tags only apply to the auto-generated 1200×630 cards — custom
+// heroImage overrides can be any size.
+const isAutoCard = Boolean(ogImage && image?.startsWith(path('og/')));
 
 // Umami analytics — cookieless. Set UMAMI_WEBSITE_ID in .env (local) or as a
 // GitHub Actions var (production) to enable; leave unset to disable (e.g. dev).
-// UMAMI_HOST overrides the endpoint (default: Umami cloud; set to your own origin
-// like https://stats.inkpens.tech if you self-host later).
+// UMAMI_HOST must match the region of the website in Umami Cloud: EU accounts
+// (dashboard URL contains /analytics/eu/) use https://eu.umami.is — sending to
+// the cloud.umami.is ingest records into the wrong region and the EU dashboard
+// stays empty. Override to your own origin (like https://stats.inkpens.tech)
+// if you self-host later.
 const umamiWebsiteId = import.meta.env.UMAMI_WEBSITE_ID;
-const umamiHost = (import.meta.env.UMAMI_HOST || 'https://cloud.umami.is').replace(/\/$/, '');
+const umamiHost = (import.meta.env.UMAMI_HOST || 'https://eu.umami.is').replace(/\/$/, '');
 ---
 
 <!doctype html>
@@ -46,21 +55,25 @@ const umamiHost = (import.meta.env.UMAMI_HOST || 'https://cloud.umami.is').repla
         - base-uri 'self'     → no <base> hijack
         - form-action 'self'  → no off-site form submission
       External allowlist:
-        - script-src/connect-src: cloud.umami.is (the analytics script + beacon)
+        - script-src/connect-src: cloud.umami.is + eu.umami.is (the analytics
+          script + beacon, US and EU regions)
         - style-src: Google Fonts (CSS), jsDelivr (KaTeX CSS)
         - font-src: Google Fonts (font files)
     */}
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cloud.umami.is; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://cloud.umami.is; object-src 'none'; base-uri 'self'; form-action 'self'"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cloud.umami.is https://eu.umami.is; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://cloud.umami.is https://eu.umami.is; object-src 'none'; base-uri 'self'; form-action 'self'"
     />
 
     {/*
       Umami analytics (https://umami.is) — cookieless, no consent banner needed.
       Env-gated: only renders when UMAMI_WEBSITE_ID is set, so the dev server and
       any build without the ID ship zero analytics. is:inline keeps the tag literal
-      (Astro would otherwise bundle/break it). UMAMI_HOST defaults to the cloud CDN;
-      override to a self-hosted origin if you move off cloud.
+      (Astro would otherwise bundle/break it). UMAMI_HOST defaults to the EU cloud
+      ingest; override to a self-hosted origin if you move off cloud.
+      data-host-url is load-bearing: without it the tracker sends to
+      https://gateway.umami.is/api/send, which does NOT route EU-region
+      websites — beacons vanish even though the script loads fine.
     */}
     {umamiWebsiteId && (
       <script
@@ -68,6 +81,7 @@ const umamiHost = (import.meta.env.UMAMI_HOST || 'https://cloud.umami.is').repla
         is:inline
         src={`${umamiHost}/script.js`}
         data-website-id={umamiWebsiteId}
+        data-host-url={umamiHost}
         data-domains="inkpens.tech"
       />
     )}
@@ -87,14 +101,19 @@ const umamiHost = (import.meta.env.UMAMI_HOST || 'https://cloud.umami.is').repla
     />
 
     <!-- Open Graph / Twitter -->
-    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="The Inkpens" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     {ogImage && <meta property="og:image" content={ogImage} />}
+    {ogImage && <meta property="og:image:alt" content={`${title} — preview card`} />}
+    {isAutoCard && <meta property="og:image:width" content="1200" />}
+    {isAutoCard && <meta property="og:image:height" content="630" />}
     <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
+    {ogImage && <meta name="twitter:image" content={ogImage} />}
 
     <!-- Fonts: Inter (sans/UI), Fraunces (serif headlines), JetBrains Mono (code). -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

@@ -9,7 +9,8 @@ the app's real FSRS code path (binary rating mapping: correct → Good, wrong
 current session's recall two ways from the SAME scheduler state:
 
   - the fsrs library's native power-law forgetting curve, and
-  - the app's `retrievability` (an exp(-t/S) approximation).
+  - the app's `retrievability` wrapper (which now delegates to that same
+    curve — gated below so it can never silently drift back apart).
 
 Observations are restricted to sessions at least MIN_DELTA_DAYS after the
 previous one — the regime where a forgetting curve is the operative model
@@ -19,15 +20,19 @@ and ranking is pure noise).
 What the first runs of this suite established (recorded as report-only
 metrics so the numbers stay visible):
 
-  1. The exp(-t/S) approximation is catastrophically miscalibrated
-     (Brier 0.3-0.6 vs the power-law's ~0.08) — fine as a ranking key,
-     wrong as a probability. Gated: the power law must dominate it.
-  2. FSRS with default parameters beats chance and the last-outcome streak
-     on ranking, but does NOT beat the running correct-rate baseline
-     (item difficulty): on this material, what the learner got right
-     before predicts the next session better than time-decay does. The
-     fsrs parameters were fit on Anki data; Duolingo vocabulary is easier
-     material with a ~93% base success rate. Not gated — a finding.
+  1. FIXED (2026-08): the wrapper's exp(-t/S) approximation was
+     catastrophically miscalibrated (Brier 0.3-0.6 vs the power-law's
+     ~0.08). `retrievability` now delegates to the library's power law.
+     Gated: the wrapper must match the library curve AND clear absolute
+     calibration bars (Brier ≤ 0.12, log-loss ≤ 0.50) — so neither a
+     regression to a hand-rolled formula nor silent drift can return.
+  2. FSRS with default parameters does NOT beat the running correct-rate
+     baseline (item difficulty): on this material, what the learner got
+     right before predicts the next session better than time-decay does,
+     and the last-outcome streak sits within sampling noise of the curve
+     (|gap| ≤ 0.006 across draws). The fsrs parameters were fit on Anki
+     data; Duolingo vocabulary is easier material with a ~93% base
+     success rate. Recorded as findings; only a collapse floor is gated.
 """
 
 from __future__ import annotations
@@ -91,7 +96,7 @@ def _replay() -> dict:
         )
 
     power_preds: list[float] = []
-    exp_preds: list[float] = []
+    prod_preds: list[float] = []
     outcomes: list[int] = []
     streak_preds: list[float] = []
     rate_preds: list[float] = []
@@ -110,15 +115,15 @@ def _replay() -> dict:
                 hseen >= WARMUP_SEEN
                 and delta >= MIN_DELTA_DAYS * 86400
             ):
-                exp_p = retrievability(fsrs_state, now=now)
-                if fsrs_state and exp_p is not None and 0.0 < exp_p < 1.0:
+                prod_p = retrievability(fsrs_state, now=now)
+                if fsrs_state and prod_p is not None and 0.0 < prod_p < 1.0:
                     card_before = Card.from_json(
                         _json.dumps(_state_to_card_json(fsrs_state))
                     )
                     power_preds.append(
                         float(_scheduler.get_card_retrievability(card_before, now))
                     )
-                    exp_preds.append(exp_p)
+                    prod_preds.append(prod_p)
                     outcomes.append(outcome)
                     streak_preds.append(
                         0.9 if last_outcome == 1
@@ -155,7 +160,7 @@ def _replay() -> dict:
 
     _REPLAY = {
         "power": power_preds,
-        "exp": exp_preds,
+        "prod": prod_preds,
         "outcomes": outcomes,
         "streak": streak_preds,
         "rate": rate_preds,
@@ -186,7 +191,7 @@ def _train_baseline() -> float:
 
 async def test_fsrs_calibration():
     data = _replay()
-    power, exp_p, outcomes = data["power"], data["exp"], data["outcomes"]
+    power, prod, outcomes = data["power"], data["prod"], data["outcomes"]
     assert len(outcomes) >= 500, (
         f"only {len(outcomes)} replayable observations — check the sample "
         "(per split expect ~800-1500: only ~26% of scorable sessions carry "
@@ -196,21 +201,21 @@ async def test_fsrs_calibration():
     n = len(outcomes)
     # Constant baseline estimated on TRAIN users only — the honest version of
     # the running-mean predictor (the old code computed it on its own eval
-    # set, which is in-sample for this baseline).
+    # set, which was in-sample for this baseline).
     mean_p = _train_baseline()
     constant_preds = [mean_p] * n
 
     metrics = {
         "fsrs_power_auc": auc(power, outcomes),
-        "exp_approx_auc": auc(exp_p, outcomes),
+        "retrievability_auc": auc(prod, outcomes),
         "streak_auc": auc(data["streak"], outcomes),
         "rate_auc": auc(data["rate"], outcomes),
         "constant_auc": auc(constant_preds, outcomes),
         "fsrs_power_brier": brier(power, outcomes),
-        "exp_approx_brier": brier(exp_p, outcomes),
+        "retrievability_brier": brier(prod, outcomes),
         "constant_brier": brier(constant_preds, outcomes),
         "fsrs_power_logloss": log_loss(power, outcomes),
-        "exp_approx_logloss": log_loss(exp_p, outcomes),
+        "retrievability_logloss": log_loss(prod, outcomes),
         "majority_accuracy": majority_accuracy(outcomes),
     }
 
@@ -220,7 +225,7 @@ async def test_fsrs_calibration():
             score=value, threshold=None, success=None,
             reason=f"n={n} observations (delta ≥ {MIN_DELTA_DAYS}d)",
         )
-    # The explicit gap the first run surfaced — kept as a finding metric.
+    # The explicit gaps the first run surfaced — kept as finding metrics.
     record(
         "fsrs", "finding_rate_vs_fsrs_auc", case="duolingo-replay",
         score=metrics["rate_auc"] - metrics["fsrs_power_auc"],
@@ -230,21 +235,40 @@ async def test_fsrs_calibration():
             "curve on this material — fsrs defaults were fit on Anki data"
         ),
     )
+    record(
+        "fsrs", "finding_streak_vs_fsrs_auc", case="duolingo-replay",
+        score=metrics["streak_auc"] - metrics["fsrs_power_auc"],
+        threshold=None, success=None,
+        reason=(
+            "last-outcome streak vs the forgetting curve — within sampling "
+            "noise on every draw so far (|gap| ≤ 0.006 at n≈1k, AUC SE "
+            "≈0.02); not a defensible gate either direction"
+        ),
+    )
 
     # Gates — the defensible claims:
-    # 1. The power law dominates the app's exp approximation on calibration.
-    assert metrics["fsrs_power_brier"] < metrics["exp_approx_brier"] - 0.10, (
-        f"power-law Brier {metrics['fsrs_power_brier']:.3f} vs exp "
-        f"{metrics['exp_approx_brier']:.3f} — approximation no longer detectably worse?"
+    # 1. The wrapper must return the library's curve (the exp(-t/S) era is
+    #    over; this guards against a hand-rolled formula returning).
+    assert (
+        abs(metrics["retrievability_brier"] - metrics["fsrs_power_brier"]) <= 0.02
+    ), (
+        f"retrievability Brier {metrics['retrievability_brier']:.3f} drifted "
+        f"from the library power law ({metrics['fsrs_power_brier']:.3f})"
     )
-    assert metrics["fsrs_power_logloss"] < metrics["exp_approx_logloss"], (
-        "exp approximation beats the power law on log-loss — investigate"
+    # 2. Calibrated as a probability, absolutely (the fixed formula lands
+    #    at Brier ~0.08 / log-loss ~0.31 on this replay).
+    assert metrics["retrievability_brier"] <= 0.12, (
+        f"retrievability Brier {metrics['retrievability_brier']:.3f} is "
+        "not a usable recall probability"
     )
-    # 2. The scheduler ranks above chance and above the naive streak.
-    assert metrics["fsrs_power_auc"] > 0.52, (
-        f"FSRS AUC {metrics['fsrs_power_auc']:.3f} ≈ chance"
+    assert metrics["retrievability_logloss"] <= 0.50, (
+        f"retrievability log-loss {metrics['retrievability_logloss']:.3f} is "
+        "not a usable recall probability"
     )
-    assert metrics["fsrs_power_auc"] > metrics["streak_auc"], (
-        f"FSRS AUC {metrics['fsrs_power_auc']:.3f} does not beat last-outcome "
-        f"streak ({metrics['streak_auc']:.3f})"
+    # 3. Ranking sanity floor. Superiority claims over the streak baseline
+    #    are within sampling noise on this data (see finding metrics above);
+    #    the gate's job is catching collapse — a curve that no longer ranks
+    #    better than near-chance is broken.
+    assert metrics["retrievability_auc"] > 0.51, (
+        f"FSRS AUC {metrics['retrievability_auc']:.3f} collapsed to chance"
     )

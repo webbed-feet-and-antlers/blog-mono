@@ -25,14 +25,16 @@ export function looksLikeLoginUrl(url) {
 
 /**
  * Run fn(page) in a Chromium context carrying the saved session for
- * `platform`. Headless unless opts.headed. Resolves null (never throws) if
- * anything at all goes wrong — including fn throwing an AuthError, which we
- * surface via the returned { authFailed: true } marker so callers can print
- * the re-login hint.
+ * `platform`. Headless bundled Chromium by default; opts.headed + opts.channel
+ * launch the locally installed real Chrome instead (needed for Medium, whose
+ * Cloudflare front challenges headless browsers with an interstitial).
+ * Resolves null (never throws) if anything at all goes wrong — including fn
+ * throwing an AuthError, which we surface via the returned { authFailed: true }
+ * marker so callers can print the re-login hint.
  *
  * @param {string} platform
  * @param {(page: import('playwright').Page) => Promise<T>} fn
- * @param {{ headed?: boolean }} [opts]
+ * @param {{ headed?: boolean, channel?: string }} [opts]
  * @returns {Promise<{ value: T } | { value: null, authFailed?: boolean, reason?: string }>}
  */
 export async function withSessionBrowser(platform, fn, opts = {}) {
@@ -41,7 +43,17 @@ export async function withSessionBrowser(platform, fn, opts = {}) {
 
   let browser;
   try {
-    browser = await chromium.launch({ headless: !opts.headed });
+    const launchOpts = {
+      headless: !opts.headed,
+      // Clipboard access for pasteHtml's fallback path.
+      permissions: ['clipboard-read', 'clipboard-write'],
+    };
+    if (opts.channel) {
+      launchOpts.channel = opts.channel;
+      launchOpts.ignoreDefaultArgs = ['--enable-automation'];
+      launchOpts.args = ['--disable-blink-features=AutomationControlled'];
+    }
+    browser = await chromium.launch(launchOpts);
     const ctx = await browser.newContext({
       storageState: statePath,
       // Clipboard access for pasteHtml's fallback path.

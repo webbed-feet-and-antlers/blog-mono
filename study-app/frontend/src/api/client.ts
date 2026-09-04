@@ -1,5 +1,17 @@
 // Thin typed wrapper over the backend API. Uses the Vite dev-server proxy
 // (/api -> http://127.0.0.1:8000), so in dev no base URL is needed.
+//
+// Every call carries the Clerk session JWT (see ../auth): as a Bearer
+// header where headers can travel, or as ?token= on <img>/download URLs.
+
+import { authHeaders, authToken, withToken } from "../auth";
+
+/** A 401 means the Clerk session is gone — back to the login screen. */
+function onUnauthorized(): void {
+  if (window.location.pathname !== "/login") {
+    window.location.assign("/login");
+  }
+}
 
 import type {
   AgentMemory,
@@ -30,7 +42,10 @@ async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(path, init);
+  const headers = new Headers(init?.headers);
+  for (const [k, v] of Object.entries(authHeaders())) headers.set(k, v);
+  const res = await fetch(path, { ...init, headers });
+  if (res.status === 401) onUnauthorized();
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`;
     try {
@@ -64,6 +79,8 @@ export async function uploadDocument(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `/api/documents${qs}`);
+    const bearer = authToken();
+    if (bearer) xhr.setRequestHeader("Authorization", `Bearer ${bearer}`);
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
@@ -89,11 +106,11 @@ export async function uploadDocument(
 }
 
 export function getDocumentFileUrl(id: string): string {
-  return `/api/documents/${id}/file`;
+  return withToken(`/api/documents/${id}/file`);
 }
 
 export function getDocumentSlideImageUrl(docId: string, page: number): string {
-  return `/api/documents/${docId}/slides/${page}`;
+  return withToken(`/api/documents/${docId}/slides/${page}`);
 }
 
 
@@ -135,7 +152,10 @@ export async function generateStream(
 ): Promise<void> {
   const res = await fetch("/api/generate/stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
     body: JSON.stringify(req),
   });
 
@@ -514,7 +534,7 @@ export async function updateLectureNotes(
 }
 
 export function getSlideImageUrl(lectureId: string, page: number): string {
-  return `/api/lectures/${lectureId}/slides/${page}`;
+  return withToken(`/api/lectures/${lectureId}/slides/${page}`);
 }
 
 // --- Study sessions ---

@@ -16,6 +16,7 @@ read-modify-write JSON blobs.
 """
 
 from __future__ import annotations
+from ..auth import user_ref_id
 
 import logging
 from datetime import datetime, timezone
@@ -58,7 +59,7 @@ def _default_study_patterns() -> dict[str, Any]:
 
 
 async def get_engagement(session: AsyncSession) -> dict[str, Any]:
-    val = await read_memory(session, "user", "", ENGAGEMENT_KEY)
+    val = await read_memory(session, "user", user_ref_id(), ENGAGEMENT_KEY)
     if isinstance(val, dict):
         merged = _default_engagement()
         merged.update(val)
@@ -71,7 +72,7 @@ async def get_engagement(session: AsyncSession) -> dict[str, Any]:
 
 
 async def get_study_patterns(session: AsyncSession) -> dict[str, Any]:
-    val = await read_memory(session, "user", "", PATTERNS_KEY)
+    val = await read_memory(session, "user", user_ref_id(), PATTERNS_KEY)
     if isinstance(val, dict):
         merged = _default_study_patterns()
         merged.update(val)
@@ -156,8 +157,8 @@ async def distill_activities(session: AsyncSession, entries: list) -> None:
             max(range(24), key=lambda h: hist[h]) if any(hist) else None
         )
 
-        await write_memory(session, "user", "", ENGAGEMENT_KEY, engagement)
-        await write_memory(session, "user", "", PATTERNS_KEY, patterns)
+        await write_memory(session, "user", user_ref_id(), ENGAGEMENT_KEY, engagement)
+        await write_memory(session, "user", user_ref_id(), PATTERNS_KEY, patterns)
 
 
 async def record_quiz_duration(session: AsyncSession, secs: float, score: float) -> None:
@@ -171,7 +172,7 @@ async def record_quiz_duration(session: AsyncSession, secs: float, score: float)
         patterns["quiz_duration_history"] = history[-QUIZ_HISTORY_CAP:]
         secs_list = [h["secs"] for h in patterns["quiz_duration_history"]]
         patterns["avg_quiz_duration_secs"] = round(sum(secs_list) / len(secs_list), 1)
-        await write_memory(session, "user", "", PATTERNS_KEY, patterns)
+        await write_memory(session, "user", user_ref_id(), PATTERNS_KEY, patterns)
 
 
 async def record_study_session_completed(session: AsyncSession) -> None:
@@ -180,7 +181,7 @@ async def record_study_session_completed(session: AsyncSession) -> None:
         patterns["sessions"]["completed"] = (
             int(patterns["sessions"].get("completed", 0)) + 1
         )
-        await write_memory(session, "user", "", PATTERNS_KEY, patterns)
+        await write_memory(session, "user", user_ref_id(), PATTERNS_KEY, patterns)
 
 
 async def get_slow_concepts(

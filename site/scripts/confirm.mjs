@@ -53,6 +53,9 @@ const clearedDraft = draft ? await clearDraftLink(blog.path, platform) : false;
 if (wroteSyndication || clearedDraft) {
   console.log(`✓ ${slug}: ${platform} recorded as published`);
   console.log(`  ${url}`);
+  if (platform === 'linkedinArticle') {
+    console.log(`  Tip: re-run \`task posse:publish -- ${slug}\` to post the LinkedIn caption sharing this article.`);
+  }
 } else {
   console.log(`No changes needed (already recorded).`);
 }

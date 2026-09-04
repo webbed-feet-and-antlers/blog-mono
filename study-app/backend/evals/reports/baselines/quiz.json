@@ -1,43 +1,33 @@
 {
   "suite": "quiz",
-  "run": "20260819T105549Z",
+  "run": "20260827T192109Z",
   "split": "val",
-  "runtime_secs": 951.2,
+  "runtime_secs": 1195.5,
   "metrics": {
     "concept_tag_accuracy": {
-      "mean": 1.0,
-      "min": 1.0,
-      "n": 10,
-      "threshold": 0.7,
-      "failures": []
-    },
-    "distractor_plausibility": {
-      "mean": 0.58,
+      "mean": 0.79,
       "min": 0.0,
       "n": 10,
-      "threshold": 0.65,
+      "threshold": 0.7,
       "failures": [
         {
-          "case": "sciq-140",
+          "case": "sciq-142",
           "score": 0.0,
-          "reason": "judge verdict unparseable \u2014 skipped: The distractors are highly plausible, matching expert-like quality by reflecting common misconceptions, near-miss values"
-        },
-        {
-          "case": "sciq-48",
-          "score": 0.0,
-          "reason": "judge verdict unparseable \u2014 skipped: All distractors are plausible, topic-relevant, and avoid absurdity; they align with expert-like quality by using common "
+          "reason": "judge verdict unparseable \u2014 skipped: All eight questions have tagged concepts that accurately match the actual assessed concepts. Each tag is specific and co"
         },
         {
           "case": "sciq-37",
-          "score": 0.0,
-          "reason": "judge verdict unparseable \u2014 skipped: The distractors are plausible and align with expert-like quality, covering common misconceptions and same-topic confusio"
-        },
-        {
-          "case": "sciq-33",
-          "score": 0.0,
-          "reason": "judge verdict unparseable \u2014 skipped: The distractors in the Actual Output are generally plausible and align with common misconceptions, such as confusing bio"
+          "score": 0.5,
+          "reason": "The tagged concepts are often too vague or misaligned with the specific concept each question assesses. For instance, Q1's prompt asks about the endometrium immediately after menstruation, which assesses endometrial regeneration, not 'Menstruation' itself. Q4's prompt asks about the determinant of the next phase after ovulation, which assesses the role of fertilization in phase transition, but 'Fertilization' is too broad and not specific to the phase transition concept. Q5's prompt asks about t"
         }
       ]
+    },
+    "distractor_plausibility": {
+      "mean": 0.98,
+      "min": 0.8,
+      "n": 10,
+      "threshold": 0.65,
+      "failures": []
     },
     "groundedness": {
       "mean": 1.0,

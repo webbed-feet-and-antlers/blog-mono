@@ -37,6 +37,7 @@ async def log_impression(session: AsyncSession, response: dict, features: list |
         primary = response.get("primary")
         if primary:
             event = RecommendationEvent(
+                user_id=user_ref_id(),
                 id=uuid.uuid4().hex[:12],
                 impression_id=impression_id,
                 strategy_name=primary.get("strategy_name", "unknown"),
@@ -53,6 +54,7 @@ async def log_impression(session: AsyncSession, response: dict, features: list |
         # Log alternatives.
         for i, alt in enumerate(response.get("alternatives", []), start=2):
             event = RecommendationEvent(
+                user_id=user_ref_id(),
                 id=uuid.uuid4().hex[:12],
                 impression_id=impression_id,
                 strategy_name=alt.get("strategy_name", "unknown"),

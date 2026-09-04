@@ -14,6 +14,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import get_current_user
 from ..db import get_session
 from ..events import bus
 from ..events.domain import QuestionOutcome, QuizAttempted
@@ -29,9 +30,10 @@ async def submit_quiz_attempt(
     content_id: str,
     req: QuizAttemptRequest,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     item = await session.get(ContentItem, content_id)
-    if item is None or item.type != "quiz":
+    if item is None or item.type != "quiz" or item.user_id != user:
         raise HTTPException(status_code=404, detail="Quiz not found")
 
     questions = item.content.get("questions", [])
@@ -64,6 +66,7 @@ async def submit_quiz_attempt(
     attempt = QuizAttempt(
         id=uuid.uuid4().hex[:12],
         content_id=content_id,
+        user_id=user,
         answers=req.answers,
         score=score,
         correct_count=correct,

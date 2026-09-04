@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_ref_id
 from ..models import ContentItem
 from . import tools
 from . import memory as memory_store
@@ -76,7 +77,7 @@ async def retrieve_memory(state: AgentState) -> dict[str, Any]:
     doc_id = state["document_id"]
 
     doc_memory = await memory_store.read_memory_scope(session, "doc", doc_id)
-    user_memory = await memory_store.read_memory_scope(session, "user", "")
+    user_memory = await memory_store.read_memory_scope(session, "user", user_ref_id())
 
     # Compose a focused memory dict the generation tools know how to read.
     memory: dict[str, Any] = {}
@@ -245,6 +246,7 @@ async def finalize(state: AgentState) -> dict[str, Any]:
 
     content_id = tools.new_content_id()
     item = ContentItem(
+        user_id=user_ref_id(),
         id=content_id,
         document_id=doc_id,
         type=task_type,

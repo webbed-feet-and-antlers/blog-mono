@@ -1,0 +1,36 @@
+# Fly.io config for study.inkpens.tech — deploy from this directory:
+#   fly deploy --build-arg VITE_CLERK_PUBLISHABLE_KEY=pk_live_…
+# Runtime secrets (set once via `fly secrets set`): OPENROUTER_API_KEY,
+# CLERK_SECRET_KEY, CLERK_AUTHORIZED_PARTIES, PROACTIVE_ENABLED.
+
+app = "inkpens-study"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# SQLite + uploaded files persist here (DB_PATH/STORAGE_DIR point at /data).
+[[mounts]]
+  source = "study_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"     # always-on: background jobs + no cold starts
+  auto_start_machines = true
+  min_machines_running = 1       # cost lever: 0 = park when idle (bills less)
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 20
+    hard_limit = 40
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory_mb = 512                # LibreOffice headless is comfortable here

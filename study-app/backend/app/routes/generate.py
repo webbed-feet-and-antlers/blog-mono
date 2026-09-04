@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..agent.graph import run_generation, run_generation_streamed
+from ..auth import current_user_id, get_current_user
 from ..db import get_session
 from ..events import bus
 from ..events.domain import GenerationCompleted
@@ -22,10 +23,12 @@ logger = logging.getLogger(__name__)
 
 @router.post("", response_model=ContentItemOut, status_code=201)
 async def generate(
-    req: GenerateRequest, session: AsyncSession = Depends(get_session)
+    req: GenerateRequest,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     doc = await session.get(Document, req.document_id)
-    if doc is None:
+    if doc is None or doc.user_id != user:
         raise HTTPException(status_code=404, detail="Document not found")
 
     try:
@@ -66,7 +69,9 @@ async def generate(
 
 
 @router.post("/stream")
-async def generate_stream(req: GenerateRequest):
+async def generate_stream(
+    req: GenerateRequest, user: str = Depends(get_current_user)
+):
     """Stream generation progress as SSE events.
 
     Emits `status` events with a friendly message as each agent node completes,
@@ -78,10 +83,13 @@ async def generate_stream(req: GenerateRequest):
     from ..db import SessionLocal
 
     async def event_stream():
-        # Own our session — the generator outlives the request dependency scope.
+        # Own our session — the generator outlives the request dependency
+        # scope, and re-establish the owner's identity inside it (memory
+        # writes during generation resolve the user from the contextvar).
+        current_user_id.set(user)
         async with SessionLocal() as session:
             doc = await session.get(Document, req.document_id)
-            if doc is None:
+            if doc is None or doc.user_id != user:
                 yield _sse("error", {"message": "Document not found"})
                 return
 

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import get_current_user
 from ..db import get_session
 from ..models import AgentEvent
 from ..schemas import AgentEventOut
@@ -24,9 +25,10 @@ async def list_events(
     event_type: str | None = None,
     status: str | None = None,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
-    """Newest-first event log, optionally filtered by type/status."""
-    stmt = select(AgentEvent)
+    """Newest-first event log (this user's events), optionally filtered."""
+    stmt = select(AgentEvent).where(AgentEvent.user_id == user)
     if event_type:
         stmt = stmt.where(AgentEvent.event_type == event_type)
     if status:

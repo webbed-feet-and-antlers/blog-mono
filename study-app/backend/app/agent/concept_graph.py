@@ -17,6 +17,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import memory as memory_store
+from ..auth import user_ref_id
 from ..models import Document, Lesson, Module
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ async def merge_concept_graph(
                     related.append(target)
 
         await memory_store.write_memory(
-            session, "user", "", "concept_mastery", mastery
+            session, "user", user_ref_id(), "concept_mastery", mastery
         )
 
 

@@ -1,0 +1,32 @@
+name: Supabase keepalive
+
+# Supabase free-tier projects pause after 7 days without API activity —
+# and the app talks to the database directly (asyncpg), which may not
+# count. A weekly authenticated REST ping keeps the project alive.
+#
+# Setup (once, after creating the Supabase project):
+#   repo variable:  SUPABASE_PROJECT_REF   (the 20-char ref in the URL)
+#   repo secret:    SUPABASE_ANON_KEY      (the anon/publishable key)
+# Until SUPABASE_PROJECT_REF is set this workflow does nothing.
+
+on:
+  schedule:
+    - cron: "0 8 * * 1" # Mondays 08:00 UTC
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: vars.SUPABASE_PROJECT_REF != ''
+    steps:
+      - name: Ping the REST gateway
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "https://${{ vars.SUPABASE_PROJECT_REF }}.supabase.co/rest/v1/")
+          echo "Response: $code (any response means the project saw activity)"
+          # 401/404 is fine — the request still counts as API activity.
+          case "$code" in
+            2*|401|403|404) exit 0 ;;
+            *) exit 1 ;;
+          esac

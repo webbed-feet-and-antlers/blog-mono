@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_ref_id
 from ..agent.memory import blob_lock, read_memory, write_memory
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ async def record_action(
     """
     now = datetime.now(timezone.utc).isoformat()
     async with blob_lock:
-        data = await read_memory(session, "user", "", SESSION_KEY)
+        data = await read_memory(session, "user", user_ref_id(), SESSION_KEY)
 
         if not isinstance(data, dict):
             data = {"actions": [], "started_at": now, "dismissed_tools": []}
@@ -63,7 +64,7 @@ async def record_action(
         if not data.get("started_at"):
             data["started_at"] = now
 
-        await write_memory(session, "user", "", SESSION_KEY, data)
+        await write_memory(session, "user", user_ref_id(), SESSION_KEY, data)
 
 
 async def record_dismissal(
@@ -72,7 +73,7 @@ async def record_dismissal(
 ) -> None:
     """Record that the user dismissed a recommendation for this session."""
     async with blob_lock:
-        data = await read_memory(session, "user", "", SESSION_KEY)
+        data = await read_memory(session, "user", user_ref_id(), SESSION_KEY)
         if not isinstance(data, dict):
             data = {"actions": [], "started_at": datetime.now(timezone.utc).isoformat(), "dismissed_tools": []}
 
@@ -80,4 +81,4 @@ async def record_dismissal(
         dismissed.add(strategy_name)
         data["dismissed_tools"] = list(dismissed)
 
-        await write_memory(session, "user", "", SESSION_KEY, data)
+        await write_memory(session, "user", user_ref_id(), SESSION_KEY, data)

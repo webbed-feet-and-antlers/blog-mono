@@ -46,6 +46,7 @@ from typing import Any, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_scope
 from ..db import SessionLocal
 from ..models import AgentEvent
 
@@ -126,11 +127,15 @@ class EventBus:
         event_name = type(event).__name__
         try:
             async with SessionLocal() as session:
-                await fn(event, session)
-                # Same transaction as the handler's writes: the "ok" row only
-                # commits if the handler's writes commit.
-                session.add(_event_row(event, label, "ok", None))
-                await session.commit()
+                # Handlers run with the event owner's identity — handlers
+                # use fresh sessions outside the request, so the contextvar
+                # set by the auth dependency does not reach them.
+                with user_scope(getattr(event, "user_id", "") or ""):
+                    await fn(event, session)
+                    # Same transaction as the handler's writes: the "ok" row
+                    # only commits if the handler's writes commit.
+                    session.add(_event_row(event, label, "ok", None))
+                    await session.commit()
         except Exception as exc:
             logger.exception(
                 "[events] handler %s failed for %s", label, event_name
@@ -164,6 +169,7 @@ def _event_row(
     return AgentEvent(
         id=uuid.uuid4().hex[:12],
         event_type=type(event).__name__,
+        user_id=(getattr(event, "user_id", "") or ""),
         handler=handler,
         status=status,
         payload=_safe_payload(event),

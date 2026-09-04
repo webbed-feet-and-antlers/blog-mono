@@ -164,16 +164,18 @@ def clamp01(score: float | None) -> float:
 
 
 async def judge_score(metric, test_case) -> tuple[float | None, str]:
-    """a_measure with one retry on unparseable verdicts.
+    """a_measure with retries on unparseable verdicts.
 
     GEval signals "could not extract a verdict" with a negative score —
-    that is a harness hiccup, not a judgment. Re-ask once, then give up
+    that is a harness hiccup, not a judgment. The first calibrated run hit
+    4/10 unparseable verdicts on the quiz distractor rubric (all with
+    positive prose reasons), so retry up to twice more before giving up
     (None) so callers skip the case instead of counting it as a zero.
     NOTE: criteria must not mention a 0.0-1.0 scale — GEval's prompt has
     the judge score 0-10 and normalizes by /10, so conflicting scales
     produce crushed or anchored-to-example-zero scores."""
     reason = ""
-    for _ in range(2):
+    for _ in range(3):
         await metric.a_measure(test_case, _show_indicator=False)
         reason = metric.reason or ""
         if metric.score is not None and metric.score >= 0:

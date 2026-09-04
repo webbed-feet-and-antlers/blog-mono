@@ -1,8 +1,8 @@
 {
   "suite": "planner",
-  "run": "20260819T122004Z",
+  "run": "20260827T192109Z",
   "split": "val",
-  "runtime_secs": 1386.5,
+  "runtime_secs": 3154.2,
   "metrics": {
     "invariants_pass": {
       "mean": 1.0,
@@ -12,8 +12,8 @@
       "failures": []
     },
     "max_daily_minutes": {
-      "mean": 46.0,
-      "min": 35.0,
+      "mean": 40.0,
+      "min": 30.0,
       "n": 5,
       "threshold": null,
       "failures": []
@@ -26,27 +26,11 @@
       "failures": []
     },
     "weak_engaged_early": {
-      "mean": 0.4,
-      "min": 0.0,
+      "mean": 1.0,
+      "min": 1.0,
       "n": 5,
       "threshold": 0.6,
-      "failures": [
-        {
-          "case": "sciq-140",
-          "score": 0.0,
-          "reason": "0 review items in first 2 days"
-        },
-        {
-          "case": "sciq-142",
-          "score": 0.0,
-          "reason": "0 review items in first 2 days"
-        },
-        {
-          "case": "sciq-48",
-          "score": 0.0,
-          "reason": "0 review items in first 2 days"
-        }
-      ]
+      "failures": []
     }
   }
 }

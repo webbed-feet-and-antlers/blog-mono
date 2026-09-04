@@ -15,6 +15,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import user_ref_id
 from ..agent import behavior as behavior_store
 from ..agent import memory as memory_store
 from ..agent import fsrs_scheduler
@@ -127,7 +128,9 @@ async def build_context(session: AsyncSession) -> UserContext:
 
     # Documents + analyses
     doc_rows = await session.execute(
-        select(Document).order_by(Document.uploaded_at.desc())
+        select(Document)
+        .where(Document.user_id == user_ref_id())
+        .order_by(Document.uploaded_at.desc())
     )
     documents = {d.id: d for d in doc_rows.scalars().all()}
 
@@ -139,7 +142,9 @@ async def build_context(session: AsyncSession) -> UserContext:
     }
 
     # Content coverage
-    content_rows = await session.execute(select(ContentItem))
+    content_rows = await session.execute(
+        select(ContentItem).where(ContentItem.user_id == user_ref_id())
+    )
     all_content = content_rows.scalars().all()
     content_by_doc: dict[str, dict[str, list]] = {}
     for item in all_content:
@@ -165,7 +170,9 @@ async def build_context(session: AsyncSession) -> UserContext:
     sess = await _get_session(session)
 
     # Structural layer — exam stakes and the study plans paced to them.
-    module_rows = await session.execute(select(Module))
+    module_rows = await session.execute(
+        select(Module).where(Module.user_id == user_ref_id())
+    )
     modules = list(module_rows.scalars().all())
     module_titles = {m.id: m.title for m in modules}
     exam_days_by_module: dict[str, int] = {}
@@ -183,7 +190,9 @@ async def build_context(session: AsyncSession) -> UserContext:
     }
     days_to_exam = min(exam_days_by_module.values()) if exam_days_by_module else None
 
-    plan_rows = await session.execute(select(StudyPlan))
+    plan_rows = await session.execute(
+        select(StudyPlan).where(StudyPlan.user_id == user_ref_id())
+    )
     plan_today = _todays_plan_items(
         plan_rows.scalars().all(), module_titles
     )
@@ -193,10 +202,10 @@ async def build_context(session: AsyncSession) -> UserContext:
     # outcomes) feed scoring; the LLM-written insights stay language.
     insights = await get_learner_insights(session) or {}
     patterns = await memory_store.read_memory(
-        session, "user", "", behavior_store.PATTERNS_KEY
+        session, "user", user_ref_id(), behavior_store.PATTERNS_KEY
     ) or {}
     engagement = await memory_store.read_memory(
-        session, "user", "", behavior_store.ENGAGEMENT_KEY
+        session, "user", user_ref_id(), behavior_store.ENGAGEMENT_KEY
     ) or {}
     slow_concepts = await behavior_store.get_slow_concepts(session)
 
@@ -331,7 +340,7 @@ async def _get_session(session: AsyncSession) -> SessionContext | None:
     """Read the current session from agent_memory."""
     from ..agent.memory import read_memory
 
-    data = await read_memory(session, "user", "", "session")
+    data = await read_memory(session, "user", user_ref_id(), "session")
     if not data or not isinstance(data, dict):
         return None
 

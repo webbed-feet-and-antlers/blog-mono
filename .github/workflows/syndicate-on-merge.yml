@@ -39,8 +39,17 @@ jobs:
     # Gates all platform secrets behind the same environment as the manual workflow.
     environment: syndication
     steps:
-      - name: Checkout
+      # Check out MAIN explicitly, not the PR head. The default checkout for a
+      # pull_request event lands on the PR's ref, and the auto-commit step
+      # below would then try to push the syndication IDs to the PR branch —
+      # which may already be deleted by delete-pr-branch.yml (that race once
+      # failed this workflow with "fatal: invalid reference"). The merged
+      # content is on main by the time this job runs, which is also where
+      # the IDs belong.
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -100,10 +109,30 @@ jobs:
       # Record returned IDs back into frontmatter AND commit the auto-generated
       # component screenshots (they live in public/sshot and are served by Pages
       # — they must be permanent since dev.to/Medium hotlink rather than re-host).
-      # The '[skip preview]' tag breaks the loop with syndicate-preview.yml,
-      # which would otherwise re-fire on this blogs/*.mdx commit.
-      - name: Commit syndication IDs + screenshots
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore(syndicate): record cross-post IDs + screenshots [skip preview]"
-          file_pattern: "blogs/*.mdx blogs/*.md site/public/sshot/*.png"
+      # (No `if:` — the job is already gated on merged + publish label, and
+      # this workflow is always live.)
+      #
+      # main is protected ("changes must be made through a pull request") and —
+      # empirically — no CI credential (GITHUB_TOKEN, fine-grained or classic
+      # PAT as the owner) is granted the ruleset bypass, only the owner's local
+      # git credential is. So the record-commit lands on the UNPROTECTED
+      # chore/syndicate-records branch, and `task posse:merge-records` merges
+      # it into main locally with working credentials (one command, part of the
+      # post-publish flow in docs/syndication.md). Posting NEVER depends on
+      # this step — on failure it warns and the run stays green.
+      - name: Record syndication IDs + screenshots
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -d blogs ] && git add blogs
+          [ -d site/public/sshot ] && git add site/public/sshot
+          if git diff --cached --quiet; then
+            echo "Nothing to record."
+            exit 0
+          fi
+          git commit -m "chore(syndicate): record cross-post IDs + screenshots"
+          if git push --force origin HEAD:refs/heads/chore/syndicate-records; then
+            echo "::notice::Syndication records pushed to the chore/syndicate-records branch. Merge locally with: task posse:merge-records"
+          else
+            echo "::warning::Could not push the syndication-records branch — IDs are in this run's log; re-record them manually if needed."
+          fi

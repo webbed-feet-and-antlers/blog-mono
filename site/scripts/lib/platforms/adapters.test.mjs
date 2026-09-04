@@ -12,6 +12,7 @@ import * as indiehackers from './indiehackers.mjs';
 import { rmSync, mkdirSync, existsSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SESSIONS_DIR } from '../assisted-session.mjs';
+import * as richHtml from '../rich-html.mjs';
 
 // --- available(): each API adapter reflects its env vars ---
 
@@ -63,7 +64,7 @@ const DRY_RUN_INPUTS = {
   bluesky: { posts: ['a', 'b'], imagePath: null, dryRun: true },
   mastodon: { posts: ['a'], imagePath: null, dryRun: true },
   buffer: { posts: ['a', 'b'], slug: 's', dryRun: true },
-  linkedin: { posts: ['a'], canonicalUrl: 'https://x', slug: 's', dryRun: true },
+  linkedin: { posts: ['a'], articleUrl: 'https://www.linkedin.com/pulse/x', dryRun: true },
 };
 
 for (const [name, mod, input] of [
@@ -91,6 +92,17 @@ for (const [name, mod, input] of [
     }
   });
 }
+
+// --- linkedin: the caption post depends on its Article being confirmed ---
+
+test('linkedin.publish without an article URL: refuses (caption needs its Article)', async () => {
+  restoreEnv();
+  Object.assign(process.env, ADAPTER_ENV.linkedin);
+  await assert.rejects(
+    linkedin.publish({ posts: ['a'], articleUrl: undefined, dryRun: true }),
+    /LinkedIn Article/,
+  );
+});
 
 // --- assisted/manual adapters: package writes go to a temp-ish dir ---
 // (the real gitignored .syndication-output — acceptable, cleaned by re-runs)
@@ -160,7 +172,77 @@ test('linkedinArticle.publish (no session): returns {id:"manual"} and produces n
   }
 });
 
-// --- assisted tier: with a session saved, dry-run still touches nothing ---
+// --- bluesky.linkFacets: URLs get clickable link facets (byte offsets) ---
+
+test('bluesky.linkFacets: bare URL gets a link facet with correct byte range', () => {
+  const text = 'First post, more at https://inkpens.tech/blog/x/';
+  const facets = bluesky.linkFacets(text);
+  assert.equal(facets.length, 1);
+  assert.deepEqual(facets[0].index, { byteStart: 20, byteEnd: 48 });
+  assert.equal(facets[0].features[0].$type, 'app.bsky.richtext.facet#link');
+  assert.equal(facets[0].features[0].uri, 'https://inkpens.tech/blog/x/');
+});
+
+test('bluesky.linkFacets: no URL -> no facets', () => {
+  assert.deepEqual(bluesky.linkFacets('just words, no links here'), []);
+});
+
+test('bluesky.linkFacets: multibyte chars before the URL shift byte offsets', () => {
+  // ’ is 3 UTF-8 bytes but 1 UTF-16 unit — byte offsets must exceed .index.
+  const text = 'We’ve shipped https://example.com';
+  const facets = bluesky.linkFacets(text);
+  assert.equal(facets.length, 1);
+  assert.equal(facets[0].index.byteStart, 16); // 14 UTF-16 units + 2 extra bytes
+  assert.equal(facets[0].features[0].uri, 'https://example.com');
+});
+
+test('bluesky.linkFacets: trailing punctuation is excluded from the link', () => {
+  const text = 'Read it: https://example.com/post.).';
+  const facets = bluesky.linkFacets(text);
+  assert.equal(facets.length, 1);
+  assert.equal(facets[0].features[0].uri, 'https://example.com/post');
+  assert.deepEqual(facets[0].index, { byteStart: 9, byteEnd: 33 });
+});
+
+test('bluesky.linkFacets: multiple URLs each get a facet', () => {
+  const facets = bluesky.linkFacets('a https://one.com b https://two.com c');
+  assert.equal(facets.length, 2);
+  assert.deepEqual(facets.map((f) => f.features[0].uri), ['https://one.com', 'https://two.com']);
+});
+
+// --- rich-html: table + math scanning for the paste package ---
+
+test('rich-html.scanTableBlocks: finds pipe tables with separators, skips lookalikes', () => {
+  const md = 'para\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nafter\n\ntext with | pipe but no table';
+  const blocks = richHtml.scanTableBlocks(md);
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].lines.length, 3);
+  assert.equal(blocks[0].start, 2);
+});
+
+test('rich-html.scanMath: finds display + inline math, skips code fences and bare dollars', () => {
+  const md = [
+    'Inline $E=mc^2$ here.',
+    '',
+    '$$',
+    '\\int_0^1 x\\,dx',
+    '$$',
+    '',
+    '```',
+    'const price = "$5 and $10"',
+    '```',
+    '',
+    'Costs $5 today (no pair).',
+  ].join('\n');
+  const maths = richHtml.scanMath(md);
+  assert.equal(maths.length, 2);
+  assert.ok(maths.some((m) => m.display && m.latex.includes('int_0^1')));
+  assert.ok(maths.some((m) => !m.display && m.latex === 'E=mc^2'));
+  // The code-fence dollars and the unpaired $5 must NOT be captured.
+  assert.ok(!maths.some((m) => m.latex.includes('5')));
+});
+
+
 
 function fakeSession() {
   // Minimal valid storageState — never actually used in dry-run, it only
@@ -194,12 +276,12 @@ test('assisted adapters with a saved session + dryRun: id "draft", zero fetch, n
   }
 });
 
-// --- substack.buildDraftPayload: pure payload builder ---
+// --- substack.buildDraftPayload: pure payload builder (ProseMirror docs) ---
 
-test('substack.buildDraftPayload: teaser mode (default) is blurb + canonical link', () => {
+test('substack.buildDraftPayload: teaser mode is blurb + canonical link paragraphs', () => {
   const payload = substack.buildDraftPayload({
     title: 'A & B <post>',
-    bodyHtml: '<p>full body</p>',
+    bodyMarkdown: 'full body',
     socialPost: 'Short blurb',
     canonicalUrl: 'https://inkpens.tech/blog/x/',
     mode: 'teaser',
@@ -207,25 +289,92 @@ test('substack.buildDraftPayload: teaser mode (default) is blurb + canonical lin
   assert.equal(payload.draft_title, 'A & B <post>');
   assert.equal(payload.type, 'newsletter');
   assert.ok(typeof payload.draft_body === 'string', 'draft_body must be a string');
-  assert.ok(payload.draft_body.includes('Short blurb'));
-  assert.ok(payload.draft_body.includes('https://inkpens.tech/blog/x/'));
+  const doc = JSON.parse(payload.draft_body);
+  assert.equal(doc.type, 'doc');
+  assert.equal(doc.attrs.schemaVersion, 'v1');
+  assert.equal(doc.content.length, 2);
+  assert.equal(doc.content[0].type, 'paragraph');
+  assert.equal(doc.content[0].content[0].text, 'Short blurb');
+  const link = doc.content[1].content.find((n) => n.marks?.some((m) => m.type === 'link'));
+  assert.ok(link, 'canonical link present');
+  assert.equal(link.marks.find((m) => m.type === 'link').attrs.href, 'https://inkpens.tech/blog/x/');
   assert.ok(!payload.draft_body.includes('full body'), 'teaser omits the body');
-  // Blurb is HTML-escaped into the body.
-  const escaped = substack.buildDraftPayload({
-    title: 'T', bodyHtml: '', socialPost: 'a<b & c', canonicalUrl: 'https://x', mode: 'teaser',
-  });
-  assert.ok(escaped.draft_body.includes('a&lt;b &amp; c'));
+  assert.ok(!payload.draft_body.includes('<p>'), 'no literal HTML anywhere');
 });
 
-test('substack.buildDraftPayload: full mode embeds the body + provenance footer', () => {
+test('substack.buildDraftPayload: full mode converts markdown + provenance footer', () => {
   const payload = substack.buildDraftPayload({
     title: 'T',
-    bodyHtml: '<p>full body</p>',
+    bodyMarkdown: ['## Heading', '', 'A **bold** paragraph with `code` and a [link](https://example.com).', '', '```js', 'const x = 1;', '```'].join('\n'),
     socialPost: 's',
     canonicalUrl: 'https://inkpens.tech/blog/x/',
     mode: 'full',
   });
-  assert.ok(payload.draft_body.includes('<p>full body</p>'));
-  assert.ok(payload.draft_body.includes('Originally published at'));
-  assert.ok(payload.draft_body.includes('https://inkpens.tech/blog/x/'));
+  const doc = JSON.parse(payload.draft_body);
+  const types = doc.content.map((n) => n.type);
+  assert.ok(types.includes('heading'), `headings converted (${types})`);
+  assert.ok(types.includes('code_block'), 'code fences converted');
+  const para = doc.content.find((n) => n.type === 'paragraph' && n.content?.some((c) => c.marks?.some((m) => m.type === 'strong')));
+  assert.ok(para, 'bold marks converted');
+  assert.ok(JSON.stringify(doc).includes('"code"'), 'inline code marks converted');
+  const footer = doc.content[doc.content.length - 1];
+  assert.ok(footer.content.some((n) => n.text === 'Originally published at '), 'provenance footer present');
+  assert.ok(payload.draft_body.includes('https://inkpens.tech/blog/x/'), 'canonical link present');
+  assert.ok(!payload.draft_body.includes('<p>'), 'no literal HTML');
 });
+
+// (Table→PNG conversion runs in the session browser; the pure converter's
+// table handling is covered by the code-block fallback test above.)
+
+test('substack.markdownToProseMirrorDoc: $$..$$ becomes latex_block, $inline$ stays text', () => {
+  const doc = substack.markdownToProseMirrorDoc(
+    'The energy is $E=mc^2$ in text.\n\n$$\\int_0^1 x\\,dx$$\n\nplain after'
+  );
+  // Inline math: plain text WITHOUT the dollar delimiters (inline equation
+  // nodes are not in the editor's schema and blank the post).
+  const para = doc.content.find((n) => n.type === 'paragraph');
+  assert.ok(para.content.some((n) => n.text === 'The energy is E=mc^2 in text.'), 'inline math as plain text');
+  // Block math: the editor's real node shape (verified rendering).
+  const lb = doc.content.find((n) => n.type === 'latex_block');
+  assert.ok(lb, 'latex_block present');
+  assert.equal(lb.attrs.persistentExpression, '\\int_0^1 x\\,dx');
+  assert.match(lb.attrs.id, /^[A-Z]{10}$/, 'random uppercase id');
+});
+
+test('substack.markdownToProseMirrorDoc: table nodes fall back to code blocks, never table nodes', () => {
+  const doc = substack.markdownToProseMirrorDoc('| A | B |\n| --- | --- |\n| 1 | 2 |');
+  assert.ok(!doc.content.some((n) => n.type === 'table'), 'no table nodes (they blank the post)');
+  const cb = doc.content.find((n) => n.type === 'code_block');
+  assert.ok(cb, 'code block fallback present');
+  assert.ok(cb.content[0].text.includes('| A | B |'));
+});
+
+
+test('substack.markdownToProseMirrorDoc: inline <picture> blocks are hoisted to top level', () => {
+  const doc = substack.markdownToProseMirrorDoc(
+    'text before\n<picture><source srcset="l"><img src="https://inkpens.tech/sshot/x.png"></picture>\ntext after'
+  );
+  const img = doc.content.find((n) => n.type === 'captionedImage');
+  assert.ok(img, 'captionedImage at top level');
+  assert.ok(!JSON.stringify(doc.content.filter((n) => n.type === 'paragraph')).includes('captionedImage'),
+    'not nested inside a paragraph');
+});
+
+test('substack.markdownToProseMirrorDoc: re-hosted image map swaps srcs', () => {
+  const meta = { url: 'https://substack-post-media.s3.amazonaws.com/public/abc.png', bytes: 123, imageWidth: 1600, imageHeight: 900, contentType: 'image/png' };
+  const map = new Map([['https://inkpens.tech/sshot/x.png', meta], [meta.url, meta]]);
+  // Top-level html img AND inline img inside a paragraph (mdxToMarkdown emits
+  // the picture block without surrounding blank lines — it lands INLINE).
+  const doc = substack.markdownToProseMirrorDoc(
+    'before\n\n<img src="https://inkpens.tech/sshot/x.png" />\n\nafter\n\ntext with inline <img src="https://inkpens.tech/sshot/x.png" /> image',
+    map
+  );
+  const imgs = JSON.stringify(doc).match(/"type":"image2"/g) ?? [];
+  assert.ok(imgs.length >= 2, `found ${imgs.length} image2 nodes`);
+  assert.ok(!JSON.stringify(doc).includes('"src":"https://inkpens.tech'), 'all srcs re-hosted');
+  // The editor's real shape: captionedImage wrapping image2 with full attrs.
+  const first = JSON.stringify(doc.content);
+  assert.ok(first.includes('"type":"captionedImage","content":[{"type":"image2","attrs":{"src":"https://substack-post-media'), 'captionedImage wraps image2');
+  assert.ok(first.includes('"width":1600'), 'carries width');
+});
+

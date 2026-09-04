@@ -134,7 +134,10 @@ export async function markdownToHtml(markdown) {
     // allowDangerousHtml: mdxToMarkdown may emit a raw <picture> node for themed
     // screenshot pairs. Without this, remark-rehype drops raw HTML to nothing,
     // losing the image entirely on the Medium/Substack paste path.
-    .use(remarkRehype, { allowDangerousHtml: true })
+    // allowDangerousProtocol: the rich cross-post package embeds tables and
+    // rendered LaTeX as data-URI images; the default URL transform empties
+    // any non-http(s) src. Content is our own blogs — not untrusted input.
+    .use(remarkRehype, { allowDangerousHtml: true, allowDangerousProtocol: true })
     .use(rehypeStringify, { allowDangerousHtml: true })
     .process(markdown);
   return String(output);

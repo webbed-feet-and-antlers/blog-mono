@@ -325,3 +325,19 @@ class LectureSessionOut(BaseModel):
 class LectureSessionDetail(LectureSessionOut):
     audio_doc: DocumentOut | None = None
     slides_doc: DocumentOut | None = None
+
+
+# --- Knowledge graph (concepts + edges) ---
+
+
+class ConceptCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    module_id: str | None = None
+
+
+class ConceptEdgeCreate(BaseModel):
+    """target is a concept NAME (concepts are name-keyed in the mastery
+    store, so names are the stable handle the UI has)."""
+    target: str = Field(min_length=1, max_length=200)
+    relation: Literal["prerequisite", "part_of", "related"]

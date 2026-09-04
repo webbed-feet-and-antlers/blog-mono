@@ -16,9 +16,13 @@ on:
         type: boolean
         default: true
       blog:
-        description: "Blog slug to force (re)syndicate; empty = all unpublished"
+        description: "Blog slug to scope to; empty = all unpublished (already-posted platforms still skip)"
         required: false
         default: ""
+      force:
+        description: "Force — re-post/re-draft every platform for the selected blog"
+        type: boolean
+        default: false
 
 permissions:
   contents: write # to commit syndication IDs back into blog frontmatter
@@ -68,7 +72,8 @@ jobs:
         run: |
           node scripts/syndicate.mjs \
             --dry-run=${{ inputs.dry_run }} \
-            --blog=${{ inputs.blog }}
+            --blog=${{ inputs.blog }} \
+            --force=${{ inputs.force }}
         env:
           SITE_URL: ${{ vars.SITE_URL || 'https://inkpens.tech' }}
           # Public origin where OG images are served (for Buffer/X image attachment).
@@ -101,10 +106,30 @@ jobs:
       # Record returned IDs back into frontmatter AND commit the auto-generated
       # component screenshots (they live in public/sshot and are served by Pages
       # — they must be permanent since dev.to/Medium hotlink rather than re-host).
-      # Skipped on dry-run. workflow_dispatch-only, so the commit won't retrigger.
-      - name: Commit syndication IDs + screenshots
+      # Skipped on dry-run.
+      #
+      # main is protected ("changes must be made through a pull request") and —
+      # empirically — no CI credential (GITHUB_TOKEN, fine-grained or classic
+      # PAT as the owner) is granted the ruleset bypass, only the owner's local
+      # git credential is. So the record-commit lands on the UNPROTECTED
+      # chore/syndicate-records branch, and `task posse:merge-records` merges
+      # it into main locally with working credentials (one command, part of the
+      # post-publish flow in docs/syndication.md). Posting NEVER depends on
+      # this step — on failure it warns and the run stays green.
+      - name: Record syndication IDs + screenshots
         if: ${{ inputs.dry_run == false }}
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "chore(syndicate): record cross-post IDs + screenshots"
-          file_pattern: "blogs/*.mdx blogs/*.md site/public/sshot/*.png"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          [ -d blogs ] && git add blogs
+          [ -d site/public/sshot ] && git add site/public/sshot
+          if git diff --cached --quiet; then
+            echo "Nothing to record."
+            exit 0
+          fi
+          git commit -m "chore(syndicate): record cross-post IDs + screenshots"
+          if git push --force origin HEAD:refs/heads/chore/syndicate-records; then
+            echo "::notice::Syndication records pushed to the chore/syndicate-records branch. Merge locally with: task posse:merge-records"
+          else
+            echo "::warning::Could not push the syndication-records branch — IDs are in this run's log; re-record them manually if needed."
+          fi

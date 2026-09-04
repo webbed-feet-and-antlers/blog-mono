@@ -68,13 +68,16 @@ async def test_reflection_writes_insights(client, db, monkeypatch):
     assert insights["traits"] == ["evening studier", "flashcard-leaning"]
     assert insights["activities_seen"] == before + 30
 
-    # The prompt was grounded: system prompt + rendered packet with signals.
-    assert len(fake.calls) == 1
+    # Two LLM passes: generation, then the self-verify fact-check.
+    assert len(fake.calls) == 2
     system = fake.calls[0][0]["content"]
     assert "Base EVERY claim" in system
     user_prompt = fake.calls[0][1]["content"]
     assert "document.opened" in user_prompt  # activity-type counts
-    assert "hour_histogram_utc" in user_prompt
+    assert "active hours (UTC)" in user_prompt
+    verify_system = fake.calls[1][0]["content"]
+    assert "fact-checker" in verify_system
+    assert "DATA PACKET" in fake.calls[1][1]["content"]
 
 
 async def test_reflection_cooldown_respected(client, db, monkeypatch):
@@ -91,7 +94,8 @@ async def test_reflection_cooldown_respected(client, db, monkeypatch):
     result = await reflection.reflect_on_learner(db, force=False)
     assert result["status"] == "skipped"
     assert "new activities" in result["reason"]
-    assert len(fake.calls) == 1  # no second call
+    # Still just the two passes from the forced run (generate + verify).
+    assert len(fake.calls) == 2
 
     # The cooldown endpoint reports skip without force.
     resp = await client.post("/api/memory/reflect?force=false")

@@ -13,11 +13,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..agent import planner
+from ..auth import get_current_user
 from ..db import get_session
 from ..models import StudyPlan
 from ..schemas import PlanGenerateRequest, PlanItemPatch, StudyPlanOut
 
 router = APIRouter(prefix="/api", tags=["plans"])
+
+
+async def _get_owned_module(session: AsyncSession, module_id: str, user: str):
+    from ..models import Module
+
+    module = await session.get(Module, module_id)
+    if module is None or module.user_id != user:
+        raise HTTPException(status_code=404, detail="Module not found")
+    return module
 logger = logging.getLogger(__name__)
 
 
@@ -36,8 +46,11 @@ def _plan_out(plan: StudyPlan, staleness: dict) -> StudyPlanOut:
 
 @router.get("/modules/{module_id}/plan", response_model=StudyPlanOut)
 async def get_study_plan(
-    module_id: str, session: AsyncSession = Depends(get_session)
+    module_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
+    await _get_owned_module(session, module_id, user)
     found = await planner.get_plan_with_staleness(session, module_id)
     if found is None:
         raise HTTPException(status_code=404, detail="No plan for this module yet")
@@ -50,20 +63,18 @@ async def generate_plan(
     module_id: str,
     req: PlanGenerateRequest | None = None,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     """Generate or regenerate the module's study plan now.
 
     Optionally sets the module's exam date in the same call (the pacer's
     one manual input), then runs the planner.
     """
+    await _get_owned_module(session, module_id, user)
     if req is not None and "exam_date" in (req.model_fields_set or set()):
         from datetime import date as _date
 
-        from ..models import Module
-
-        module = await session.get(Module, module_id)
-        if module is None:
-            raise HTTPException(status_code=404, detail="Module not found")
+        module = await _get_owned_module(session, module_id, user)
         module.exam_date = req.exam_date
         await session.commit()
 
@@ -87,12 +98,13 @@ async def patch_plan_item(
     item_id: str,
     req: PlanItemPatch,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     """Manual check-off (or undo) for items the agent can't auto-detect."""
     from datetime import datetime, timezone
 
     plan = await session.get(StudyPlan, plan_id)
-    if plan is None:
+    if plan is None or plan.user_id != user:
         raise HTTPException(status_code=404, detail="Plan not found")
 
     for item in plan.items or []:

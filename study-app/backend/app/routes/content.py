@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..auth import get_current_user
 from ..db import get_session
 from ..models import ContentItem
 from ..schemas import ContentItemOut
@@ -19,12 +20,14 @@ async def list_content(
     document_id: str | None = Query(default=None),
     type: str | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     # Eager-load the parent document so callers can show which doc each item
     # belongs to without a second round-trip.
     stmt = (
         select(ContentItem)
         .options(selectinload(ContentItem.document))
+        .where(ContentItem.user_id == user)
         .order_by(ContentItem.created_at.desc())
     )
     if document_id is not None:
@@ -36,19 +39,25 @@ async def list_content(
 
 
 @router.get("/{content_id}", response_model=ContentItemOut)
-async def get_content(content_id: str, session: AsyncSession = Depends(get_session)):
+async def get_content(
+    content_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
+):
     item = await session.get(ContentItem, content_id)
-    if item is None:
+    if item is None or item.user_id != user:
         raise HTTPException(status_code=404, detail="Content item not found")
     return item
 
 
 @router.delete("/{content_id}", status_code=204)
 async def delete_content(
-    content_id: str, session: AsyncSession = Depends(get_session)
+    content_id: str,
+    session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     item = await session.get(ContentItem, content_id)
-    if item is None:
+    if item is None or item.user_id != user:
         raise HTTPException(status_code=404, detail="Content item not found")
     await session.delete(item)
     await session.commit()

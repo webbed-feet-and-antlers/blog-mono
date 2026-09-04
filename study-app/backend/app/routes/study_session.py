@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import get_current_user, user_ref_id
 from ..agent import memory as memory_store
 from ..agent import fsrs_scheduler
 from ..db import get_session
@@ -91,7 +92,10 @@ async def compose_session(
 
     # 1. Load all flashcard cards across all documents (or scoped to one doc
     #    or one module — the module's doc set includes lesson docs).
-    stmt = select(ContentItem).where(ContentItem.type == "flashcards")
+    stmt = select(ContentItem).where(
+        ContentItem.type == "flashcards",
+        ContentItem.user_id == user_ref_id(),
+    )
     if req.scope == "document" and req.document_id:
         stmt = stmt.where(ContentItem.document_id == req.document_id)
     elif req.scope == "module" and req.module_id:
@@ -125,7 +129,7 @@ async def compose_session(
 
     # 3. Classify concepts: due (review) vs untested (new) vs mastered (skip).
     now = datetime.now(timezone.utc)
-    due_concepts: list[tuple[str, float]] = []  # (concept, retrievability)
+    due_concepts: list[tuple[str, float, bool]] = []  # (concept, risk, active)
     new_concepts: list[str] = []
     for concept, cards in concept_cards.items():
         entry = mastery.get(concept, {})
@@ -134,12 +138,18 @@ async def compose_session(
         if seen == 0 or not fsrs:
             new_concepts.append(concept)
         elif fsrs_scheduler.is_due(fsrs, now):
-            r = fsrs_scheduler.retrievability(fsrs, now) or 0.5
-            due_concepts.append((concept, r))
+            risk = fsrs_scheduler.failure_risk(entry, fsrs, now)
+            active = fsrs_scheduler.is_recently_active(
+                entry.get("last_attempt_ts"), now
+            )
+            due_concepts.append((concept, risk, active))
         # else: not due — skip (review later at the optimal time)
 
-    # Sort due concepts by retrievability ascending (most forgotten first).
-    due_concepts.sort(key=lambda x: x[1])
+    # Review slots fill recently-active concepts first (the learner's
+    # current orbit), then by failure risk within each tier — matching the
+    # recommender's due-deck ordering (see fsrs_scheduler.failure_risk and
+    # is_recently_active).
+    due_concepts.sort(key=lambda x: (x[2], x[1]), reverse=True)
 
     # 4. Compute mix ratio from recent accuracy (desirable difficulty).
     profile = await memory_store.get_learner_profile(session)
@@ -174,8 +184,8 @@ async def compose_session(
     # 5. Assemble cards.
     composed_cards: list[SessionCard] = []
 
-    # Review slots: most-forgotten concepts first, one card per concept.
-    for i, (concept, _) in enumerate(due_concepts[:review_count]):
+    # Review slots: active-orbit, highest-risk concepts first, one per concept.
+    for i, (concept, _, _) in enumerate(due_concepts[:review_count]):
         cards = concept_cards.get(concept, [])
         if not cards:
             continue

@@ -11,6 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import get_current_user
 from ..db import get_session
 from ..events import bus
 from ..events.domain import CardOutcome, FlashcardsReviewed
@@ -27,9 +28,10 @@ async def submit_flashcard_review(
     content_id: str,
     req: FlashcardReviewRequest,
     session: AsyncSession = Depends(get_session),
+    user: str = Depends(get_current_user),
 ):
     item = await session.get(ContentItem, content_id)
-    if item is None or item.type != "flashcards":
+    if item is None or item.type != "flashcards" or item.user_id != user:
         raise HTTPException(status_code=404, detail="Flashcard deck not found")
 
     # Build the outcome list — recovering the concept from the card itself

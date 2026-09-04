@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useUser } from "@clerk/clerk-react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Mic,
@@ -66,10 +67,13 @@ interface SlideTimestampState {
   audio_seconds: number;
 }
 
-const DRAFT_KEY = "study_app_recording_draft";
+const DRAFT_KEY_BASE = "study_app_recording_draft";
 const METER_SEGMENTS = 24;
 
 export function RecordPage() {
+  // Drafts are per-account — two people sharing a browser keep separate drafts.
+  const userId = useUser().user?.id ?? "anon";
+  const draftKey = `${DRAFT_KEY_BASE}:${userId}`;
   const navigate = useNavigate();
   const {
     isRecording,
@@ -122,7 +126,9 @@ export function RecordPage() {
   // Restore draft on mount
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(DRAFT_KEY);
+      const saved = localStorage.getItem(
+        draftKey,
+      );
       if (saved) {
         const draft = JSON.parse(saved);
         if (draft.title) setTitle(draft.title);
@@ -137,7 +143,10 @@ export function RecordPage() {
   // Save draft on edit
   useEffect(() => {
     if (title || notes) {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, notes }));
+      localStorage.setItem(
+        draftKey,
+        JSON.stringify({ title, notes }),
+      );
     }
   }, [title, notes]);
 
@@ -370,7 +379,9 @@ export function RecordPage() {
       lesson_id: lessonId ?? undefined,
     });
 
-    localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(
+      draftKey,
+    );
     setSaving(false);
     toast.success("Lecture saved", { description: sessionTitle });
     navigate({ to: "/lecture/$lectureId", params: { lectureId: session.id } });
@@ -390,7 +401,9 @@ export function RecordPage() {
       startPromiseRef.current = null; // discarded — don't trigger the save flow
       stop();
     }
-    localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(
+      draftKey,
+    );
     setShowLeaveModal(false);
     navigate({ to: "/" });
   }

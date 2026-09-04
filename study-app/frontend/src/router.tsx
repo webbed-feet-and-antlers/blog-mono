@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "./components/Sidebar";
+import { LoginPage, RequireAuth, SignupPage } from "./components/Auth";
 import { RecommendationPanel } from "./components/RecommendationPanel";
 import { DocTabView, pendingGenerate } from "./components/DocTabView";
 import { RecordPage } from "./components/RecordPage";
@@ -39,7 +40,8 @@ const queryClient = new QueryClient({
 
 // Routes that render as focused, full-screen experiences (recorder, lecture
 // playback, study session) get no sidebar — the page owns its own layout.
-const FOCUSED_ROUTES = ["/record", "/lecture", "/study"];
+// The auth pages render bare too (Clerk centers its own UI).
+const FOCUSED_ROUTES = ["/record", "/lecture", "/study", "/login", "/signup"];
 
 function Layout() {
   const navigate = useNavigate();
@@ -59,13 +61,16 @@ function Layout() {
 
   if (focused) {
     return providers(
-      <main className="main main-focused">
-        <Outlet />
-      </main>,
+      <RequireAuth>
+        <main className="main main-focused">
+          <Outlet />
+        </main>
+      </RequireAuth>,
     );
   }
 
   return providers(
+    <RequireAuth>
     <SidebarProvider
       style={
         { "--sidebar-width": "300px", "--sidebar-width-icon": "3rem" } as React.CSSProperties
@@ -93,6 +98,7 @@ function Layout() {
         </div>
       </SidebarInset>
     </SidebarProvider>,
+    </RequireAuth>,
   );
 }
 
@@ -215,8 +221,22 @@ const flashcardsRoute = createRoute({
   component: FlashcardsPage,
 });
 
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  component: LoginPage,
+});
+
+const signupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/signup",
+  component: SignupPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  loginRoute,
+  signupRoute,
   docRoute,
   docTabRoute,
   recordRoute,

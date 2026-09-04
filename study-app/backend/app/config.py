@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # changing OPENROUTER_MODEL (e.g. "anthropic/claude-sonnet-4",
     # "openai/gpt-4o", "google/gemini-flash-1.5").
     openrouter_api_key: str | None = None
-    openrouter_model: str = "deepseek/deepseek-v4-flash"
+    openrouter_model: str = "deepseek/deepseek-v4-flash-0731"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # Transcription — uses OpenRouter's /audio/transcriptions endpoint (same key,
@@ -29,13 +29,44 @@ class Settings(BaseSettings):
     # Evals (backend/evals/) — the judge is a *stronger* model than the
     # generator so a model never grades its own failure modes. Runs at
     # temperature 0 via the same OpenRouter client as everything else.
-    evals_judge_model: str = "deepseek/deepseek-v3.2"
+    evals_judge_model: str = "deepseek/deepseek-v4-flash-0731"
     evals_n: int = 10  # cases per suite (EVALS_N; a 25-case deep run takes hours)
 
     # Paths
     base_dir: Path = Path(__file__).resolve().parent.parent
     storage_dir: Path = base_dir / "storage"
     db_path: Path = base_dir / "study_app.db"
+    # The built SPA served by this same process in production (single
+    # origin). In dev the dir doesn't exist and the backend is API-only.
+    frontend_dist_dir: Path = base_dir.parent / "frontend" / "dist"
+
+    # Postgres (Supabase or any Postgres). Unset → SQLite at db_path, so
+    # local dev and tests need zero setup. Supabase's pooler strings
+    # (postgres://…:6543/…) are accepted as-is; the asyncpg driver is
+    # injected automatically. Use the transaction pooler (port 6543) for
+    # the app; alembic/migrations use the same URL via its session mode.
+    database_url: str | None = None
+
+    # Auth — Clerk (dashboard.clerk.com). The frontend holds the
+    # publishable key (VITE_CLERK_PUBLISHABLE_KEY) and sends the session
+    # JWT as a Bearer token (or ?token= for <img>/beacon URLs, which
+    # cannot carry headers); the backend verifies it with the secret key.
+    clerk_secret_key: str | None = None
+    # Origins allowed to hold Clerk sessions (the SDK's azp check). MUST
+    # include the production origin when shipping (env: JSON list), or
+    # every token 401s.
+    clerk_authorized_parties: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+    # CORS — the browser origins that may call the API (env: JSON list).
+    # Keep in sync with clerk_authorized_parties: one says "this origin
+    # may call us", the other "Clerk tokens from this origin are valid".
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
     # Proactive agent — a background job that learns from quiz misses and
     # pre-generates flashcard review decks for weak topics. Default OFF so
@@ -55,9 +86,23 @@ class Settings(BaseSettings):
     # descriptive title derived from the content. Descriptive names are kept.
     auto_rename_files: bool = True
 
-    # SQLite URL is derived from db_path.
+    # Activity-ledger retention: prune the newest N rows, delete the rest
+    # while logging. 5000 keeps SQLite lean; on Postgres set 0 to disable
+    # pruning entirely — the ledger is the agent's behavioral memory and
+    # storage is cheap there.
+    activity_ledger_max_rows: int = 5_000
+
+    # SQLite URL is derived from db_path; Postgres wins when DATABASE_URL
+    # is set (driver normalized to asyncpg in app.db).
     @property
     def db_url(self) -> str:
+        if self.database_url:
+            url = self.database_url
+            if url.startswith("postgres://"):
+                url = "postgresql+asyncpg://" + url[len("postgres://"):]
+            elif url.startswith("postgresql://"):
+                url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+            return url
         return f"sqlite+aiosqlite:///{self.db_path}"
 
 

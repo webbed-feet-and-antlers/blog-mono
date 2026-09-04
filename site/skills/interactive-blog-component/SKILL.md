@@ -29,7 +29,7 @@ The full class-pair table (card chrome, panels, borders, text tiers, brand accen
 5. **Root `<div>` must start with** `not-prose my-6 rounded-xl border border-zinc-800 bg-zinc-900 p-4 dark:border-zinc-200 dark:bg-zinc-50`. The `not-prose` is load-bearing (the blog body is wrapped in Tailwind Typography `prose`, which otherwise rewrites your buttons/inputs/SVGs).
 6. **Accessibility:** `role="img"` + descriptive `aria-label` on every meaningful SVG/chart; `aria-label` on icon-only or collapsed-text buttons; `<label>` wrappers on inputs; `focus-visible:ring-*` on interactive controls. See `references/component-spec.md` §5.
 7. **Use `font-mono`** for labels, stats, and parameter readouts (the "instrument panel" look); sans only for the card title. See §10.
-8. **Register for screenshots (4 edits):** to be screenshot-able for POSSE cross-posting, the component must be added in four places in `src/pages/sshot/[component]/[theme].astro` — import, `KNOWN` in `getStaticPaths`, page-scope `KNOWN`, and a `{component === 'Name' && <Name client:only="react" />}` render branch. See `references/component-spec.md` §7 for the exact pattern and *why* (Astro's `client:only` compiler needs a static import).
+8. **Register for screenshots (4 edits):** to be screenshot-able for POSSE cross-posting, the component must be added in four places in `src/pages/sshot/[component]/[theme].astro` — import, `KNOWN` in `getStaticPaths`, page-scope `KNOWN`, and a `{component === 'Name' && <Name client:only="react" />}` render branch. See `references/component-spec.md` §7 for the exact pattern and *why* (Astro's `client:only` compiler needs a static import). This registration matters twice over: besides cross-post images, the build pairs each island's committed screenshot (`/sshot/<name>-<slug>-dark.png`) with a `<noscript>` fallback on the live page (`scripts/inject-fallbacks.mjs`), so JS-less scrapers — Medium's importer, link previews — see the component instead of an empty mount point.
 9. **Embed in the blog:** `import Name from '../site/src/components/react/Name'` then `<Name client:visible />` in the MDX body.
 10. **Verify:** run `scripts/verify.sh <Name>` (from `site/`). It audits dark/light pairing, checks `not-prose`, flags charting-library imports, and confirms harness registration. Fix everything it reports.
 
@@ -47,6 +47,6 @@ The full class-pair table (card chrome, panels, borders, text tiers, brand accen
 - [ ] Every color class has its dark/light partner
 - [ ] SVGs have `role="img"` + `aria-label`; icon buttons have `aria-label`; inputs are labeled; controls have `focus-visible` rings
 - [ ] `font-mono` on labels/stats; Tailwind colors are full literals (never `bg-${x}-500`)
-- [ ] Harness edited in all 4 places
+- [ ] Harness edited in all 4 places (screenshots feed cross-posts AND the live-page `<noscript>` fallback)
 - [ ] Embedded in blog with `<Name client:visible />`
 - [ ] `scripts/verify.sh <Name>` passes
