@@ -1,0 +1,297 @@
+---
+title: 'AI Agent as the backend of a Product (not just another Chatbot)'
+description: 'An AI agent-based study app but with no chatbot. Every feature (quizzes, flashcards, study plans) runs through one agent that learns how you study, without writing prompts. The human interaction is buttons and UI, like any other app!'
+pubDate: 2026-07-30
+tags: ['ai', 'agents', 'edtech', 'langgraph']
+socialPost: 'We built an AI agent based study app, but with no chatbot. Quizzes, flashcards, and study plans all run through one agent that learns how you study, and we then evaluated it'
+social:
+  twitter:
+    - "Most 'AI-powered' apps bolt a chatbot onto a product that already worked just fine. We tried the opposite: a study app where the agent IS the product, and there is no chatbot interface, just buttons like a normal app."
+    - 'Students upload slides and record lectures and the app makes notes, quizzes, flashcards, and a study plan. No one ever types a prompt or has to shout at a chatbot. All the features and data feeds one agent, and the agent powers the features.'
+    - 'We used a LangGraph pipeline for every feature, a shared memory store, and a global event bus. Quiz answers, flashcard reviews, etc, and telemetry on how you use the app all become signals the agent uses.'
+    - 'It writes its own profile of how you study, when you work, what you abandon or struggle with, what you smash, etc and tailors everything it generates to you. The goal is to make a truly personalised product. You can read exactly what it thinks of you 😅.'
+    - 'Then we evaluated it against public benchmark datasets to improve the agent. Full writeup, product, architecture, and the evaluation results:'
+  bluesky:
+    - 'We built a study app where the agent is the product: no chatbot, no prompt box, just ordinary UI that works because an agent runs behind it.'
+    - 'Upload your slides, record your lectures, and it makes notes, quizzes, flashcards, and a study plan that adapts. One agent, one memory, learning how you study. The benchmarks then took us down a peg.'
+  mastodon: 'A study app with no chatbot and no prompt box: the agent is the engine, not a feature. Upload slides or record lectures and it generates notes, quizzes, flashcards, and an adaptive study plan — one agent, one memory store, learning how you study. When we benchmarked it against public datasets, the results humbled us (the recommender did no better than random).'
+  linkedin: |
+    Most "AI-powered" products bolt a chatbot onto an app that already worked fine. You get a floating widget, a prompt box, and a worse version of ChatGPT embedded in the UI.
+
+    We built a study app to test the opposite idea: the agent is the product, not a feature. There is no chatbot and no prompt box anywhere. Students upload slides, record lectures, and get notes, quizzes, flashcards, and a study plan that adapts as the semester goes on. Ordinary UI throughout — it all works because one agent runs silently behind it.
+
+    Under the hood, every feature flows through a single LangGraph pipeline with a shared memory store and an event bus. The agent keeps a narrative profile of how each student studies — when they work, what they abandon, what they ace — and uses it to personalise everything it generates.
+
+    Then we ran it against public benchmark datasets, and the results humbled us: recall calibration fell well short of target, and the recommendation engine performed no better than random selection.
+
+    Full write-up — product, architecture, and the evaluation results:
+---
+
+import ReActLoop from '../site/src/components/react/ReActLoop';
+import AgentBackbone from '../site/src/components/react/AgentBackbone';
+import SystemArchitecture from '../site/src/components/react/SystemArchitecture';
+import TelemetryPipeline from '../site/src/components/react/TelemetryPipeline';
+import AdaptivePlanner from '../site/src/components/react/AdaptivePlanner';
+
+The default way to add AI to a product is to bolt a chatbot onto something that already worked. Floating widget in the corner, one API endpoint wired up, and suddenly you can call it an ‘AI-powered’ app. The user types questions into a box, the model generates text, and if it's agentic it might see the current page or search your docs. Sometimes that helps. But I'd argue this only works when the original app was needlessly complicated — I've never heard anyone say “clicking this button has been working fine, but I wish I actually had to write a couple hundred word prompt into a chatbot instead”. Usually you just get a worse version of ChatGPT embedded in your interface.
+
+That's the easy path, so we wanted to test the opposite: what if **the agent is the product**, not a feature? What if every core interaction in a study tool — generating notes, taking quizzes, reviewing flashcards, organising a semester, pacing for an exam — feeds a single agent, and the agent feeds the features back? Hook the agent loop into the product loop, give it a compounding memory store, and see what happens. The user never talks to it and never types a prompt. They click buttons, flip flashcards, and watch progress bars — regular UI, doing its job better because an agent is running quietly underneath.
+
+Over the past while we've been building a study app to test that setup. It's a research test bed, not a polished product, and this post is the tour: the product first, then the architecture, then what happened when we pointed real benchmarks at it. (Spoiler: the benchmarks had opinions.) Deeper dives on each subsystem will follow in the series.
+
+## The product
+
+So, what did we build? A study app in the spirit of [StudyFetch](https://www.studyfetch.com/) or [turbo.ai](https://www.turbo.ai/): students upload or capture course content, AI processes it, and out come notes, flashcards, and quizzes. There's a deployed version at [study.inkpens.tech](https://study.inkpens.tech/) if you want to poke around. The difference is everything underneath, which is the rest of this post.
+
+Everything hangs off modules, which map to the modules on a university course. Create one — “BIO201 — Cell Biology” — give it a semester and academic year, and off you go. By default it files itself under your current semester, which the app can work out from the date, so it never asks. Older semesters stick around, just collapsed, keeping the focus on this term's work.
+
+Content attaches either to the module as a whole — the recommended textbook, say — or to a lesson, where it might be the lecture slides or the professor's notes. Lessons are simply a group of documents and recordings tied to one lecture. There isn't much to it, which is the point.
+
+![The modules page, grouped by semester with the current term expanded](/screenshots/study-app-agent/modules.png)
+
+**Uploads.** Drop in whatever the course hands you — slide decks, Word docs, spreadsheets, PDFs, etc. The app converts them into something viewable and, where it can, renames them to what they're actually about: `619ab3.pdf` means nothing to anyone, so it becomes something sensible. Each file gets analysed to produce a concept list and a prerequisite graph, and those feed everything downstream. New concepts automatically get a flashcard deck, fed straight into the global spaced-repetition system.
+
+Each module also gets a study plan, generated and kept up to date for you. Complete a task elsewhere in the app and the plan notices — items tick themselves off without anyone remembering to do it. As the semester rolls on, more lectures get recorded and more content lands, and the plan reshuffles itself to match. Students have enough to remember already.
+
+![Inside a module: the agent-written study plan on top, documents and lessons below](/screenshots/study-app-agent/module-view.png)
+
+![In the module, you can organise lessons and files](/screenshots/study-app-agent/module-files.png)
+
+**Generation.** Every document offers views on top of it — notes, quizzes, flashcards — plus the list of concepts detected in it, with optional hints to steer generation. Regenerating doesn't overwrite anything: versions stack, and you pick your favourite. Three different quizzes from the same slides? Go ahead. Quizzes are classic four-option multiple choice. Flashcards carry two or three phrasings per concept, so you learn the idea instead of memorising the card.
+
+![A generated quiz on a lecture document, one tab among the document's materials](/screenshots/study-app-agent/document-quiz.png)
+
+**Lectures.** The recording page puts slides on one side and notes on the other. Anything you type is timestamped and linked to the audio. Record from a microphone, from a browser tab playing an online lecture, or both. Stop recording and the audio is transcribed and flows through the same pipeline as an upload, with the recording, slides, transcript, and notes grouped as one lecture under the module. Over a semester this quietly adds up: every lecture becomes study material, and everything you do feeds the agent's picture of what you actually know.
+
+![The lecture recording page: slide preview, timestamped notes, source picker](/screenshots/study-app-agent/record.png)
+
+**Studying.** A session is the concepts you're about to forget, ranked by predicted recall, mixed with new material at a ratio that keeps you around 70–85% accurate — the sweet spot of **desirable difficulty**. Get 80% right and the dopamine keeps you engaged. The 20% you miss is what stretches you. Every answer updates a per-concept competency level and a spaced-repetition schedule, so the next session is built from everything before it.
+
+![A composed study session — review and new cards, flip to answer, self-grade](/screenshots/study-app-agent/study.png)
+
+**The visible model.** A dashboard lists every concept with its recall probability, filterable by weak, due, or mastered. Open a concept and you see every document, quiz question, and flashcard it appears in. The profile card is where it gets personal: a narrative profile the agent has written about you, built from your behaviour — when you study, how fast you answer, what you abandon, what you ace, what you struggle with. That profile is what tailors everything the agent generates. Reading exactly what an AI thinks of your study habits is quite the mirror.
+
+![The concepts dashboard: predicted recall per concept, due and weak filters](/screenshots/study-app-agent/concepts.png)
+
+!["How the agent sees you": the agent's narrative profile, written from the behaviour ledger](/screenshots/study-app-agent/mirror.png)
+
+!["Chart and statistics of what the user studies and where they are struggling, this is used as knowledge for the agent](/screenshots/study-app-agent/mirror-data.png)
+
+**What to do next.** The home page tells you what to focus on next, and every suggestion tells you why (“You recall Chlorophyll slowly, ~34s avg — a targeted quiz would tighten that”). Suggestions also carry today's item from the relevant study plan, paced against the exam date and rewritten as new content arrives. Take the suggested quiz and the plan item ticks itself off. Uploads nudge you to file things away at the point of upload, before the mess accumulates — and anything that ends up in the wrong place moves between modules in one step.
+
+![The home page: recommendations that cite their evidence and today's plan item](/screenshots/study-app-agent/home.png)
+
+There's a dark mode too, obviously.
+![The concepts dashboard in dark mode](/screenshots/study-app-agent/concepts-dark.png)
+
+None of this is a chat interface. There is no prompt box anywhere. The agent's work — scheduling, generating, ranking, narrating — surfaces as ordinary UI, and a user could go all semester without realising a unified agent is the engine. We could have built these features in isolation. But features keep affecting each other, and wiring them together by hand turns into spaghetti — we've all maintained that codebase. We also wanted the product to learn and grow with the student, tailoring everything to how they learn and what they struggle with. The best education is a great human tutor who adapts to you. This is an attempt to bottle some of what makes that work.
+
+## The agent spectrum
+
+To see why this app works the way it does, look at where agent design currently lives: developer tools. The standard pattern is the [ReAct](https://arxiv.org/abs/2210.03629) (Reason + Act) tool-calling loop, the engine inside tools like [Claude Code](https://www.anthropic.com/claude-code) and [Cursor](https://cursor.com).
+
+In an interactive coding tool, the loop looks like this — step through it, or press play:
+
+<ReActLoop client:visible />
+
+The loop works well for those tools because they get three things for free:
+
+1. **Explicit goals:** the user states a clear task in natural language, like “Fix the broken auth route.”
+2. **Clear feedback:** the environment answers immediately — unit tests pass, compiles fail.
+3. **Short sessions:** the agent runs in an isolated, context-free session until the work is done, with no need for global memory or any understanding of the user.
+
+### Why this doesn’t normally work in traditional apps
+
+In most consumer software, ours included, all three assumptions fall apart:
+
+- **Students shouldn't have to prompt.** Open the app, click buttons, review cards. Nobody wants to write a prompt for a basic interaction with a product.
+- **The environment isn't deterministic.** You can't run a unit test on someone's memory. Recall decays, focus drifts, answering speed wanders — the agent has to reason through all of it. Human learning is a far messier system than a code repo.
+- **Memory must last across sessions.** A chat history that resets when you close the window is fine for coding. A study app needs memory that survives semesters, tracking concept decay and study habits over months or years.
+
+<table>
+  <thead>
+    <tr>
+      <th>Interactive Command Agents (Claude Code, Cursor)</th>
+      <th>Ambient Domain Agents (this study app)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <ul>
+          <li>Prompt-driven & conversational</li>
+          <li>Synchronous execution loop</li>
+          <li>Deterministic terminal verifier (“Do unit tests pass?”)</li>
+          <li>Ephemeral session memory</li>
+        </ul>
+      </td>
+      <td>
+        <ul>
+          <li>UI-driven & invisible</li>
+          <li>Asynchronous event-driven graph</li>
+          <li>Continuous probabilistic feedback (“Did recall decay?”)</li>
+          <li>Compounding domain memory</li>
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+So instead of a terminal agent waiting for prompts, this app runs an **ambient agent**: it sits behind ordinary UI, receives events, updates a persistent model of you, and decides what study material to put in front of you next.
+
+## The shared backbone
+
+Rather than separate features with their own prompts, context, and API endpoints, every feature runs through a single pipeline:
+
+```
+analyze_document → plan → retrieve_memory → generate → validate → finalize
+```
+
+Underneath is [LangGraph](https://langchain-ai.github.io/langgraph/): the agent reads the document, plans its output, fetches what it knows about you, generates content, validates the structure, and saves the result. A **task_type** parameter decides which tool runs during generation — flashcards, quiz, notes summary — which is how one pipeline ends up serving every feature.
+
+You can trace a task through the pipeline — pick a task type and run it:
+
+<AgentBackbone client:visible />
+
+### The memory architecture
+
+Personalisation needs memory, and memory only counts if it's unified. So it all lives in one table: document analyses, concept mastery tallies, [FSRS](https://github.com/open-spaced-repetition/fsrs4anki/wiki/The-Algorithm) schedules, preferences, prerequisite graphs — everything, at every granularity from a single document up to the whole user.
+
+Keeping the store simple means a new signal can drop straight in, and the retrieve_memory node picks it up on the next generation. Since every feature writes to the same store, the agent's picture of you is never out of date.
+
+## Real accounts and multi-user
+
+The prototype had exactly one implicit user — every memory blob, document, and mastery tally belonged to whoever was at the keyboard.
+
+That's now gone: the app has real accounts through [Clerk](https://clerk.com), and identity reaches all the way down. Every table gained an owner column, the user-level memory keys by account, and every domain event carries the user it happened to — so when a quiz submission triggers six background reactions, they all run _as that student_, and the proactive agent iterates users one at a time. A dedicated test creates two users side by side and verifies neither can see the other's documents, memory, or mastery — the isolation is pinned, not assumed. The app is also moving to its own subdomain, served as a single container: one process, one origin, the API and the interface together.
+
+## System architecture
+
+Instead of microservices or a pile of disconnected LLM handlers, everything is organised into five layers around two things: a unified memory store and an **event bus**.
+
+<SystemArchitecture client:visible />
+
+The five layers, briefly:
+
+- **Ingestion and boundary handling:** incoming files (`.docx`, `.pptx`, raw audio recordings) become standardised PDFs for the user and plain markdown for the agent, before any internal processing runs.
+- **Shared agent backbone:** every generation task runs through the single LangGraph pipeline, backed by a generic key-value memory store (agent_memory).
+- **Asynchronous event bus:** decouples user interactions from background side effects — concept graph updates, review deck creation, profile updates all run independently. Any feature can hear about any action without anything explicitly calling it.
+- **Telemetry and recommendation engine:** captures client-side signals like reading dwell time and answer latency, and turns them into suggested study priorities.
+- **Evaluation harness:** runs pytest suites with [DeepEval](https://github.com/confident-ai/deepeval) against public datasets ([SciQ](https://allenai.org/data/sciq), [RACE](https://huggingface.co/datasets/ehovy/race), [Duolingo](https://github.com/duolingo/halflife-regression), [EdNet](https://github.com/riiid/ednet)), with a stronger LLM judge model measuring generation quality and memory calibration.
+
+## Key architectural deep dives
+
+### The event-driven architecture
+
+Features kept breeding features. Add a recording and it needs transcribing; once transcribed it's a text document, so it needs concept extraction; extraction surfaces new concepts, so flashcard decks need generating. If every feature has to explicitly trigger the next one, each accumulates responsibilities it never asked for. Our quiz submission handler ended up synchronously updating concept mastery, calculating FSRS schedules, updating user profiles, checking weak topics, and writing telemetry logs — one endpoint, five jobs. And if step four of five failed? Either retry everything, including the steps that already worked, or swallow the error and let it vanish inside the submission task. Neither is great.
+
+The fix was an event bus. Pure publish-and-subscribe: when something happens (a quiz is submitted), any feature that cares can listen and react (the FSRS schedule updates itself). Extending is just subscribing — if the FSRS updater also wants to hear about completed flashcards, it subscribes to that event too, and nothing else changes. The bus separates database commits from background side effects:
+
+```py
+# 1. Primary write commits synchronously
+session.add(quiz_attempt)
+await session.commit()
+
+# 2. Side effects publish asynchronously
+await bus.publish(QuizAttempted(
+user_id=user.id,
+quiz_id=quiz.id,
+answers=payload.answers,
+latency_ms=payload.latency_ms
+))
+```
+
+Subscribed handlers execute independently, wrapping their logic in isolated database sessions:
+
+```py
+@bus.subscribe(QuizAttempted)
+async def update_concept_mastery_handler(event: QuizAttempted):
+async with db.session_factory() as session:
+# Calculate FSRS update & concept tallies
+...
+await session.commit()
+```
+
+The system records every dispatch and result in an append-only **agent_events** ledger, so we have a full history of actions:
+
+| event_id  | event_type    | handler                | status | error           | timestamp            |
+| :-------- | :------------ | :--------------------- | :----- | :-------------- | :------------------- |
+| evt_10492 | QuizAttempted | update_concept_mastery | OK     | NULL            | 2026-08-18T08:12:01Z |
+| evt_10493 | QuizAttempted | trigger_proactive_deck | FAILED | LLMTimeoutError | 2026-08-18T08:12:02Z |
+
+### Passive telemetry and latency profiling
+
+Quizzes give us direct but infrequent data. Passive telemetry fills the gaps.
+The client collects events (document.opened, question.answered, session.abandoned) and ships them via [navigator.sendBeacon](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/sendBeacon) when the user leaves or a batch threshold is hit.
+
+<TelemetryPipeline client:visible />
+
+Answering latency adds context when merged into FSRS concept entries:
+
+$$
+\text{Mastery State} = f(\text{Accuracy}, \text{Latency}, \text{FSRS Stability})
+$$
+
+- **Fast + Correct:** Solid mastery.
+- **Slow + Correct:** Fragile mastery; needs spaced review.
+- **Fast + Incorrect:** Misconception; needs explanation.
+- **Slow + Incorrect:** Knowledge gap; needs foundational review.
+
+### Adaptive study plan engine
+
+Static study plans break the moment new material lands. Ours regenerate from the current state of the course, with throttling to keep token costs sane.
+
+<AdaptivePlanner client:visible />
+
+#### Updates and cooldowns
+
+When an event makes a plan outdated (Document Ingested, Quiz Attempted, and so on), the system logs why it's stale. Regeneration then runs under a strict **one-update-per-module-per-day** cooldown — otherwise every upload would mean a fresh regeneration, and the token bill would get ugly.
+
+```py
+if plan.is_stale and (now - plan.last_regenerated_at) > timedelta(hours=24):
+await regenerate_plan_task(module_id)
+```
+
+## Evaluation results
+
+The final phase replaced manual checking with an automated evaluation suite. Agents need tests for the same reason code does: you can only improve what you measure. Ten pytest suites ran the production pipelines against public datasets (SciQ, RACE, Duolingo, EdNet), with a stronger judge model at temperature zero doing the grading.
+
+The harness evaluates the current state of each core subsystem against strict benchmark gates:
+
+| Subsystem                        | Metric & Method                                        | Current Result                                                         |
+| -------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| **Retrievability Calibration**   | Brier score on 13M Duolingo traces                     | **≈ 0.08** _(gated against native FSRS power-law curve; Brier ≤ 0.12)_ |
+| **Recommender Lift**             | Net lift vs. random targeting on EdNet logs            | **+0.04 to +0.08** _(across train / val / held-out splits)_            |
+| **Reflection Faithfulness**      | LLM judge fact-checking score against grounding packet | **0.93** _(regression floor raised from 0.45 to 0.60)_                 |
+| **Planner Weak-First**           | Early review positioning rate for weak concepts        | **1.00** _(gated against a 0.60 minimum)_                              |
+| **Quiz Distractor Plausibility** | Judge evaluation of distractor quality                 | **0.98** _(gated against a 0.65 minimum)_                              |
+| **Notes Key-Point Coverage**     | Extraction coverage of core source concepts            | **0.91**                                                               |
+
+### Subsystem architecture & implementation details
+
+How each subsystem holds its numbers:
+
+- **Retrievability:** delegates recall probability, $P = \left(1 + \frac{F \cdot t}{S}\right)^{-1}$, to the native FSRS power-law library rather than an exponential decay approximation, and the suite continuously gates the wrapper on absolute calibration bars (Brier ≤ 0.12, log-loss ≤ 0.50) so the formula can't regress.
+- **Recommender Engine:** ranks due concepts touched in the last 7 days ahead of long-idle ones, weakest-first within each recency tier. That stops long-abandoned material skewing the evaluation windows and holds positive lift across all data splits.
+- **Reflection & Grounding:** renders input data as labeled sections rather than raw JSON, puts explicit constraints on absolute counts in the prompt, and runs a second pass at temperature zero to fact-check claims against the grounding packet, dropping anything unsupported.
+- **Planner Enforcement:** validates the model's output deterministically after generation. If weak concepts aren't reviewed early or minute budgets are exceeded, the wrapper auto-regenerates or injects the required review items itself.
+- **Data Splitting & Gate Hygiene:** all system constants are fit on training splits, validated once, and evaluated on a single held-out run. Gates that fell within sampling noise — statistically indefensible ones — have been removed from the harness.
+
+## Next steps
+
+Our intention for building this was twofold: first, we wanted to explore these ideas around AI agent-driven products and ideas around EdTech. But we also wanted a realistic app that can act as a test bed for future experiments and research, allowing us to plug in and apply much of our current exploration into a real app. We're planning many more future posts building out various elements of our prototype study app. Some of the things we are currently working on and researching:
+
+- **Custom embeddings solutions** and runtimes to allow for fast, cheap, scalable and high-quality information processing, grouping and recall/searching. We'll also explore more interesting ways to integrate this with agents beyond simple RAG, with agentic searching and tool use
+- **Self-hosted transcription models** for significantly faster and cheaper transcription. Plus ways we can measure ASR quality and boost accuracy, especially in challenging audio situations
+- **Knowledge graph extraction without LLMs**, allowing us to have fast, cheap and scalable concept and relationship extraction
+- **Agent sandboxes and runtimes**, exploring ideas around neuro-symbolic AI and improving AI quality by integrating tooling like algebra and maths solvers or physics simulators
+- **Automatically aligning slides** in a presentation to audio based on the transcript, allowing for grouping content based on the slides and associating a slide with a transcript section for deeper context
+- **Tutor bots** and concepts around authentic practice, and bringing AI tutoring and learning into a student's existing workflow and life. It's inspired by [Andy Matuschak’s](https://andymatuschak.org/) brilliant [“How we might learn”](https://andymatuschak.org/hmwl/)
+- **OCR, document processing and accessibility** research, including PDF accessibility remediation, with open-source tooling like [Docling](https://github.com/docling-project/docling). Self-hosted and managed for lower cost and scalable document handling
+- **Fine-tuning small models** for extremely fast summarisation and wiki-fication. Combining with the knowledge graph extraction, this lets us build evergreen AI-generated wikis about any concept, constantly up to date based on the content the students have captured. The fine-tuning is important to allow us to use smaller models and to get human-sounding writing rather than ‘AI slop’ text
+- **Deep dive into quiz generation**, quality and evaluations. Fine-tuning small models to generate ideal quizzes and looking into automatic short-answer grading research for different quiz modalities
+- **Further research on recommendation systems** and behavioural modelling to better recommend actions and schedule work for the student, based on their behaviour. Building a notification system to encourage students to engage with their learning and content, gamifying it, similar to Duolingo
+
+As you can see, there is a lot we are working on in this space, and this series will continue long-term, whilst also publishing other content! In the meantime, we are planning to publish more blog posts that go deeper into how and why we built our current prototype as we did. Hopefully these, or our future research and blogs, sound interesting. If you want to be updated when we release them, you can follow us on [X](https://x.com/theinkpens), [Bluesky](https://bsky.app/profile/theinkpens.bsky.social), or [Mastodon](https://mastodon.social/@theinkpens), or subscribe on [Substack](https://theinkpens.substack.com/) - whichever suits you.
+
+Again the app itself is available at [study.inkpens.tech](https://study.inkpens.tech/) if you want to poke around, and the code is open-source on [GitHub](https://github.com/webbed-feet-and-antlers/blog-mono/study-apphttps://github.com/webbed-feet-and-antlers/blog-mono/tree/main/study-app)

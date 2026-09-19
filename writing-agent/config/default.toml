@@ -5,6 +5,11 @@ draft = "anthropic/claude-sonnet-5"
 # Must return chat-completions logprobs (probed 2026-09). Anthropic models
 # never expose logprobs; the OpenAI -latest family does.
 scorer = "~openai/gpt-mini-latest"
+# Embeddings for the semantic-glide gate (verified live on OpenRouter).
+embedder = "openai/text-embedding-3-small"
+# Optional second observer for cross-model corroboration (any family, no
+# logprobs needed). Empty = disabled. Try e.g. "google/gemini-2.5-flash".
+observer = ""
 
 [sampling]
 architect_temp = 0.2
@@ -26,6 +31,17 @@ deep_syntax_min_per_block = 1
 # posts: uv run wa score x.md --calibrate-dir references/
 continuation_overlap_max = 0.55
 continuation_bits_max = 0.9
+# Multi-sample convergence: 3 blind samples at temperature 0.8; flag when
+# they agree on >= 50% of tokens (Fast-DetectGPT curvature, adapted).
+continuation_convergence_max = 0.5
+# Tier 1: cross-section redundancy (4-gram Jaccard between section pairs)
+# and doc-level surprisal SD across blocks (needs >= 4 scored blocks).
+redundancy_jaccard_max = 0.25
+surprisal_sd_min = 0.15
+# Semantic glide: adjacent-section embedding distance needs at least one
+# dip below this (humans introduce shifts; models elaborate smoothly).
+semantic_step_min = 0.12
+observer_corroboration_min = 0.5
 max_revisions = 3
 # Discourse-shape gate (StoryScope, arXiv:2604.03136). Summary/lesson
 # markers are banned outright; docs >= 400 words need temporal texture and

@@ -183,7 +183,12 @@ the continuation — no commentary, no quotation marks, no headings.
 
 
 async def chat_score(
-    prefix: str, *, model: str | None = None, max_tokens: int = 300
+    prefix: str,
+    *,
+    model: str | None = None,
+    max_tokens: int = 300,
+    temperature: float = 0.0,
+    logprobs: bool = True,
 ) -> tuple[str, list[float]]:
     """Prefix-continuation scoring call → (continuation_text, token_logprobs).
 
@@ -193,19 +198,23 @@ async def chat_score(
     OpenRouter: every model returns logprobs=null and logprobs>=1 requests
     are mistranslated — probed 2026-09). Logprobs are requested but
     optional; providers that omit them yield [] and the caller falls back
-    to overlap-only scoring. Logprobs are natural-log units.
+    to overlap-only scoring. Logprob params are omitted entirely when
+    `logprobs=False` — some providers 400 on the parameter itself, which
+    is how the observer model calls in. Logprobs are natural-log units.
     """
     client = _get_client()
     resolved = model or get_settings().models.scorer
     t0 = time.monotonic()
-    response = await client.chat.completions.create(
-        model=resolved,
-        messages=[{"role": "user", "content": _SCORE_PROMPT.format(doc=prefix)}],
-        temperature=0.0,
-        max_tokens=max_tokens,
-        logprobs=True,
-        top_logprobs=1,
-    )
+    request: dict[str, Any] = {
+        "model": resolved,
+        "messages": [{"role": "user", "content": _SCORE_PROMPT.format(doc=prefix)}],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if logprobs:
+        request["logprobs"] = True
+        request["top_logprobs"] = 1
+    response = await client.chat.completions.create(**request)
     choice = response.choices[0]
     text = choice.message.content or ""
     lps: list[float] = []
@@ -221,3 +230,22 @@ async def chat_score(
         len(lps),
     )
     return text, lps
+
+
+async def embed(texts: list[str], *, model: str | None = None) -> list[list[float]]:
+    """Batched embeddings via OpenRouter's /embeddings endpoint (verified
+    live 2026-09; the models catalog doesn't tag embedding models, so the
+    ID is trusted as config). One call per document — negligible cost."""
+    client = _get_client()
+    resolved = model or get_settings().models.embedder
+    t0 = time.monotonic()
+    response = await client.embeddings.create(model=resolved, input=texts)
+    vectors = [d.embedding for d in response.data]
+    logger.info(
+        "embed ok: model=%s took=%.1fs n=%d dims=%d",
+        resolved,
+        time.monotonic() - t0,
+        len(vectors),
+        len(vectors[0]) if vectors else 0,
+    )
+    return vectors

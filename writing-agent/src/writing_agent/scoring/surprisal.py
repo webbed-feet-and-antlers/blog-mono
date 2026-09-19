@@ -19,6 +19,7 @@ prompt, so there is no answer-in-prompt leak.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import re
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 PEAK_BITS = 4.0
 _PREFIX_CHARS = 2500
+SAMPLE_TEMPERATURE = 0.8
 
 
 def stats_from_logprobs(logprobs: list[float]) -> dict[str, Any]:
@@ -83,6 +85,11 @@ async def score_blocks(
     *,
     overlap_max: float = 0.55,
     bits_max: float = 1.2,
+    sd_min: float = 0.15,
+    convergence_max: float = 0.5,
+    samples: int = 3,
+    observer_model: str = "",
+    corroboration_min: float = 0.5,
     llm=chat_score,
 ) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
@@ -105,30 +112,108 @@ async def score_blocks(
             text, lps = await llm(prefix)
             overlap = token_overlap(text, target)
             bits = stats_from_logprobs(lps)["mean_bits"] if lps else None
-            # Primary signal: a blind model continues slop contexts
-            # over-confidently (measured gap: ~0.6 bits on generic prose
-            # vs ~1.1 on distinctive prose). Overlap is only the fallback
-            # when the provider returns no logprobs.
+
+            # Fast-DetectGPT-style curvature, adapted: sample several
+            # continuations at temperature and measure how much they agree
+            # with EACH OTHER. Machine-shaped contexts make the model
+            # converge on near-identical continuations; distinctive
+            # contexts produce genuinely different guesses.
+            agreement: float | None = None
+            if samples >= 2:
+                sampled = await asyncio.gather(
+                    *[
+                        llm(prefix, temperature=SAMPLE_TEMPERATURE)
+                        for _ in range(samples)
+                    ],
+                    return_exceptions=True,
+                )
+                sample_texts = [
+                    t
+                    for r in sampled
+                    if not isinstance(r, BaseException)
+                    for t, _ in [r]
+                ]
+                if len(sample_texts) >= 2:
+                    pairs = [
+                        (a, b)
+                        for i, a in enumerate(sample_texts)
+                        for b in sample_texts[i + 1 :]
+                    ]
+                    agreement = sum(
+                        (token_overlap(a, b) + token_overlap(b, a)) / 2
+                        for a, b in pairs
+                    ) / len(pairs)
+
             if bits is not None:
                 failed = bits <= bits_max
             else:
                 failed = overlap >= overlap_max
+
+            # Optional Binoculars-style second observer (different model
+            # family, no logprobs needed): textual overlap between its
+            # continuation and the primary's. Corroborated predictability
+            # is stronger evidence than single-model predictability.
+            corroboration: float | None = None
+            if observer_model:
+                try:
+                    obs_text, _ = await llm(
+                        prefix, model=observer_model, temperature=0.0, logprobs=False
+                    )
+                    corroboration = token_overlap(obs_text, text)
+                except Exception as exc:
+                    logger.warning("observer call failed: %r", exc)
+
+            if agreement is not None and agreement >= convergence_max:
+                failed = True
+            if (
+                corroboration is not None
+                and corroboration >= corroboration_min
+                and agreement is not None
+                and agreement >= convergence_max
+            ):
+                failed = True
             reason = None
             if failed:
-                reason = (
-                    f"continuation predictability: blind scorer continued "
-                    f"this context at {bits:.2f} bits mean surprisal "
-                    f"(<= {bits_max}) — statistically normalized register"
-                    if bits is not None
-                    else f"blind scorer reproduced {overlap:.0%} of this "
-                    f"block — statistically normalized register"
-                )
+                if (
+                    corroboration is not None
+                    and corroboration >= corroboration_min
+                ):
+                    reason = (
+                        f"cross-model convergence: two model families agree "
+                        f"on where this text goes (observer overlap "
+                        f"{corroboration:.0%}"
+                        + (
+                            f", samples agree on {agreement:.0%}"
+                            if agreement is not None
+                            else ""
+                        )
+                        + ")"
+                    )
+                elif agreement is not None and agreement >= convergence_max:
+                    reason = (
+                        f"convergent continuations: {len(sample_texts)} blind "
+                        f"samples agree on {agreement:.0%} of tokens — the "
+                        f"model already knows where this text goes"
+                    )
+                elif bits is not None:
+                    reason = (
+                        f"continuation predictability: blind scorer continued "
+                        f"this context at {bits:.2f} bits mean surprisal "
+                        f"(<= {bits_max}) — statistically normalized register"
+                    )
+                else:
+                    reason = (
+                        f"blind scorer reproduced {overlap:.0%} of this "
+                        f"block — statistically normalized register"
+                    )
                 flagged.append(idx)
             results.append(
                 {
                     "block_index": idx,
                     "overlap": overlap,
                     "mean_bits": bits,
+                    "agreement": agreement,
+                    "corroboration": corroboration,
                     "n_gen_tokens": len(lps),
                     "failed": failed,
                     "reason": reason,
@@ -142,11 +227,35 @@ async def score_blocks(
             "blocks": [],
             "flagged_blocks": [],
         }
+    # Doc-level predictability burstiness (GPTZero-style): human writing's
+    # per-block surprisal VARIES; uniformly predictable documents read
+    # machine even when each block individually clears the bits gate.
+    burstiness: dict[str, Any] | None = None
+    bits_values = [r["mean_bits"] for r in results if r["mean_bits"] is not None]
+    if len(bits_values) >= 4:
+        mean_bits_doc = sum(bits_values) / len(bits_values)
+        bits_sd = (sum((x - mean_bits_doc) ** 2 for x in bits_values) / len(bits_values)) ** 0.5
+        burstiness = {"bits_sd": bits_sd, "sd_min": sd_min, "failed": bits_sd < sd_min}
+        if burstiness["failed"]:
+            flattest = min(
+                (r for r in results if r["mean_bits"] is not None),
+                key=lambda r: r["mean_bits"],
+            )
+            flattest["failed"] = True
+            flattest["reason"] = (
+                f"uniformly predictable document: per-block surprisal SD "
+                f"{bits_sd:.2f} < {sd_min}; this is the flattest block "
+                f"({flattest['mean_bits']:.2f} bits) — make something here "
+                f"surprise the reader"
+            )
+            if flattest["block_index"] not in flagged:
+                flagged.append(flattest["block_index"])
     return {
         "skipped": False,
         "warning": None,
         "blocks": results,
-        "flagged_blocks": flagged,
+        "flagged_blocks": sorted(flagged),
+        "bits_burstiness": burstiness,
     }
 
 

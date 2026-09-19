@@ -35,6 +35,10 @@ def test_route_finalize_at_max_revisions():
     assert route_after_audit({"flagged_blocks": [1], "revision_count": 3}) == "finalize"
 
 
+async def _passing_semantic(blocks, *, step_min=0.12):
+    return {"skipped": True, "warning": "disabled in test", "steps": []}
+
+
 async def test_audit_merges_lint_and_surprisal_flags():
     state = {
         "draft_blocks": [
@@ -47,7 +51,9 @@ async def test_audit_merges_lint_and_surprisal_flags():
         ],
     }
     flag = {"on": True}
-    out = await audit_node(state, scorer=_fake_scorer_factory(flag))
+    out = await audit_node(
+        state, scorer=_fake_scorer_factory(flag), semantic=_passing_semantic
+    )
     assert set(out["flagged_blocks"]) == {0, 1}  # lint flagged 1, surprisal 0
     assert out["surprisal_report"]["flagged_blocks"] == [0]
 
@@ -64,7 +70,9 @@ async def test_audit_doc_level_transition_failure_flags_prose():
             "before the evaluator walks the tree that was just built.",
         ],
     }
-    out = await audit_node(state, scorer=_fake_scorer_factory({"on": False}))
+    out = await audit_node(
+        state, scorer=_fake_scorer_factory({"on": False}), semantic=_passing_semantic
+    )
     # transition openings across 3 paragraphs → density 1.0 → doc fails;
     # transition blocks 1..3 are flagged so the editor has targets
     assert out["flagged_blocks"] == [1, 2, 3]

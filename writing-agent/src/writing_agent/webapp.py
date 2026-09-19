@@ -29,7 +29,18 @@ from .lint.banned_tokens import load_patterns
 from .lint.report import run_all_linters
 from .llm import chat
 from .nodes.editor import editor_node
-from .scoring.discourse import analyze_discourse
+from .scoring.discourse import (
+    AI_CONTROLS,
+    analyze_discourse,
+    authorship_distance,
+    human_score,
+    project_narrative_space,
+    rarity_percentiles,
+    shape_axes,
+    shape_metrics,
+    trigram_novelty,
+)
+from .scoring.semantic import axis_value, semantic_report
 from .scoring.surprisal import score_blocks
 from .segment import slugify, split_blocks
 
@@ -244,13 +255,91 @@ async def score(req: MarkdownRequest):
         split_blocks(req.markdown),
         overlap_max=t.continuation_overlap_max,
         bits_max=t.continuation_bits_max,
+        convergence_max=t.continuation_convergence_max,
     )
 
 
 @app.post("/api/shape")
 async def shape(req: MarkdownRequest):
     """StoryScope-style discourse-shape audit of the current editor text."""
-    return await analyze_discourse(split_blocks(req.markdown), get_settings().thresholds)
+    report = await analyze_discourse(split_blocks(req.markdown), get_settings().thresholds)
+    report["semantic"] = await semantic_report(
+        split_blocks(req.markdown), step_min=get_settings().thresholds.semantic_step_min
+    )
+    return report
+
+
+@app.post("/api/shape/compare")
+async def shape_compare(req: MarkdownRequest):
+    """Graph data: radar axes + PCA narrative space for the editor text,
+    saved drafts, human references, and an AI-shaped control sample."""
+    current_blocks = split_blocks(req.markdown)
+    docs: list[tuple[str, str, list[str]]] = [("current", "current", current_blocks)]
+
+    for folder, group in (
+        (get_settings().workspace_dir, "draft"),
+        (CONFIG_DIR.parent / "references", "human"),
+    ):
+        if not folder.exists():
+            continue
+        for f in sorted(folder.glob("*.md")):
+            if f.name.endswith(".scorecard.md") or f.name == "README.md":
+                continue
+            blocks = split_blocks(f.read_text())
+            if shape_metrics(blocks)["words"] >= 50:
+                docs.append((f.stem, group, blocks))
+    for i, text in enumerate(AI_CONTROLS, start=1):
+        docs.append((f"AI control {i}", "ai", split_blocks(text)))
+
+    axes_list = [shape_axes(shape_metrics(blocks)) for _, _, blocks in docs]
+    # Genie-style novelty as the 9th axis, leave-one-out: each document is
+    # scored against the pooled 3-grams of every OTHER document.
+    for i, (_, _, blocks) in enumerate(docs):
+        corpus = [b for j, (_, _, other) in enumerate(docs) if j != i for b in other]
+        axes_list[i]["Novelty"] = trigram_novelty(blocks, corpus)
+    # Semantic-jump axis (10th): embedding glide per document. Added to ALL
+    # docs or none — PCA vectors must stay uniform.
+    semantic_axes: list[float | None] = []
+    for _, _, blocks in docs:
+        try:
+            report = await semantic_report(
+                blocks, step_min=get_settings().thresholds.semantic_step_min
+            )
+            semantic_axes.append(axis_value(report))
+        except Exception:
+            semantic_axes.append(None)
+    if all(a is not None for a in semantic_axes):
+        for axes, value in zip(axes_list, semantic_axes):
+            axes["Semantic jumps"] = value
+    coords = project_narrative_space(axes_list)
+    rarities = rarity_percentiles([human_score(a) for a in axes_list])
+    payload_docs = [
+        {
+            "label": label,
+            "group": group,
+            "x": coords[i][0],
+            "y": coords[i][1],
+            "axes": axes_list[i],
+            "human_score": human_score(axes_list[i]),
+            "rarity": rarities[i],
+        }
+        for i, (label, group, _) in enumerate(docs)
+    ]
+
+    current_report = await analyze_discourse(
+        current_blocks, get_settings().thresholds
+    )
+    authorship = authorship_distance(
+        axes_list[0],
+        [axes_list[i] for i, (_, g, _) in enumerate(docs) if g == "human"],
+        [axes_list[i] for i, (_, g, _) in enumerate(docs) if g == "ai"],
+    )
+    return {
+        "axes_names": list(axes_list[0].keys()) if axes_list else [],
+        "docs": payload_docs,
+        "judge": current_report.get("judge"),
+        "authorship": authorship,
+    }
 
 
 @app.post("/api/fix")

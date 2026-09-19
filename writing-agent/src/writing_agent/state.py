@@ -19,6 +19,7 @@ class WritingState(TypedDict, total=False):
     lint_report: dict[str, Any]  # serialized LintReport (audit)
     surprisal_report: dict[str, Any]  # serialized surprisal report (audit)
     discourse_report: dict[str, Any]  # StoryScope shape report (audit)
+    semantic_report: dict[str, Any]  # embedding glide report (audit)
     flagged_blocks: list[int]
 
     # Loop control

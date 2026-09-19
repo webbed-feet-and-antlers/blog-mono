@@ -42,6 +42,30 @@ targeted editor loop plays `fix the failing tests`.
 | unresolved trade-offs | ≥ 1 (docs ≥ 400 words) | StoryScope: AI endings resolve internally |
 | lexical concentration (top-5 content words) | ≤ 18% | StoryScope: AI clusters in a narrow narrative space |
 | discourse judge axes | each < 0.7 | LLM-judged over-explaining / linearity / tidy resolution / abstraction |
+| cross-section redundancy | 4-gram Jaccard < 0.25 per section pair | AI re-explains instead of advancing (StoryScope over-explanation) |
+| surprisal SD across blocks | ≥ 0.15 bits (docs with ≥ 4 scored blocks) | GPTZero-style burstiness: uniform predictability reads machine |
+| convergent continuations | 3 blind samples at T=0.8 agree < 50% of tokens | Fast-DetectGPT curvature, adapted: machine contexts make models converge |
+| semantic glide | largest adjacent-section embedding step ≥ 0.12 | arXiv:2609.07920: humans introduce semantic shifts, models elaborate |
+
+**Novelty (Genie-style)** is reported rather than gated: the share of the
+draft's 3-grams absent from your references + AI controls + other drafts.
+It appears as the ninth radar axis in the Graph view and in `wa shape`.
+**Semantic jumps** (embedding glide, via OpenRouter's /embeddings endpoint
+with `openai/text-embedding-3-small`) is the tenth radar axis and gates in
+every audit pass.
+
+**Optional second observer** (Binoculars-style cross-model corroboration):
+set `models.observer` in `config/default.toml` to any chat model from a
+different family (no logprobs needed — try a Gemini or Llama `-latest`).
+When set, each scored block gets one extra continuation call; if the two
+families agree on where the text goes, flags are corroborated or added.
+Disabled (empty) by default.
+
+The **Graph** button adds the paper-style views: narrative-rarity percentile
+by group, narrative-space scatter with group centroids, and a radar profile.
+`wa shape` also prints an **authorship distance** — how much closer the text
+sits to your `references/` posts than to AI-shaped controls (needs posts in
+`references/`; ratio < 1 is human-side).
 
 Thresholds live in `config/default.toml`. Calibrate the surprisal gates
 against your own writing: drop human posts into `references/` and run

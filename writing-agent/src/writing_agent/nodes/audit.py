@@ -8,6 +8,7 @@ from typing import Any
 from ..config import get_settings
 from ..lint.report import BlockFailure, LintReport, run_all_linters
 from ..scoring.discourse import analyze_discourse
+from ..scoring.semantic import semantic_report
 from ..scoring.surprisal import score_blocks
 from ..segment import is_code_block, is_heading_block
 from ..state import WritingState
@@ -32,7 +33,10 @@ def _merge_failures(lint: LintReport, failures: list[dict[str, Any]]) -> None:
 
 
 async def audit_node(
-    state: WritingState, scorer=score_blocks, discourse=analyze_discourse
+    state: WritingState,
+    scorer=score_blocks,
+    discourse=analyze_discourse,
+    semantic=semantic_report,
 ) -> dict[str, Any]:
     blocks = state["draft_blocks"]
     settings = get_settings()
@@ -41,7 +45,23 @@ async def audit_node(
         blocks,
         overlap_max=settings.thresholds.continuation_overlap_max,
         bits_max=settings.thresholds.continuation_bits_max,
+        convergence_max=settings.thresholds.continuation_convergence_max,
+        observer_model=settings.models.observer,
+        corroboration_min=settings.thresholds.observer_corroboration_min,
     )
+    semantic_out = await semantic(
+        blocks, step_min=settings.thresholds.semantic_step_min
+    )
+    if semantic_out.get("failed") and semantic_out.get("flagged_blocks"):
+        _merge_failures(
+            lint,
+            [
+                {
+                    "block_index": semantic_out["flagged_blocks"][0],
+                    "reason": semantic_out["reason"],
+                }
+            ],
+        )
 
     flagged = sorted(set(lint.flagged_blocks) | set(surprisal["flagged_blocks"]))
     discourse_report = await discourse(blocks, settings.thresholds)
@@ -79,5 +99,6 @@ async def audit_node(
         "lint_report": lint.model_dump(),
         "surprisal_report": surprisal,
         "discourse_report": discourse_report,
+        "semantic_report": semantic_out,
         "flagged_blocks": flagged,
     }

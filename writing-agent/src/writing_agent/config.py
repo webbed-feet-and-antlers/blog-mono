@@ -21,6 +21,13 @@ class ModelSettings(BaseModel):
     # Must return chat-completions logprobs (probed 2026-09: the OpenAI
     # -latest family does; Anthropic models never do).
     scorer: str = "~openai/gpt-mini-latest"
+    # Embeddings for the semantic-glide gate (arXiv:2609.07920). Verified
+    # live on OpenRouter 2026-09; the catalog doesn't tag embedding models,
+    # so this ID is trusted as config.
+    embedder: str = "openai/text-embedding-3-small"
+    # Optional Binoculars-style second observer (different model family,
+    # no logprobs needed). Empty = disabled.
+    observer: str = ""
 
 
 class SamplingSettings(BaseModel):
@@ -43,6 +50,21 @@ class ThresholdSettings(BaseModel):
     # Token overlap is only the fallback when logprobs are unavailable.
     continuation_overlap_max: float = 0.55
     continuation_bits_max: float = 0.9
+    # Fast-DetectGPT-adapted: flag when 3 blind samples at temperature 0.8
+    # agree on >= this share of tokens (convergent continuations).
+    continuation_convergence_max: float = 0.5
+    # Tier-1 gates: cross-section 4-gram Jaccard (AI re-explains instead of
+    # advancing) and doc-level SD of per-block surprisal (uniform
+    # predictability reads machine — GPTZero-style burstiness).
+    redundancy_jaccard_max: float = 0.25
+    surprisal_sd_min: float = 0.15
+    # Semantic-glide gate (arXiv:2609.07920): adjacent-section embedding
+    # distance must dip below this at least once — humans introduce
+    # semantic shifts, models glide. Calibrate via references/.
+    semantic_step_min: float = 0.12
+    # Observer corroboration: cross-model continuation overlap at/above
+    # this upgrades or adds flags (only when models.observer is set).
+    observer_corroboration_min: float = 0.5
     max_revisions: int = 3
     # Discourse-shape gate (StoryScope, arXiv:2604.03136 — see
     # scoring/discourse.py). Docs under 400 words skip the timeline and

@@ -152,6 +152,189 @@ def shape_metrics(blocks: list[str]) -> dict[str, Any]:
     }
 
 
+# Deliberately AI-shaped control texts for the narrative-space graph and
+# rarity plot — each a different corporate register, same machine shape:
+# linear, tidy, over-explaining, repetitive lexicon. Multiple controls give
+# the "AI" group a distribution, the way StoryScope plots five model
+# authors against human writers.
+AI_CONTROLS = [
+    """## Why our platform wins
+
+Our platform delivers value across the organization through seamless
+integration. The platform provides a robust foundation for growth. Teams
+can leverage the platform to unlock new potential. The platform ensures
+seamless integration for every user across the industry. Furthermore, the
+roadmap continues to build on the platform foundation each quarter. The
+takeaway is that the platform is the key to long-term platform value.
+""",
+    """## Unlocking data-driven transformation
+
+In today's fast-paced digital landscape, organizations must navigate the
+complexities of digital transformation. A robust data strategy is crucial
+to note for modern enterprises seeking to unlock insights. Moreover,
+leveraging cutting-edge analytics empowers teams to delve into their data
+tapestry. In conclusion, a holistic data strategy is a testament to
+organizational readiness.
+""",
+    """## The future of intelligent security
+
+Security in the modern era demands a comprehensive approach. Our solution
+delivers seamless protection across the entire threat landscape. The
+solution provides robust controls, and the solution ensures compliance at
+every layer. Additionally, the solution empowers security teams to stay
+ahead of threats. The key takeaway is that intelligent security requires
+an intelligent solution built for intelligent enterprises.
+""",
+    """## Scaling engineering teams effectively
+
+Engineering leadership requires intentional investment in culture. Our
+framework provides the foundation for sustainable engineering growth.
+Teams that leverage the framework deliver value more consistently, and the
+framework ensures alignment across the organization. In short, the
+framework is the key to scaling engineering teams the right way.
+""",
+]
+
+# Back-compat alias (single control used by earlier versions).
+AI_CONTROL_TEXT = AI_CONTROLS[0]
+
+
+def trigram_novelty(target_blocks: list[str], corpus_blocks: list[str]) -> float:
+    """Genie-style novelty: the share of the target's distinct prose 3-grams
+    absent from the reference corpus (your posts + AI controls + other
+    drafts). Human posts keep saying things nobody in the corpus said;
+    aligned prose recombines known phrasing. 1.0 = fully novel."""
+    def grams(blocks: list[str]) -> set[str]:
+        text = " ".join(
+            b for b in blocks if not is_code_block(b) and not is_heading_block(b)
+        )
+        words = re.findall(r"[a-z0-9']+", text.lower())
+        return {" ".join(words[i : i + 3]) for i in range(len(words) - 2)}
+
+    tgt = grams(target_blocks)
+    if not tgt:
+        return 1.0
+    corpus = grams(corpus_blocks)
+    return len(tgt - corpus) / len(tgt)
+
+
+def human_score(axes: dict[str, float]) -> float:
+    """Composite human-shape score: mean of the normalized axes (1 = fully
+    human-shaped). The rarity plot ranks documents on this."""
+    vals = list(axes.values())
+    return sum(vals) / len(vals) if vals else 0.0
+
+
+def rarity_percentiles(scores: list[float]) -> list[float]:
+    """Rank-based percentile of each score within the pooled list (StoryScope
+    Figure 5's 'rarity percentile vs. train+val', with the pooled corpus
+    standing in for the reference population). 1.0 = more human-shaped than
+    everything else in the pool. Ties share the lower rank."""
+    n = len(scores)
+    if n < 2:
+        return [1.0] * n
+    ranked = sorted(scores)
+    return [ranked.index(s) / (n - 1) for s in scores]
+
+
+def authorship_distance(
+    current: dict[str, float],
+    humans: list[dict[str, float]],
+    controls: list[dict[str, float]],
+) -> dict[str, Any] | None:
+    """Nearest-centroid authorship check over the shape-axis space: how much
+    closer does this document sit to YOUR writing than to machine-shaped
+    text? ratio < 1 means human-side. None when there are no human
+    references (honest refusal rather than a one-sided guess)."""
+    if not humans or not controls or not current:
+        return None
+    names = list(current.keys())
+
+    def centroid(vectors: list[dict[str, float]]) -> dict[str, float]:
+        return {n: sum(v[n] for v in vectors) / len(vectors) for n in names}
+
+    def dist(a: dict[str, float], b: dict[str, float]) -> float:
+        return sum((a[n] - b[n]) ** 2 for n in names) ** 0.5
+
+    human_centroid = centroid(humans)
+    ai_centroid = centroid(controls)
+    human_dist = dist(current, human_centroid)
+    ai_dist = dist(current, ai_centroid)
+    ratio = human_dist / ai_dist if ai_dist else float("inf")
+    return {
+        "human_dist": round(human_dist, 3),
+        "ai_dist": round(ai_dist, 3),
+        "ratio": round(ratio, 3),
+        "verdict": "human-side" if ratio < 1.0 else "machine-side",
+    }
+
+# Radar axes: 1.0 = human-shaped. Caps are saturation points, not gates —
+# they just keep the polygon inside the chart. Calibrate against your own
+# posts and adjust in config if the shape looks wrong.
+_AXIS_CAPS = {
+    "temporal": 2.0,      # temporal+retro markers per 1k words
+    "unresolved": 3.0,    # marker count
+    "incidents": 3.0,     # first-person incident anchors per 1k
+    "reader": 5.0,        # second-person address per 1k
+    "fragments": 3.0,     # sentence fragments per 1k
+    "sections": 40.0,     # section-length SD in words
+    "lexicon": 0.30,      # top-5 content share (inverted)
+    "summaries": 3,       # summary-marker blocks (inverted)
+}
+
+
+def shape_axes(metrics: dict[str, Any]) -> dict[str, float]:
+    """Normalized 0-1 human-shape axes for the radar/PCA graph."""
+
+    def sat(v: float, cap: float) -> float:
+        return max(0.0, min(1.0, v / cap))
+
+    return {
+        "Temporal texture": sat(
+            metrics["temporal_jumps_per_1k"] + metrics["retro_explanations_per_1k"],
+            _AXIS_CAPS["temporal"],
+        ),
+        "Unresolved ends": sat(metrics["unresolved_markers"], _AXIS_CAPS["unresolved"]),
+        "Incident anchors": sat(
+            metrics["incident_anchors_per_1k"], _AXIS_CAPS["incidents"]
+        ),
+        "Reader address": sat(
+            metrics["reader_address_per_1k"], _AXIS_CAPS["reader"]
+        ),
+        "Fragments": sat(metrics["fragments_per_1k"], _AXIS_CAPS["fragments"]),
+        "Section variance": sat(
+            metrics["section_length_sd"], _AXIS_CAPS["sections"]
+        ),
+        "Lexical diversity": 1.0
+        - sat(metrics["top5_content_share"], _AXIS_CAPS["lexicon"]),
+        "Summary-free": 1.0
+        - sat(len(metrics["summary_hit_blocks"]), _AXIS_CAPS["summaries"]),
+    }
+
+
+def project_narrative_space(vectors: list[dict[str, float]]) -> list[tuple[float, float]]:
+    """PCA (2 components) over standardized shape-axis vectors — the
+    StoryScope-style narrative-space scatter. Returns (x, y) per document."""
+    import numpy as np
+
+    if not vectors:
+        return []
+    names = list(vectors[0].keys())
+    data = np.array([[v[n] for n in names] for v in vectors], dtype=float)
+    if len(vectors) < 3:
+        # Too few docs for meaningful principal components — spread on the
+        # first two raw axes instead so the chart still renders.
+        return [(float(row[0]), float(row[1])) for row in data]
+    std = data.std(axis=0)
+    std[std == 0] = 1.0
+    standardized = (data - data.mean(axis=0)) / std
+    cov = np.cov(standardized, rowvar=False)
+    eigenvalues, eigenvectors = np.linalg.eigh(cov)
+    top = eigenvectors[:, np.argsort(eigenvalues)[::-1][:2]]
+    projected = standardized @ top
+    return [(float(x), float(y)) for x, y in projected]
+
+
 JUDGE_SYSTEM = """You are a discourse analyst trained on StoryScope findings
 (arXiv:2604.03136): machine-written text over-explains its themes, keeps
 tidy single-track causal structure, resolves everything internally, stays

@@ -1,8 +1,15 @@
 from writing_agent.config import ThresholdSettings
 from writing_agent.scoring.discourse import (
+    AI_CONTROLS,
     analyze_discourse,
+    authorship_distance,
+    human_score,
     judge_axes,
+    project_narrative_space,
+    rarity_percentiles,
+    shape_axes,
     shape_metrics,
+    trigram_novelty,
 )
 from writing_agent.segment import split_blocks
 
@@ -147,3 +154,71 @@ async def test_judge_axes_parses_and_clips_notes():
     axes = await judge_axes("some text", llm=fake_llm)
     assert axes["over_explains"] == 0.8
     assert len(axes["notes"]) == 300
+
+
+def test_shape_axes_point_toward_human():
+    ai = shape_axes(shape_metrics(split_blocks(AI_SHAPED)))
+    human = shape_axes(shape_metrics(split_blocks(HUMAN_SHAPED)))
+    assert ai["Temporal texture"] == 0.0
+    assert ai["Summary-free"] == 0.0
+    assert human["Temporal texture"] > 0.2
+    assert human["Unresolved ends"] == 1.0
+    assert human["Incident anchors"] > ai["Incident anchors"]
+    assert human["Lexical diversity"] > ai["Lexical diversity"]
+
+
+def test_project_narrative_space_returns_finite_coords():
+    vectors = [
+        shape_axes(shape_metrics(split_blocks(AI_SHAPED))),
+        shape_axes(shape_metrics(split_blocks(HUMAN_SHAPED))),
+        shape_axes(shape_metrics(split_blocks(HUMAN_SHAPED.replace("2am", "3am")))),
+        shape_axes(shape_metrics(split_blocks(AI_SHAPED.replace("platform", "service")))),
+    ]
+    coords = project_narrative_space(vectors)
+    assert len(coords) == 4
+    assert all(x == x and y == y for x, y in coords)  # finite (no NaN)
+
+
+def test_rarity_percentiles_rank_correctly():
+    assert rarity_percentiles([0.1]) == [1.0]  # single doc → trivially rarest
+    assert rarity_percentiles([0.9, 0.1, 0.5]) == [1.0, 0.0, 0.5]
+    ties = rarity_percentiles([0.5, 0.5])
+    assert ties == [0.0, 0.0]  # ties share the lower rank
+
+
+def test_ai_controls_score_below_human_fixture():
+    human = human_score(shape_axes(shape_metrics(split_blocks(HUMAN_SHAPED))))
+    for i, control in enumerate(AI_CONTROLS):
+        control_score = human_score(shape_axes(shape_metrics(split_blocks(control))))
+        assert control_score < human, f"AI control {i + 1} not machine-shaped enough"
+
+
+def test_authorship_distance_human_side_and_machine_side():
+    humans = [{"a": 0.75, "b": 0.85}]
+    controls = [{"a": 0.10, "b": 0.10}]
+    near_human = authorship_distance({"a": 0.8, "b": 0.8}, humans, controls)
+    assert near_human["verdict"] == "human-side"
+    assert near_human["ratio"] < 1.0
+    near_ai = authorship_distance({"a": 0.1, "b": 0.15}, humans, controls)
+    assert near_ai["verdict"] == "machine-side"
+    assert near_ai["ratio"] > 1.0
+
+
+def test_authorship_distance_requires_human_references():
+    assert authorship_distance({"a": 0.5}, [], [{"a": 0.1}]) is None
+
+
+def test_trigram_novelty_genie_style():
+    # The human fixture recombines nothing from the controls; a text built
+    # from control phrasing scores near zero.
+    controls_flat = [b for c in AI_CONTROLS for b in split_blocks(c)]
+    human_novelty = trigram_novelty(split_blocks(HUMAN_SHAPED), controls_flat)
+    assert human_novelty > 0.9
+    recombined = (
+        "Our platform delivers value through seamless integration. "
+        "The platform provides a robust foundation for growth, and the "
+        "roadmap continues to build on the platform foundation. "
+    )
+    assert trigram_novelty(split_blocks(recombined), controls_flat) < 0.5
+    # Self-comparison: a document is never novel against itself.
+    assert trigram_novelty(split_blocks(HUMAN_SHAPED), split_blocks(HUMAN_SHAPED)) == 0.0

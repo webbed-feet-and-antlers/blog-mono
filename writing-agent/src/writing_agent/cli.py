@@ -95,6 +95,7 @@ def score(
             split_blocks(file.read_text()),
             overlap_max=t.continuation_overlap_max,
             bits_max=t.continuation_bits_max,
+            convergence_max=t.continuation_convergence_max,
         )
 
     report = asyncio.run(_run())
@@ -104,16 +105,72 @@ def score(
 @app.command()
 def shape(file: Path) -> None:
     """StoryScope-style discourse-shape audit (markers + LLM judge)."""
-    from .config import get_settings
-    from .scoring.discourse import analyze_discourse
+    from .config import CONFIG_DIR, get_settings
+    from .scoring.discourse import (
+        AI_CONTROLS,
+        analyze_discourse,
+        authorship_distance,
+        shape_axes,
+        shape_metrics,
+        trigram_novelty,
+    )
+    from .scoring.semantic import semantic_report
     from .segment import split_blocks
 
-    report = asyncio.run(
-        analyze_discourse(split_blocks(file.read_text()), get_settings().thresholds)
-    )
+    blocks = split_blocks(file.read_text())
+
+    # One event loop for both async reports — the OpenAI client's httpx
+    # pool binds to the first loop and dies with it ("Event loop is closed").
+    async def _run_reports():
+        report = await analyze_discourse(blocks, get_settings().thresholds)
+        sem = await semantic_report(
+            blocks, step_min=get_settings().thresholds.semantic_step_min
+        )
+        return report, sem
+
+    report, sem = asyncio.run(_run_reports())
     console.print(report["metrics"])
     if report["judge"]:
         console.print("judge:", report["judge"])
+
+    # Genie-style novelty vs references + AI controls.
+    corpus: list[str] = [b for c in AI_CONTROLS for b in split_blocks(c)]
+    refs_dir = CONFIG_DIR.parent / "references"
+    human_axes = []
+    if refs_dir.exists():
+        for f in sorted(refs_dir.glob("*.md")):
+            if f.name == "README.md":
+                continue
+            ref_blocks = split_blocks(f.read_text())
+            corpus.extend(ref_blocks)
+            if shape_metrics(ref_blocks)["words"] >= 50:
+                human_axes.append(shape_axes(shape_metrics(ref_blocks)))
+    novelty = trigram_novelty(blocks, corpus)
+    console.print(f"novelty: {novelty:.0%} of 3-grams absent from references+controls")
+
+    if not sem.get("skipped") and sem.get("step_max") is not None:
+        console.print(
+            f"semantic glide: largest step {sem['step_max']:.2f} "
+            f"(needs one ≥ {get_settings().thresholds.semantic_step_min})"
+            + ("  [red]FLAGGED[/red]" if sem["failed"] else "")
+        )
+
+    authorship = authorship_distance(
+        shape_axes(report["metrics"]),
+        human_axes,
+        [shape_axes(shape_metrics(split_blocks(c))) for c in AI_CONTROLS],
+    )
+    if authorship:
+        console.print(
+            f"authorship: [bold]{authorship['verdict']}[/bold] "
+            f"(dist-to-you {authorship['human_dist']} vs dist-to-AI "
+            f"{authorship['ai_dist']}, ratio {authorship['ratio']})"
+        )
+    else:
+        console.print(
+            "[dim]authorship: add posts to references/ to enable[/dim]"
+        )
+
     for f in report["failures"]:
         console.print(f"[red]flag[/red] block {f['block_index']}: {f['reason']}")
     if report["passed"]:

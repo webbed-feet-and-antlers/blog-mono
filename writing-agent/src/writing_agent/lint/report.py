@@ -11,6 +11,7 @@ from ..segment import is_code_block, is_heading_block
 from .banned_tokens import scan_banned
 from .burstiness import check_burstiness
 from .deep_syntax import check_deep_syntax
+from .redundancy import check_redundancy
 from .transitions import check_transitions
 
 
@@ -69,6 +70,7 @@ def run_all_linters(blocks: list[str], t: ThresholdSettings) -> LintReport:
         em_dash_per_1k_max=t.em_dash_per_1k_max,
     )
     deep = check_deep_syntax(blocks, min_per_block=t.deep_syntax_min_per_block)
+    redundancy = check_redundancy(blocks, jaccard_max=t.redundancy_jaccard_max)
 
     by_block: dict[int, list[str]] = {}
     for hit in banned:
@@ -87,6 +89,14 @@ def run_all_linters(blocks: list[str], t: ThresholdSettings) -> LintReport:
     for d in deep:
         if d.failed:
             by_block.setdefault(d.block_index, []).append(d.reason or "deep syntax")
+    for pair in redundancy.pairs:
+        # Flag the LATER block: it is the one re-explaining.
+        by_block.setdefault(pair.block_b, []).append(
+            f"restates block {pair.block_a} "
+            f"(4-gram overlap {pair.jaccard:.0%}"
+            + (f", e.g. “{pair.shared[0]}”" if pair.shared else "")
+            + ") — advance the point instead of repeating it"
+        )
 
     flagged = sorted(idx for idx in by_block if idx in prose)
     return LintReport(
@@ -117,6 +127,15 @@ def run_all_linters(blocks: list[str], t: ThresholdSettings) -> LintReport:
             "deep_syntax": [
                 {"block_index": d.block_index, "counts": d.counts, "total": d.total}
                 for d in deep
+            ],
+            "redundancy": [
+                {
+                    "block_a": p.block_a,
+                    "block_b": p.block_b,
+                    "jaccard": p.jaccard,
+                    "shared": p.shared,
+                }
+                for p in redundancy.pairs
             ],
         },
     )

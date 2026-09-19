@@ -237,6 +237,12 @@ async function runShape() {
     } else {
       lines.push("judge: skipped");
     }
+    if (out.semantic && !out.semantic.skipped && out.semantic.step_max != null) {
+      lines.push(
+        `semantic glide: largest step ${out.semantic.step_max.toFixed(2)}` +
+        (out.semantic.failed ? "  ← FLAGGED (no semantic shift between sections)" : "")
+      );
+    }
     for (const f of out.failures) {
       lines.push(`FLAG block ${f.block_index}: ${f.reason}`);
     }
@@ -248,6 +254,171 @@ async function runShape() {
         .map((f) => ({ block_index: f.block_index, reasons: [f.reason] })),
       passed: out.passed,
     });
+  } catch (err) { toast(err.message, "error"); }
+  setBusy(false);
+}
+
+// ---------- shape graph (StoryScope-style radar + narrative space) ----------
+
+let radarChart = null;
+let scatterChart = null;
+let rarityChart = null;
+
+const GROUP_COLORS = { current: "#6ea8fe", draft: "#9d8cff", human: "#7ee2a8", ai: "#ff8f8f" };
+const GROUP_LABELS = { human: "Your posts", current: "This draft", draft: "Other drafts", ai: "AI controls" };
+
+// Deterministic jitter so points don't re-shuffle between renders.
+function jitter(label) {
+  let h = 0;
+  for (const c of label) h = (h * 31 + c.charCodeAt(0)) % 997;
+  return (h % 100) / 100 * 0.5 - 0.25;
+}
+
+function renderRarity(docs) {
+  // StoryScope Figure 5 analogue: narrative-rarity percentile by group.
+  // Violins need densities we don't have at this corpus size, so points
+  // with solid mean / dashed median lines carry the same comparison.
+  const order = ["human", "current", "draft", "ai"];
+  const datasets = [];
+  order.forEach((g, gi) => {
+    const group = docs.filter((d) => d.group === g);
+    if (!group.length) return;
+    datasets.push({
+      label: GROUP_LABELS[g],
+      data: group.map((d) => ({ x: gi + jitter(d.label), y: d.rarity })),
+      pointBackgroundColor: GROUP_COLORS[g],
+      pointRadius: 5,
+    });
+    const rs = group.map((d) => d.rarity).sort((a, b) => a - b);
+    const mean = rs.reduce((s, r) => s + r, 0) / rs.length;
+    const median = rs[Math.floor(rs.length / 2)];
+    datasets.push({
+      data: [{ x: gi - 0.32, y: mean }, { x: gi + 0.32, y: mean }],
+      showLine: true, borderColor: GROUP_COLORS[g], borderWidth: 2, pointRadius: 0,
+    });
+    datasets.push({
+      data: [{ x: gi - 0.32, y: median }, { x: gi + 0.32, y: median }],
+      showLine: true, borderColor: GROUP_COLORS[g], borderWidth: 1.5,
+      borderDash: [5, 4], pointRadius: 0,
+    });
+  });
+  if (rarityChart) rarityChart.destroy();
+  rarityChart = new Chart($("#rarity"), {
+    type: "scatter",
+    data: { datasets },
+    options: {
+      plugins: {
+        legend: { labels: { color: "#d8dee9", boxWidth: 10, font: { size: 10 } } },
+        tooltip: { callbacks: { label: (c) => `${c.raw.label ?? ""} rarity ${(c.parsed.y * 100).toFixed(0)}%` } },
+      },
+      scales: {
+        x: {
+          min: -0.5, max: order.length - 0.5,
+          ticks: { color: "#7b8794", font: { size: 10 }, callback: (_, i) => GROUP_LABELS[order[i]] ?? "" },
+          grid: { color: "#263042" },
+        },
+        y: {
+          min: -0.05, max: 1.05,
+          title: { display: true, text: "Rarity percentile (vs. pooled)", color: "#7b8794", font: { size: 10 } },
+          ticks: { color: "#7b8794", font: { size: 9 }, callback: (v) => `${Math.round(v * 100)}%` },
+          grid: { color: "#263042" },
+        },
+      },
+    },
+  });
+}
+
+function renderScatter(docs) {
+  // StoryScope LDA-figure analogue: narrative space with group centroids.
+  const groups = ["human", "current", "draft", "ai"];
+  const datasets = groups
+    .map((g) => {
+      const pts = docs.filter((d) => d.group === g);
+      if (!pts.length) return null;
+      const base = {
+        label: GROUP_LABELS[g],
+        data: pts.map((d) => ({ x: d.x, y: d.y, label: d.label })),
+        pointBackgroundColor: GROUP_COLORS[g] + "aa",
+        pointRadius: g === "current" ? 7 : 5,
+      };
+      const cx = pts.reduce((s, d) => s + d.x, 0) / pts.length;
+      const cy = pts.reduce((s, d) => s + d.y, 0) / pts.length;
+      const centroid = {
+        data: [{ x: cx, y: cy, label: `${GROUP_LABELS[g]} centroid` }],
+        pointStyle: "rectRot", rotation: 45,
+        pointRadius: 9, pointBorderWidth: 1.5,
+        pointBackgroundColor: GROUP_COLORS[g], pointBorderColor: "#0d1117",
+        label: `${GROUP_LABELS[g]} ◆`,
+      };
+      return [base, centroid];
+    })
+    .filter(Boolean)
+    .flat();
+  if (scatterChart) scatterChart.destroy();
+  scatterChart = new Chart($("#scatter"), {
+    type: "scatter",
+    data: { datasets },
+    options: {
+      plugins: {
+        legend: { labels: { color: "#d8dee9", boxWidth: 10, font: { size: 10 }, filter: (i) => !i.text.includes("◆") } },
+        tooltip: { callbacks: { label: (c) => c.raw.label || "" } },
+      },
+      scales: {
+        x: { title: { display: true, text: "PC1", color: "#7b8794", font: { size: 10 } }, grid: { color: "#263042" }, ticks: { color: "#7b8794", font: { size: 9 } } },
+        y: { title: { display: true, text: "PC2", color: "#7b8794", font: { size: 10 } }, grid: { color: "#263042" }, ticks: { color: "#7b8794", font: { size: 9 } } },
+      },
+    },
+  });
+}
+
+async function runGraph() {
+  setBusy(true, "Computing narrative space…");
+  try {
+    const out = await api("/api/shape/compare", { method: "POST", body: { markdown: editor.value() } });
+    $("#charts").hidden = false;
+
+    const labels = out.axes_names;
+    const human = out.docs.filter((d) => d.group === "human");
+    const ai = out.docs.find((d) => d.group === "ai");
+    const current = out.docs.find((d) => d.group === "current");
+
+    renderRarity(out.docs);
+    renderScatter(out.docs);
+
+    const humanMean = labels.map(
+      (l) => (human.length ? human.reduce((s, d) => s + d.axes[l], 0) / human.length : 0)
+    );
+    if (radarChart) radarChart.destroy();
+    radarChart = new Chart($("#radar"), {
+      type: "radar",
+      data: {
+        labels,
+        datasets: [
+          { label: "this draft", data: labels.map((l) => current.axes[l]), borderColor: GROUP_COLORS.current, backgroundColor: "rgba(110,168,254,0.15)" },
+          ...(human.length ? [{ label: "your human posts (mean)", data: humanMean, borderColor: GROUP_COLORS.human, backgroundColor: "rgba(126,226,168,0.10)" }] : []),
+          { label: "AI-shaped control", data: labels.map((l) => ai.axes[l]), borderColor: GROUP_COLORS.ai, borderDash: [5, 4], backgroundColor: "transparent" },
+        ],
+      },
+      options: {
+        plugins: { legend: { labels: { color: "#d8dee9", boxWidth: 10, font: { size: 10 } } } },
+        scales: { r: { min: 0, max: 1, grid: { color: "#263042" }, angleLines: { color: "#263042" }, pointLabels: { color: "#7b8794", font: { size: 9 } }, ticks: { display: false } } },
+      },
+    });
+
+    if (out.authorship) {
+      const a = out.authorship;
+      $("#judge-line").textContent =
+        `authorship: ${a.verdict === "human-side" ? "✓" : "⚠"} ${a.verdict} ` +
+        `(dist-to-you ${a.human_dist} vs dist-to-AI ${a.ai_dist}, ratio ${a.ratio})` +
+        (out.judge ? ` · judge: ${Object.entries(out.judge).filter(([k]) => k !== "notes").map(([k, v]) => `${k} ${v.toFixed(2)}`).join(" · ")}` : "");
+    } else if (out.judge) {
+      const axes = Object.entries(out.judge)
+        .filter(([k]) => k !== "notes")
+        .map(([k, v]) => `${k} ${v.toFixed(2)}`);
+      $("#judge-line").textContent = `judge: ${axes.join(" · ")} — add posts to references/ for the authorship check`;
+    } else {
+      $("#judge-line").textContent = "judge: unavailable";
+    }
   } catch (err) { toast(err.message, "error"); }
   setBusy(false);
 }
@@ -324,6 +495,7 @@ $("#btn-save").onclick = saveDraft;
 $("#btn-lint").onclick = runLint;
 $("#btn-score").onclick = runScore;
 $("#btn-shape").onclick = runShape;
+$("#btn-graph").onclick = runGraph;
 $("#btn-fix").onclick = () => fixBlocks(null);
 $("#btn-revise").onclick = sendInstruction;
 $("#btn-revert").onclick = async () => {

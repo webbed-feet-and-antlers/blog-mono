@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from writing_agent import webapp
+from writing_agent.scoring.discourse import shape_metrics
 from writing_agent.webapp import app
 
 SLOP = """## Overview
@@ -143,6 +144,38 @@ async def test_revise_requires_instruction(client):
         "/api/revise", json={"markdown": "# T", "instruction": "  "}
     )
     assert resp.status_code == 422
+
+
+async def test_shape_compare_endpoint(client, monkeypatch):
+    async def fake_analyze(blocks, thresholds):
+        return {"metrics": shape_metrics(blocks), "judge": None,
+                "failures": [], "flagged_blocks": [], "passed": True}
+
+    async def fake_semantic(blocks, *, step_min=0.12):
+        return {"skipped": True, "warning": "disabled in test", "steps": []}
+
+    monkeypatch.setattr(webapp, "analyze_discourse", fake_analyze)
+    monkeypatch.setattr(webapp, "semantic_report", fake_semantic)
+    resp = await client.post(
+        "/api/shape/compare",
+        json={"markdown": "# T\n\n" + "Word. " * 80},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    groups = {d["group"] for d in body["docs"]}
+    assert "current" in groups and "ai" in groups
+    ai_docs = [d for d in body["docs"] if d["group"] == "ai"]
+    assert len(ai_docs) >= 4  # full control set gives the AI group a spread
+    for d in body["docs"]:
+        assert d["x"] == d["x"] and d["y"] == d["y"]  # finite coords
+        assert 0.0 <= d["rarity"] <= 1.0 and 0.0 <= d["human_score"] <= 1.0
+    assert body["axes_names"] and "Temporal texture" in body["axes_names"]
+    assert "Novelty" in body["axes_names"]  # 9th axis, Genie-style
+    assert all("Novelty" in d["axes"] for d in body["docs"])
+    assert "authorship" in body  # None without references, dict with them
+    # The AI controls should not out-rank the current text.
+    current = next(d for d in body["docs"] if d["group"] == "current")
+    assert current["rarity"] > max(d["rarity"] for d in ai_docs)
 
 
 class StubGraph:

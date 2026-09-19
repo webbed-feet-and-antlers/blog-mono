@@ -25,6 +25,13 @@ def finalize_node(state: WritingState) -> dict[str, Any]:
                 s += f" bits={b['mean_bits']:.2f}"
             parts.append(s)
         lines.append(f"continuation predictability by block: {', '.join(parts)}")
+    semantic = state.get("semantic_report")
+    if semantic and not semantic.get("skipped") and semantic.get("step_max") is not None:
+        lines.append(
+            f"semantic glide: largest step {semantic['step_max']:.2f} "
+            f"(needs one ≥ {semantic.get('gate', 0.12):.2f})"
+            + ("  ← FLAGGED" if semantic.get("failed") else "")
+        )
     lines.append(f"revisions: {state.get('revision_count', 1)}")
     disc = state.get("discourse_report")
     if disc and disc.get("metrics"):
