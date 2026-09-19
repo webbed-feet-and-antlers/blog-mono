@@ -1,0 +1,36 @@
+[models]
+# Newest Sonnet at publish time; cheaper than 4.6. For max prose quality:
+#   draft = "~anthropic/claude-opus-latest"   (~2.5x cost)
+draft = "anthropic/claude-sonnet-5"
+# Must return chat-completions logprobs (probed 2026-09). Anthropic models
+# never expose logprobs; the OpenAI -latest family does.
+scorer = "~openai/gpt-mini-latest"
+
+[sampling]
+architect_temp = 0.2
+stylist_temp = 0.9
+stylist_top_p = 0.92
+editor_temp = 0.15
+
+[thresholds]
+sentence_sd_min = 8.0
+sentence_variance_min = 15.0
+transition_density_max = 0.15
+em_dash_per_1k_max = 6.0
+banned_hits_max = 0
+deep_syntax_min_per_block = 1
+# Continuation-predictability gate (see scoring/surprisal.py). Primary
+# signal: blind-continuation surprisal in bits (observed ~0.6 on generic
+# AI-slop prose vs ~1.1 on distinctive human prose). Overlap is only the
+# fallback when the scorer returns no logprobs. Calibrate against your own
+# posts: uv run wa score x.md --calibrate-dir references/
+continuation_overlap_max = 0.55
+continuation_bits_max = 0.9
+max_revisions = 3
+# Discourse-shape gate (StoryScope, arXiv:2604.03136). Summary/lesson
+# markers are banned outright; docs >= 400 words need temporal texture and
+# at least one unresolved trade-off; judge axes flag at 0.7.
+temporal_markers_min_per_1k = 0.5
+unresolved_min = 1
+top5_share_max = 0.18
+judge_flag_at = 0.7

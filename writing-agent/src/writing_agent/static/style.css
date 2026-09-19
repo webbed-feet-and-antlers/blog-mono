@@ -1,0 +1,163 @@
+:root {
+  --bg: #10141a;
+  --panel: #171d26;
+  --line: #263042;
+  --text: #d8dee9;
+  --muted: #7b8794;
+  --accent: #6ea8fe;
+  --ok: #7ee2a8;
+  --warn: #f5c97b;
+  --err: #ff8f8f;
+}
+
+* { box-sizing: border-box; }
+
+/* The hidden attribute loses to any explicit display rule (e.g. the flex
+ * on #agent-status) without this — which left the stage label stuck on
+ * screen after a job finished. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  font-family: ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+
+.header-actions { display: flex; gap: 8px; align-items: center; }
+#save-state { font-size: 12px; color: var(--muted); }
+#save-state[data-kind="ok"] { color: var(--ok); }
+#save-state[data-kind="error"] { color: var(--err); }
+
+button {
+  background: #1f2735;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #0b1220; font-weight: 600; }
+
+#layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 360px;
+  min-height: 0;
+}
+
+/* ---- sidebar ---- */
+#sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 14px;
+  overflow-y: auto;
+}
+#sidebar h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 18px 0 6px; }
+#new-draft { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+#new-draft label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+#new-draft input, #new-draft textarea, #new-draft select,
+#instruction {
+  background: #0d1117;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 13px;
+  width: 100%;
+}
+#draft-list { list-style: none; margin: 0; padding: 0; }
+#draft-list li { border-radius: 6px; }
+#draft-list li.active { background: #1f2735; }
+#draft-list a {
+  display: block;
+  padding: 6px 8px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#draft-list a:hover { color: var(--accent); }
+
+/* ---- editor ---- */
+#editor-pane { min-width: 0; display: flex; flex-direction: column; }
+#editor-pane .EasyMDEContainer { flex: 1; display: flex; flex-direction: column; }
+.CodeMirror { flex: 1 !important; height: auto !important; font-size: 14px; }
+.editor-preview { font-size: 15px; max-width: 46em; }
+.editor-toolbar { border-color: var(--line); background: var(--panel); }
+.CodeMirror, .editor-preview, .editor-statusbar { background: #0d1117; color: var(--text); border-color: var(--line); }
+.cm-s-easymde .CodeMirror-cursor { border-left-color: var(--accent); }
+
+/* ---- right panel ---- */
+#panel {
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  padding: 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#agent-status { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--accent); }
+.spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--accent); border-top-color: transparent;
+  animation: spin 0.8s linear infinite; display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.panel-actions { display: flex; gap: 8px; }
+.panel-actions button { flex: 1; font-size: 12px; padding: 6px 4px; }
+
+#scorecard {
+  background: #0d1117;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  margin: 0;
+  min-height: 90px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.flagged { border: 1px solid var(--warn); border-radius: 6px; padding: 8px; font-size: 12px; }
+.flagged strong { color: var(--warn); }
+.flagged ul { margin: 4px 0 8px; padding-left: 18px; color: var(--muted); }
+.flagged button { font-size: 11px; padding: 3px 8px; }
+
+#panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 8px 0 0; }
+
+#chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+#chat-log p { margin: 0; padding: 6px 8px; border-radius: 6px; }
+#chat-log p.hint { color: var(--muted); font-size: 12px; }
+#chat-log p.you { background: #1f2735; }
+#chat-log p.agent { background: #12233f; border: 1px solid #29456e; }
+#chat-log p.error { color: var(--err); }
+
+#instruction { resize: vertical; }

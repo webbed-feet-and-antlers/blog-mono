@@ -1,0 +1,31 @@
+# AI-slop filler — hard-banned (research: RLHF surface-marker amplification)
+\bdelve(s|d)?\b
+\bdelve into\b
+\btapestry\b
+\btestament to\b
+\bit('s| is) important to note\b
+\bit('s| is) worth (noting|mentioning)\b
+\bfurthermore\b
+\bmoreover\b
+\bin conclusion\b
+\bkey takeaways?\b
+\bgame[- ]changing\b
+\bdive (in|into|deep)\b
+\bin today's fast-paced world\b
+\bin today's digital (age|landscape|world)\b
+\bnavigate the landscape\b
+\bleverag(e|es|ing)\b
+\bseamless(ly)?\b
+\bunleash(es|ed|ing)?\b
+\bunlock the (power|potential|future|secrets)\b
+\bbuckle up\b
+\bwithout further ado\b
+\bat the end of the day\b
+\bdemystif(y|ies|ying)\b
+\bcutting-edge\b
+\brevolutioniz(e|es|ing)\b
+\bpave(s)? the way\b
+\bplay(s|ed)? a (crucial|vital|pivotal|key) role\b
+\bsignificantly (enhance|enhances|enhancing|improve|improves)\b
+\ba wealth of\b
+\bvibrant\b
