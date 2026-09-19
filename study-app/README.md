@@ -26,7 +26,9 @@ interface.
 │                 │        │  │  memory: per-doc + cross-doc        │  │
 │                 │        │  └────────────────────────────────────┘  │
 │                 │        │                                          │
-│                 │        │  SQLite + filesystem                     │
+│                 │        │  SQLite (default) or Postgres            │
+│                 │        │  (DATABASE_URL: asyncpg, JSONB, RLS)     │
+│                 │        │  + filesystem for uploads                │
 └─────────────────┘        └──────────────────────────────────────────┘
                                       │
                                       ▼
@@ -64,9 +66,10 @@ with, and every feature benefits.
 
 ## Tech stack
 
-- **Backend:** Python 3.13, FastAPI, Pydantic, SQLAlchemy 2 (async, SQLite),
-  LangGraph, OpenAI SDK (pointed at OpenRouter). Managed with `uv`.
-- **Frontend:** React 19, TypeScript, Vite, TanStack Query, React Router,
+- **Backend:** Python 3.13, FastAPI, Pydantic, SQLAlchemy 2 (async — SQLite
+  by default, Postgres via `DATABASE_URL`), Alembic migrations, LangGraph,
+  OpenAI SDK (pointed at OpenRouter). Managed with `uv`.
+- **Frontend:** React 19, TypeScript, Vite, TanStack Query, TanStack Router,
   react-markdown.
 - **LLM:** OpenRouter (one key, all providers). Default model is
   `deepseek/deepseek-v4-flash-0731` — cheap and fast. Swap by changing one env var.
@@ -116,51 +119,88 @@ plans, event log — is owner-scoped; cross-user ids 404. Background jobs
 
 ```
 study-app/
+├── Dockerfile / fly.toml        # single-container deploy (API + built SPA)
+├── supabase/                    # Supabase CLI config (production Postgres)
 ├── backend/
-│   ├── pyproject.toml          # uv-managed deps
-│   ├── .env.example            # OPENROUTER_API_KEY, OPENROUTER_MODEL
+│   ├── pyproject.toml           # uv-managed deps
+│   ├── .env.example             # OPENROUTER_API_KEY, Clerk, DATABASE_URL…
+│   ├── alembic.ini
 │   ├── app/
-│   │   ├── main.py             # FastAPI app + lifespan
-│   │   ├── config.py           # settings (pydantic-settings)
-│   │   ├── db.py               # async SQLAlchemy engine/session
-│   │   ├── models.py           # Document, ContentItem, QuizAttempt, AgentMemory
-│   │   ├── schemas.py          # Pydantic request/response models
-│   │   ├── llm.py              # OpenRouter client (chat / chat_json)
-│   │   ├── parsers.py          # PyMuPDF text extraction
-│   │   ├── storage.py          # filesystem layer for uploads
-│   │   ├── routes/             # documents, generate, content, quiz, memory
+│   │   ├── main.py              # FastAPI app + lifespan
+│   │   ├── config.py            # settings (pydantic-settings)
+│   │   ├── db.py                # async engine (SQLite/Postgres) + Alembic init
+│   │   ├── models.py            # 14 tables: content, memory, plans, concepts…
+│   │   ├── auth.py              # Clerk JWT verification, user contextvar
+│   │   ├── llm.py               # OpenRouter client (chat / chat_json)
+│   │   ├── parsers.py           # PyMuPDF + LibreOffice → PDF
+│   │   ├── transcription.py     # Qwen3-ASR via OpenRouter
+│   │   ├── storage.py           # filesystem layer for uploads
+│   │   ├── proactive.py         # background loop (flag-gated)
+│   │   ├── routes/              # 15 routers: documents, generate (SSE),
+│   │   │                        #   content, quiz, flashcards, modules, plans,
+│   │   │                        #   lectures, study-session, recommend,
+│   │   │                        #   concepts, analytics, activity, events, memory
+│   │   ├── events/              # in-process event bus + handlers
+│   │   ├── recommend/           # strategies, session, telemetry, LinUCB bandit
 │   │   └── agent/
-│   │       ├── graph.py        # LangGraph StateGraph + run_generation()
-│   │       ├── state.py        # AgentState TypedDict
-│   │       ├── nodes.py        # the 6 pipeline nodes
-│   │       ├── tools.py        # feature-specific generation (notes/quiz/cards)
-│   │       └── memory.py       # read/write AgentMemory
+│   │       ├── graph.py         # LangGraph StateGraph + run_generation()
+│   │       ├── state.py         # AgentState TypedDict
+│   │       ├── nodes.py         # the 6 pipeline nodes
+│   │       ├── tools.py         # feature-specific generation (notes/quiz/cards)
+│   │       ├── memory.py        # read/write AgentMemory
+│   │       └── fsrs_scheduler.py · planner.py · reflection.py ·
+│   │           concept_graph.py · behavior.py · stats.py
+│   ├── migrations/              # Alembic (baseline + pillars)
+│   ├── scripts/sqlite_to_pg.py  # one-time SQLite → Postgres data copy
+│   ├── evals/                   # DeepEval harness + datasets (own README)
 │   └── tests/
 └── frontend/
     ├── package.json
-    ├── vite.config.ts          # proxies /api → :8000
+    ├── vite.config.ts           # proxies /api → :8000
     └── src/
-        ├── App.tsx             # layout, tabs, generate flow
-        ├── api/client.ts       # typed API wrapper
-        ├── types.ts            # mirrors backend schemas
-        └── components/         # Sidebar, NotesView, QuizView, FlashcardView
+        ├── router.tsx           # TanStack Router route tree
+        ├── api/client.ts        # typed API wrapper
+        ├── api/track.ts         # batched telemetry (sendBeacon)
+        ├── analytics.ts         # Umami
+        ├── auth.ts + components/Auth.tsx   # Clerk
+        ├── types.ts             # mirrors backend schemas
+        └── components/          # NotesView, QuizView, FlashcardView,
+                                 #   ModulesPage, RecordPage, ConceptsPage, …
 ```
+
+The full file-by-file map lives in `ARCHITECTURE.md`'s appendix.
 
 ## API
 
-| Method   | Path                     | Purpose                                                  |
-| -------- | ------------------------ | -------------------------------------------------------- |
-| `POST`   | `/api/documents`         | Upload a PDF/TXT/MD (multipart `file`)                   |
-| `GET`    | `/api/documents`         | List documents                                           |
-| `GET`    | `/api/documents/{id}`    | Get document + extracted text                            |
-| `DELETE` | `/api/documents/{id}`    | Delete a document                                        |
-| `POST`   | `/api/generate`          | Run the agent: `{document_id, task_type, instructions?}` |
-| `GET`    | `/api/content`           | List generated content (filter by `document_id`, `type`) |
-| `GET`    | `/api/content/{id}`      | Get one content item                                     |
-| `DELETE` | `/api/content/{id}`      | Delete a content item                                    |
-| `POST`   | `/api/quiz/{id}/attempt` | Submit quiz answers → scored attempt                     |
-| `GET`    | `/api/memory`            | Debug: inspect agent memory (POC transparency)           |
-| `GET`    | `/health`                | Health check                                             |
+Highlights — there's a route module per feature area; `ARCHITECTURE.md` has
+the full map.
+
+| Method   | Path                                  | Purpose                                                  |
+| -------- | ------------------------------------- | -------------------------------------------------------- |
+| `POST`   | `/api/documents`                      | Upload a PDF/TXT/MD (multipart `file`)                   |
+| `GET`    | `/api/documents`                      | List documents                                           |
+| `GET`    | `/api/documents/{id}`                 | Get document + extracted text                            |
+| `DELETE` | `/api/documents/{id}`                 | Delete a document                                        |
+| `POST`   | `/api/generate`                       | Run the agent: `{document_id, task_type, instructions?}` (SSE stream) |
+| `GET`    | `/api/content`                        | List generated content (filter by `document_id`, `type`) |
+| `GET`    | `/api/content/{id}`                   | Get one content item                                     |
+| `DELETE` | `/api/content/{id}`                   | Delete a content item                                    |
+| `POST`   | `/api/quiz/{id}/attempt`              | Submit quiz answers → scored attempt                     |
+| `POST`   | `/api/flashcards/{id}/review`         | Submit flashcard grades → FSRS + mastery update          |
+| `GET`    | `/api/modules`                        | Semester tree of modules/lessons/documents               |
+| `POST`   | `/api/modules`                        | Create a module (PATCH/DELETE on `/api/modules/{id}`, lessons on `/api/lessons/{id}`) |
+| `GET/POST` | `/api/modules/{module_id}/plan`     | Get/generate the module's study plan                     |
+| `PATCH`  | `/api/plans/{plan_id}/items/{item_id}` | Check off / update a plan item                         |
+| `POST`   | `/api/lectures`                       | Lecture sessions (record → playback, slides + timestamps) |
+| `POST`   | `/api/study-session`                  | Compose a mixed review/new session (`POST /{id}/review` to submit grades) |
+| `GET`    | `/api/recommend`                      | Home-page recommendations (`POST /api/recommend/feedback` for interactions) |
+| `GET`    | `/api/concepts`                       | Concept dashboard (recall, due/weak/mastered filters)    |
+| `GET`    | `/api/concepts/graph`                 | Knowledge graph (concepts + edges); manual CRUD alongside |
+| `GET`    | `/api/analytics/summary`              | Learning analytics: streak, study time, quiz stats, retention curve |
+| `POST`   | `/api/activity`                       | Batched telemetry ingest (sendBeacon, 202)               |
+| `GET`    | `/api/events`                         | `agent_events` audit ledger                              |
+| `GET`    | `/api/memory`                         | Debug: inspect agent memory (POC transparency)           |
+| `GET`    | `/health`                             | Health check                                             |
 
 ## Swapping models
 
@@ -249,7 +289,8 @@ schema changes are additive.
 
 ## Out of scope (for now)
 
-- Streaming agent steps (could add SSE for an "agent is thinking…" UX)
-- Semantic search / RAG over documents (structured memory only for v1; the
-  repo's `embeddings/` service is a natural future integration point)
+- The embeddings pipeline: the `document_chunks` + pgvector (HNSW) foundation
+  exists on Postgres, but nothing fills it yet — semantic search / RAG over
+  documents is a follow-up (the repo's `embeddings/` service is a natural
+  integration point)
 - Production UI polish
