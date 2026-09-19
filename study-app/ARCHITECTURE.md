@@ -24,6 +24,8 @@
 14. [Complete Flow Diagrams](#14-complete-flow-diagrams)
 15. [Background Tasks](#15-background-tasks)
 16. [Frontend Architecture](#16-frontend-architecture)
+17. [Data Layer & Migrations](#17-data-layer--migrations)
+18. [Learning Analytics](#18-learning-analytics)
 
 ---
 
@@ -78,18 +80,22 @@ event bus with a full audit ledger.
 │  │ Memory     │ │ (12         │ │ (per-module,       │ │ (behavior  │  │
 │  │ (JSON KV)  │ │  strategies)│ │  exam-paced)       │ │  → LLM)    │  │
 │  └─────┬──────┘ └─────────────┘ └────────────────────┘ └────────────┘  │
-│        │                                                                │
+│        └─ also: Learning Analytics (agent/stats.py → /api/analytics,   │
+│           §18) and the data layer / migrations story in §17            │
+│                                                                        │
 │        ▼                                                                │
 │  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                    SQLite (SQLAlchemy async, WAL)                 │  │
+│  │    SQLite (default) / Postgres (asyncpg, JSONB, RLS) — Alembic    │  │
 │  │  documents · content_items · quiz_attempts · agent_memory ·      │  │
 │  │  modules · lessons · lecture_sessions · study_plans ·            │  │
-│  │  recommendation_events · agent_events · user_activities          │  │
+│  │  recommendation_events · agent_events · user_activities ·        │  │
+│  │  concepts · concept_edges · document_chunks (pgvector + HNSW,    │  │
+│  │  Postgres-only — embeddings pipeline is a follow-up)             │  │
 │  └──────────────────────────────────────────────────────────────────┘  │
 │                                                                        │
-│  External: OpenRouter — LLM (deepseek/deepseek-v4-flash-0731) ·            │
-│            eval judge (deepseek/deepseek-v4-flash-0731) ·                      │
-│            transcription (qwen/qwen3-asr-1.7b)                        │
+│  External: OpenRouter — LLM (deepseek/deepseek-v4-flash-0731) ·       │
+│            eval judge (same by default — set EVALS_JUDGE_MODEL to     │
+│            upgrade) · transcription (qwen/qwen3-asr-1.7b)             │
 │  Local:    LibreOffice headless (office → PDF at upload)              │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -256,8 +262,10 @@ Bearer` on fetch/XHR/SSE; URLs that cannot carry headers (slide `<img>`,
 ## 3. Memory System
 
 All agent learning state lives in one table: `agent_memory`. It's a generic
-JSON key/value store with `(scope, ref_id, key)` addressing. No User table —
-this is a single-user POC; "user" is a scope.
+JSON key/value store with `(scope, ref_id, key)` addressing. There's no User
+table — identity lives in Clerk — but the app is fully multi-user: user-scope
+rows key on the Clerk user id, and every domain table carries an owner
+`user_id` (§2).
 
 ### Memory Key Reference
 
@@ -266,7 +274,7 @@ this is a single-user POC; "user" is a scope.
 │                         agent_memory table                                │
 │                                                                          │
 │  scope="doc" (per-document)          scope="user" (global, cross-doc)   │
-│  ref_id=document_id                  ref_id=""                           │
+│  ref_id=document_id                  ref_id=<clerk user id>             │
 │  ┌────────────────────────────┐      ┌─────────────────────────────┐    │
 │  │                            │      │                             │    │
 │  │ analysis                   │      │ concept_mastery             │    │
@@ -654,8 +662,19 @@ cached, so the first "Generate" click is instant.
 
 The agent uses this structural knowledge during generation: if "Calvin cycle"
 has a prerequisite on "Carbon fixation" and the learner's mastery of Carbon
-fixation is low, the planner tests the foundation first. (Traversal is
-currently one-directional — a known limitation.)
+fixation is low, the planner tests the foundation first.
+
+### Persistent graph tables
+
+The graph now also has a **persistent home**: `concepts` + `concept_edges`
+tables (owner-scoped, both dialects), exposed at `GET /api/concepts/graph`
+with recursive-CTE traversal — given `?root=&depth=`, it walks everything a
+concept **builds on** and everything it **unlocks** (two recursive CTEs;
+Postgres allows one recursive term each). The view blends these rows with
+`concept_mastery` from memory, so concepts the agent has learned about show
+up even before anyone touches the tables. Manual CRUD (`POST /api/concepts`,
+`POST /api/concepts/{id}/edges`) populates the tables today; wiring the
+ingestion merge to write them automatically is a follow-up.
 
 ---
 
@@ -989,10 +1008,12 @@ datasets, so improvements and regressions in the agent are measured, not felt.
 
 - **Suites run production chains, not mocks** — e.g. the quiz suite executes
   the same `analyze → plan → generate` LLM calls the LangGraph pipeline makes.
-- **The judge is a stronger model than the generator** (`evals_judge_model`,
-  default `deepseek/deepseek-v4-flash-0731`, temperature 0, routed through the app's
+- **The judge should be a stronger model than the generator**
+  (`EVALS_JUDGE_MODEL`, temperature 0, routed through the app's
   OpenRouter client via a DeepEval adapter) — a model never grades its own
-  failure modes.
+  failure modes. It currently *defaults to the same*
+  `deepseek/deepseek-v4-flash-0731` as generation, so set the env var to
+  actually upgrade the judge.
 - **Deterministic metrics where possible**: fuzzy concept F1 (rapidfuzz
   token-set ≥85), ROUGE-1, AUC / Brier / log-loss / majority-accuracy. The
   LLM judge (DeepEval GEval rubrics) only scores what determinism can't
@@ -1263,18 +1284,88 @@ sidebar is for getting around; the main area is for working.
 
 ---
 
+## 17. Data Layer & Migrations
+
+One ORM, two dialects. SQLite (aiosqlite) is the zero-setup default for dev
+and tests (`DB_PATH`); set `DATABASE_URL` to any Postgres and the app swaps
+to asyncpg (`postgres://` URLs are normalized automatically). The models use
+dialect-aware variants — JSONB payloads and timezone-aware timestamps on
+Postgres, plain JSON on SQLite — so the same code serves both.
+
+**Schema management is Alembic** (`backend/migrations/`), replacing the old
+guarded-ALTER path:
+
+- `init_db()` (called from the app lifespan) upgrades to head at startup.
+- Legacy pre-alembic SQLite files are detected (no `alembic_version` rows),
+  stamped at the baseline, then migrated forward — not replayed.
+- After model changes: `uv run alembic revision --autogenerate -m …`, run
+  against a fresh `DB_PATH` to get full-table diffs rather than deltas
+  against a partially-migrated dev DB.
+- Two migrations so far: `0001_baseline` (the pre-pillars schema) and
+  `0002_pillars` (knowledge-graph + vector + analytics tables).
+
+**Postgres-only pillars**: `document_chunks` carries a `Vector(384)` column
+with an HNSW cosine index (pgvector). It's empty — the embeddings pipeline
+that fills it is a follow-up; the foundation ships first so the migration
+path stays additive. **RLS is enabled on all 14 tables**, deny-all at the
+boundary: Supabase's public REST API can't read anything, while the app's
+direct owner connection is unaffected.
+
+**Production (Supabase)**: connect via the transaction pooler (port 6543);
+weekly keepalive and pg_dump backup workflows live in `.github/` and are
+armed by `SUPABASE_PROJECT_REF` + secrets. One-time data copy from an
+existing SQLite file: `scripts/sqlite_to_pg.py`. Rollback is unset
+`DATABASE_URL` — every schema change is additive.
+
+**CI** runs the full test suite twice — on SQLite and against a real
+`pgvector/pgvector:pg17` service container (PR checks and the deploy gate) —
+so dialect drift can't reach production unnoticed.
+
+---
+
+## 18. Learning Analytics
+
+`agent/stats.py` computes a `window_summary()` over the recent activity
+ledger and quiz attempts — plain Python aggregation, no LLM, no
+dialect-specific SQL, so SQLite and Postgres return identical numbers.
+
+The summary covers:
+
+- **Study time** — minutes per day in the window, plus a **streak** of
+  consecutive active days (ending today or yesterday, so an evening session
+  doesn't read as broken the next morning).
+- **Quiz stats** — attempts, accuracy, answer latency.
+- **Per-concept accuracy** — `recent_rate` with an observation floor
+  (concepts need a few attempts before the rate means anything).
+- **FSRS retention curve** — predicted recall over time from the
+  scheduler's retrievability.
+- **Activity histogram** — recent daily interaction counts (12 days by
+  default).
+
+One source of truth: `GET /api/analytics/summary` and the agent's
+`build_context` consume the same `window_summary()`, so the dashboard the
+user sees can never drift from the numbers the planner and recommender act
+on. The frontend renders it in the profile card / "How the agent sees you"
+view (`UnderstandingModal.tsx`).
+
+---
+
 ## Appendix: File Map
 
 ```
 study-app/
+├── Dockerfile / fly.toml           # Single-container deploy (API + SPA, Fly.io)
+├── supabase/config.toml            # Supabase CLI config (production Postgres)
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                 # FastAPI app, lifespan, 14 routers
+│   │   ├── main.py                 # FastAPI app, lifespan, 15 routers
 │   │   ├── config.py               # Settings (OpenRouter, ASR, evals, proactive, auto-*)
-│   │   ├── db.py                   # SQLAlchemy async engine (WAL) + migrations
+│   │   ├── db.py                   # SQLAlchemy async engine (SQLite/Postgres) + Alembic init
+│   │   ├── auth.py                 # Clerk JWT verification + user contextvar
 │   │   ├── models.py               # Module, Lesson, Document, ContentItem,
 │   │   │                           #   QuizAttempt, AgentMemory, RecommendationEvent,
-│   │   │                           #   AgentEvent, UserActivity, StudyPlan, LectureSession
+│   │   │                           #   AgentEvent, UserActivity, StudyPlan, LectureSession,
+│   │   │                           #   Concept, ConceptEdge, DocumentChunk (pgvector)
 │   │   ├── schemas.py              # Pydantic request/response models
 │   │   ├── storage.py              # Filesystem layer for uploads (uuid names)
 │   │   ├── parsers.py              # PyMuPDF extraction + LibreOffice → PDF
@@ -1291,7 +1382,8 @@ study-app/
 │   │   │   ├── concept_graph.py    # Graph merge on analysis
 │   │   │   ├── planner.py          # Per-module study plan generation
 │   │   │   ├── behavior.py         # Deterministic behavior distillation
-│   │   │   └── reflection.py       # Grounded LLM reflection → learner_insights
+│   │   │   ├── reflection.py       # Grounded LLM reflection → learner_insights
+│   │   │   └── stats.py            # window_summary: analytics + agent context (§18)
 │   │   ├── events/
 │   │   │   ├── bus.py              # In-process event bus + agent_events logging
 │   │   │   ├── domain.py           # Domain event dataclasses
@@ -1318,11 +1410,14 @@ study-app/
 │   │       ├── modules.py          # Module/Lesson CRUD + semester tree
 │   │       ├── plans.py            # Module plans: get/generate/check-off
 │   │       ├── lectures.py         # Lecture sessions (record → playback)
-│   │       ├── concepts.py         # Concept dashboard + references
+│   │       ├── concepts.py         # Concept dashboard + graph (recursive CTE) + CRUD
+│   │       ├── analytics.py        # GET /api/analytics/summary (window stats)
 │   │       ├── activity.py         # Batched telemetry ingest (202)
 │   │       ├── events.py           # GET /api/events (audit ledger)
 │   │       ├── memory.py           # Memory/profile debug + POST reflect
 │   │       └── recommend.py        # Recommendation + feedback
+│   ├── migrations/                 # Alembic: 0001_baseline, 0002_pillars (§17)
+│   ├── scripts/sqlite_to_pg.py     # One-time SQLite → Postgres data copy
 │   ├── evals/                      # LLM eval harness (see §13 + evals/README.md)
 │   │   ├── data.py                 # Dataset preparation (SciQ, RACE, AL-CPL, …)
 │   │   ├── judge.py                # DeepEval GEval on the stronger judge model
@@ -1340,12 +1435,15 @@ study-app/
 │       ├── main.tsx                # App mount (RouterProvider)
 │       ├── router.tsx              # TanStack Router route tree
 │       ├── types.ts                # Shared TS types
+│       ├── auth.ts                 # Clerk session helpers
+│       ├── analytics.ts            # Umami web analytics
 │       ├── lib/semesters.ts        # Term ordering / current-semester logic
 │       ├── api/
 │       │   ├── client.ts           # Typed fetch wrapper + all API functions
 │       │   └── track.ts            # Batched activity telemetry (sendBeacon)
 │       ├── styles/global.css       # Full stylesheet
 │       └── components/
+│           ├── Auth.tsx            # Clerk signed-out gate
 │           ├── Sidebar.tsx         # Nav buttons + ProfileCard
 │           ├── DocTabView.tsx      # Document view with tabs
 │           ├── DocumentView.tsx    # react-pdf / audio player / transcript

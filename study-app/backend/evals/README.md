@@ -6,8 +6,9 @@ Every suite exercises the **real production code** (`app.agent.tools`,
 reimplementation — so the scores track the product. Public datasets supply
 gold labels where gold exists; where none exists (flashcards, plans,
 reflections), suites pair deterministic invariants with an LLM judge running
-on a **dedicated stronger model** (`EVALS_JUDGE_MODEL`, temperature 0) so a
-model never grades its own failure modes.
+at temperature 0 (`EVALS_JUDGE_MODEL`). Set it to a stronger model than the
+generator so a model never grades its own failure modes — note it currently
+defaults to the same generation model.
 
 No users needed: learner-dependent features are evaluated by **replay** —
 real Duolingo review traces through our FSRS wrapper, real EdNet
