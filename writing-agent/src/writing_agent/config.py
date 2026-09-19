@@ -35,6 +35,11 @@ class SamplingSettings(BaseModel):
     stylist_temp: float = 0.9
     stylist_top_p: float = 0.92
     editor_temp: float = 0.15
+    # Writing-RL pairwise selection: each flagged block gets a cold surgical
+    # candidate (editor_temp) and a warmer variance candidate
+    # (candidate_b_temp); a pairwise judge picks the more human-shaped fix.
+    pairwise_selection: bool = True
+    candidate_b_temp: float = 0.4
 
 
 class ThresholdSettings(BaseModel):

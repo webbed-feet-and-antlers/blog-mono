@@ -18,6 +18,13 @@ targeted editor loop plays `fix the failing tests`.
         → editor (rewrites ONLY flagged blocks, T=0.15) → audit …
         → finalize (post + scorecard into workspace/)
 
+The editor uses **pairwise revision selection** (Writing-RL): each flagged
+block gets a cold surgical candidate and a warmer variance candidate, and
+a pairwise judge picks whichever clears the defects and reads more human
+(presentation order alternates to avoid position bias; judge failures
+fall back to the cold candidate). Disable via `pairwise_selection = false`
+in `config/default.toml`.
+
 ## Quickstart
 
     uv sync
@@ -113,8 +120,7 @@ A local artifacts-style editor where you and the agent share one document:
 
 ## Extension points (not yet built)
 
-Semantic-embedding divergence linter · style-reference vector library ·
-Genie novelty scoring · pairwise revision rewards (Writing-RL) ·
-publishing integration with `site/` + POSSE · multi-user editing.
+Style-reference vector library · embedding-space novelty and reference
+clustering · publishing integration with `site/` + POSSE · multi-user editing.
 
 Implementation plan: `docs/plans/2026-09-19-anti-slop-writing-harness.md`.

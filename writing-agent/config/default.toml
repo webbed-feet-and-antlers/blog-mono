@@ -16,6 +16,10 @@ architect_temp = 0.2
 stylist_temp = 0.9
 stylist_top_p = 0.92
 editor_temp = 0.15
+# Writing-RL pairwise selection: two candidates per flagged block (cold
+# surgical + warmer variance), pairwise judge picks the survivor.
+pairwise_selection = true
+candidate_b_temp = 0.4
 
 [thresholds]
 sentence_sd_min = 8.0
