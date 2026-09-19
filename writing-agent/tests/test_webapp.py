@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -43,10 +44,14 @@ async def test_draft_roundtrip(client):
     assert missing.status_code == 404
 
 
-async def test_index_serves_editor(client):
+async def test_index_serves_spa_or_build_instructions(client):
     resp = await client.get("/")
-    assert resp.status_code == 200
-    assert "easymde" in resp.text.lower()
+    if resp.status_code == 200:
+        assert "root" in resp.text  # built SPA shell
+    else:
+        # dist not built: actionable instructions, not a crash
+        assert resp.status_code == 503
+        assert "npm run build" in resp.text
 
 
 async def test_lint_endpoint(client):
@@ -178,6 +183,34 @@ async def test_shape_compare_endpoint(client, monkeypatch):
     assert current["rarity"] > max(d["rarity"] for d in ai_docs)
 
 
+async def test_versions_snapshot_list_and_revert(client, tmp_path):
+    await client.put("/api/drafts/v-doc", json={"markdown": "version one"})
+    await client.put("/api/drafts/v-doc", json={"markdown": "version two"})
+    versions = (await client.get("/api/drafts/v-doc/versions")).json()["versions"]
+    assert len(versions) == 1 and versions[0]["source"] == "human"
+
+    current = (await client.get("/api/drafts/v-doc")).json()["markdown"]
+    assert current == "version two"
+
+    file = versions[0]["file"]
+    snapshot = (await client.get(f"/api/drafts/v-doc/versions/{file}")).json()
+    assert snapshot["markdown"] == "version one"
+
+    resp = await client.post(
+        "/api/drafts/v-doc/revert", json={"file": file}
+    )
+    assert resp.status_code == 200
+    assert (await client.get("/api/drafts/v-doc")).json()["markdown"] == "version one"
+    # the revert itself snapshots the overwritten content
+    versions = (await client.get("/api/drafts/v-doc/versions")).json()["versions"]
+    assert len(versions) == 2
+    assert any(v["source"] == "revert" for v in versions)
+
+    # no traversal
+    bad = await client.get("/api/drafts/v-doc/versions/..%2F..%2Fx.md")
+    assert bad.status_code == 404
+
+
 class StubGraph:
     async def astream(self, initial, stream_mode="updates"):
         yield {"architect": {"outline": {"scqa": {}, "pillars": []}}}
@@ -208,3 +241,28 @@ async def test_full_draft_job_writes_workspace_file(client, monkeypatch, tmp_pat
     assert job["result"]["slug"] == "job-test"
     assert (tmp_path / "job-test.md").read_text() == "# Job test\n\nBody."
     assert "FINAL" in (tmp_path / "job-test.scorecard.md").read_text()
+
+
+async def test_sse_events_stream(client, monkeypatch, tmp_path):
+    import asyncio as _aio
+
+    monkeypatch.setattr(webapp, "GRAPH", StubGraph())
+    resp = await client.post(
+        "/api/drafts", json={"topic": "sse test", "research": "", "persona": "default"}
+    )
+    job_id = resp.json()["job_id"]
+    for _ in range(20):
+        await _aio.sleep(0)
+
+    collected = []
+    async with client.stream(
+        "GET", f"/api/jobs/{job_id}/events"
+    ) as stream:
+        async for line in stream.aiter_lines():
+            if line.startswith("data: "):
+                collected.append(json.loads(line[6:]))
+    kinds = [e["kind"] for e in collected]
+    assert kinds[0] == "stage"
+    assert "trace" in kinds and kinds[-1] == "done"
+    done = collected[-1]
+    assert done["result"]["slug"] == "sse-test"

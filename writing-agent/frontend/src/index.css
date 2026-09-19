@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-line: var(--line);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-dim: var(--accent-dim);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* Dark is the default; `.light` on <html> flips the palette. */
+:root {
+  --bg: #10141a;
+  --panel: #171d26;
+  --panel2: #0d1117;
+  --line: #263042;
+  --text: #d8dee9;
+  --muted: #7b8794;
+  --accent: #6ea8fe;
+  --accent-dim: #12233f;
+  --ok: #7ee2a8;
+  --warn: #f5c97b;
+  --err: #ff8f8f;
+}
+
+.light {
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --panel2: #eef1f5;
+  --line: #d9dfe8;
+  --text: #1b2430;
+  --muted: #66717e;
+  --accent: #2563eb;
+  --accent-dim: #dbe7ff;
+  --ok: #15803d;
+  --warn: #b45309;
+  --err: #dc2626;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-text font-sans antialiased;
+}
+
+/* CodeMirror fills its pane */
+.cm-editor {
+  height: 100%;
+  background: transparent;
+}
+.cm-editor .cm-scroller {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+/* markdown preview */
+.prose-preview {
+  @apply text-[15px] leading-7;
+}
+.prose-preview h1 { @apply text-2xl font-bold mt-6 mb-3; }
+.prose-preview h2 { @apply text-xl font-semibold mt-6 mb-2; }
+.prose-preview h3 { @apply text-lg font-semibold mt-4 mb-2; }
+.prose-preview p { @apply my-3; }
+.prose-preview ul { @apply list-disc pl-6 my-3; }
+.prose-preview ol { @apply list-decimal pl-6 my-3; }
+.prose-preview code { @apply font-mono text-[13px] bg-panel2 rounded px-1 py-0.5; }
+.prose-preview pre { @apply font-mono text-[13px] bg-panel2 border border-line rounded-md p-3 my-3 overflow-x-auto; }
+.prose-preview pre code { @apply bg-transparent p-0; }
+.prose-preview blockquote { @apply border-l-2 border-line pl-4 text-muted my-3; }
+.prose-preview a { @apply text-accent underline; }
+.prose-preview hr { @apply border-line my-6; }
+
+/* recharts dark-mode text */
+.recharts-text { fill: var(--muted); }
+.recharts-cartesian-grid line { stroke: var(--line); }

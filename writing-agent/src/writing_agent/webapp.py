@@ -12,14 +12,16 @@ Run with `wa ui` (default http://127.0.0.1:8765).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -54,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="writing-agent")
 
-_STATIC = Path(__file__).resolve().parent / "static"
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 NODE_LABELS = {
     "architect": "Designing the outline…",
@@ -92,6 +94,7 @@ class MarkdownRequest(BaseModel):
 
 class SaveRequest(BaseModel):
     markdown: str
+    source: str = "human"  # human | agent | fix | pipeline | revert
 
 
 class FixRequest(BaseModel):
@@ -112,6 +115,22 @@ def _workspace() -> Path:
     ws = get_settings().workspace_dir
     ws.mkdir(parents=True, exist_ok=True)
     return ws
+
+
+def _snapshot(slug: str, source: str) -> None:
+    """Copy the draft's CURRENT content into .history before it changes."""
+    current = _workspace() / f"{slugify(slug)}.md"
+    if not current.exists() or not current.read_text().strip():
+        return  # nothing worth snapshotting
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%f")[:-3]
+    history_dir = _workspace() / ".history" / slugify(slug)
+    history_dir.mkdir(parents=True, exist_ok=True)
+    safe_source = "".join(c if c.isalnum() else "-" for c in source)[:16]
+    (history_dir / f"{ts}-{safe_source}.md").write_text(current.read_text())
+
+
+def _history_dir(slug: str) -> Path:
+    return _workspace() / ".history" / slugify(slug)
 
 
 # ---- draft file CRUD (workspace markdown is the source of truth) ----
@@ -136,9 +155,48 @@ def get_draft(slug: str):
 
 @app.put("/api/drafts/{slug}")
 def save_draft(slug: str, req: SaveRequest):
-    p = _workspace() / f"{slugify(slug)}.md"
+    slug = slugify(slug)
+    _snapshot(slug, req.source)  # previous content → .history before overwrite
+    p = _workspace() / f"{slug}.md"
     p.write_text(req.markdown)
-    return {"ok": True, "slug": p.stem}
+    return {"ok": True, "slug": slug}
+
+
+@app.get("/api/drafts/{slug}/versions")
+def list_versions(slug: str):
+    d = _history_dir(slug)
+    if not d.exists():
+        return {"versions": []}
+    versions = []
+    for f in sorted(d.glob("*.md"), reverse=True):  # name starts with UTC ts
+        source = f.stem.split("-", 1)[1] if "-" in f.stem else "unknown"
+        versions.append(
+            {"file": f.name, "mtime": f.stat().st_mtime, "source": source}
+        )
+    return {"versions": versions[:100]}
+
+
+@app.get("/api/drafts/{slug}/versions/{file}")
+def get_version(slug: str, file: str):
+    p = _history_dir(slug) / Path(file).name  # name-only: no traversal
+    if not p.exists():
+        raise HTTPException(status_code=404, detail=f"no version {file!r}")
+    return {"file": p.name, "markdown": p.read_text()}
+
+
+class RevertRequest(BaseModel):
+    file: str
+
+
+@app.post("/api/drafts/{slug}/revert")
+def revert_draft(slug: str, req: RevertRequest):
+    slug = slugify(slug)
+    version = _history_dir(slug) / Path(req.file).name
+    if not version.exists():
+        raise HTTPException(status_code=404, detail=f"no version {req.file!r}")
+    _snapshot(slug, "revert")
+    (_workspace() / f"{slug}.md").write_text(version.read_text())
+    return {"ok": True, "slug": slug, "restored": version.name}
 
 
 # ---- full-pipeline jobs (polled; stage labels stream from LangGraph) ----
@@ -159,9 +217,22 @@ def start_draft_job(initial: dict[str, Any]) -> str:
         "result": None,
         "started": time.time(),
         "trace": [],
+        "subscribers": [],  # SSE queues
     }
     _tasks.append(asyncio.get_running_loop().create_task(_run_job(job_id, initial)))
     return job_id
+
+
+def _emit(job_id: str, kind: str, payload: dict[str, Any] | None = None) -> None:
+    """Fan an event out to every SSE subscriber of this job."""
+    job = _jobs.get(job_id)
+    if not job:
+        return
+    event = {"kind": kind, "stage": job["stage"], "elapsed": round(time.time() - job["started"], 1)}
+    if payload:
+        event.update(payload)
+    for q in list(job["subscribers"]):
+        q.put_nowait(event)
 
 
 async def _run_job(job_id: str, initial: dict[str, Any]) -> None:
@@ -171,6 +242,7 @@ async def _run_job(job_id: str, initial: dict[str, Any]) -> None:
         elapsed = round(time.time() - job["started"], 1)
         job["trace"].append({"t": elapsed, "event": event})
         logger.info("job %s [%6.1fs] %s", job_id, elapsed, event)
+        _emit(job_id, "trace", {"event": event})
 
     settings = get_settings()
     trace(
@@ -199,6 +271,7 @@ async def _run_job(job_id: str, initial: dict[str, Any]) -> None:
         trace(f"FAILED: {type(exc).__name__}: {exc}")
     finally:
         job["done"] = True
+        _emit(job_id, "done", {"error": job["error"], "result": job["result"]})
 
 
 def _persist_final(state: dict[str, Any]) -> dict[str, Any]:
@@ -206,6 +279,7 @@ def _persist_final(state: dict[str, Any]) -> dict[str, Any]:
     if not post:
         raise RuntimeError("pipeline produced no final_post")
     slug = slugify(state["topic"])
+    _snapshot(slug, "pipeline")  # previous draft (if any) → .history
     (_workspace() / f"{slug}.md").write_text(post)
     (_workspace() / f"{slug}.scorecard.md").write_text(state.get("scorecard", ""))
     return {
@@ -238,6 +312,45 @@ def job_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail=f"no job {job_id!r}")
     return {**job, "elapsed": round(time.time() - job["started"], 1)}
+
+
+@app.get("/api/jobs/{job_id}/events")
+async def job_events(job_id: str):
+    """SSE stream of job trace/stage events. Catches a late subscriber up
+    with the current state first, then streams until done."""
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"no job {job_id!r}")
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def stream():
+        job["subscribers"].append(queue)
+        try:
+            # catch-up: current snapshot + everything already traced
+            yield _sse({"kind": "stage", "stage": job["stage"],
+                        "elapsed": round(time.time() - job["started"], 1)})
+            for entry in job["trace"]:
+                yield _sse({"kind": "trace", "stage": job["stage"],
+                            "elapsed": entry["t"], "event": entry["event"]})
+            if job["done"]:
+                yield _sse({"kind": "done", "stage": job["stage"],
+                            "elapsed": round(time.time() - job["started"], 1),
+                            "error": job["error"], "result": job["result"]})
+                return
+            while True:
+                event = await queue.get()
+                yield _sse(event)
+                if event.get("kind") == "done":
+                    return
+        finally:
+            if queue in job["subscribers"]:
+                job["subscribers"].remove(queue)
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+def _sse(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 # ---- gates on the CURRENT editor content ----
@@ -438,11 +551,33 @@ async def revise(req: ReviseRequest):
     return {"markdown": revised, "scope": "document"}
 
 
-# ---- static frontend ----
+# ---- SPA frontend (frontend/dist, built with `npm run build`) ----
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def index():
-    return FileResponse(_STATIC / "index.html")
+    index_html = _FRONTEND_DIST / "index.html"
+    if index_html.exists():
+        return FileResponse(index_html)
+    return PlainTextResponse(
+        "writing-agent frontend is not built. Run:\n"
+        "  cd writing-agent/frontend && npm install && npm run build\n"
+        "then restart `wa ui`. For hot-reload development: `npm run dev` "
+        "in one shell (proxies /api to :8765) and `uv run wa ui` in another.",
+        status_code=503,
+    )
 
 
-app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+@app.get("/{path:path}", include_in_schema=False)
+def spa_fallback(path: str):
+    """Serve built assets; anything else falls back to the SPA shell."""
+    if path.startswith("api/"):
+        raise HTTPException(status_code=404, detail=f"no route /{path}")
+    candidate = _FRONTEND_DIST / path
+    if path and candidate.is_file():
+        return FileResponse(candidate)
+    return index()
+
+
+_assets_dir = _FRONTEND_DIST / "assets"
+if _assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")

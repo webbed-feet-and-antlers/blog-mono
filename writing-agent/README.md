@@ -78,26 +78,33 @@ Thresholds live in `config/default.toml`. Calibrate the surprisal gates
 against your own writing: drop human posts into `references/` and run
 `uv run wa score x.md --calibrate-dir references/`.
 
-## Collaborative web editor
+## Collaborative web editor (React SPA)
 
+Build once, then run:
+
+    cd writing-agent/frontend && npm install && npm run build
     uv run wa ui        # → http://127.0.0.1:8765
 
-A local artifacts-style editor where you and the agent share one document:
+Hot-reload development: `npm run dev` in one shell (proxies /api to :8765)
+and `uv run wa ui` in another.
 
-- **Draft with the agent** — topic + research notes run the full pipeline;
-  live stage updates (outlining → drafting → gates → fixes), then the
-  draft lands in the editor.
-- **Edit freely** — markdown editor with WYSIWYG toolbar and side-by-side
-  preview (EasyMDE). The editor content is the single source of truth:
-  every agent action operates on your *current* text, so human edits are
-  never clobbered.
-- **Gates on demand** — Lint (deterministic, no API), Surprisal audit,
-  and *AI fix flagged* (surgical rewrites of only the blocks failing
-  gates; per-block fix buttons included).
-- **Co-editor chat** — type instructions ("make the intro punchier");
-  select text in the editor to scope the revision to just that passage.
-- **Version history** — every AI edit is snapshotable; ↩ Revert undoes
-  the last AI change. ⌘S saves, ⌘⏎ sends.
+Vite + React 19 + TypeScript + Tailwind 4 SPA (mirrors study-app/frontend
+conventions) with a resizable three-pane layout — drafts sidebar, CodeMirror
+6 editor with live markdown preview, and a tabbed panel:
+
+- **Gates** — run the deterministic linters (offline) and the surprisal
+  audit; pass/fail chips per gate family, per-block defect cards, and
+  pairwise-judged "AI fix" flows that open a review diff before applying.
+- **Shape** — StoryScope graphs (rarity percentiles, narrative-space
+  scatter with centroids, 10-axis radar), authorship distance, judge axes.
+- **Agent** — live SSE trace of pipeline runs (node by node, with
+  elapsed time), plus the co-editor chat: type instructions, select text
+  in the editor to scope them; revisions open as reviewable diffs.
+
+Everything human/agent shared: every save and accepted AI change snapshots
+to `workspace/.history/` — the History drawer diffs and restores any
+version. ⌘K opens the command palette, ⌘S saves, autosave after 2.5s idle,
+light/dark themes, and the last-open draft restores on reload.
 
 ## Notes & caveats
 
