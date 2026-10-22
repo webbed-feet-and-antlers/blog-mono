@@ -1,0 +1,21 @@
+[project]
+name = "kg-pipeline"
+version = "0.1.0"
+description = "Data pipeline for temporal knowledge-graph extraction training and evaluation"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6"]
+
+[project.optional-dependencies]
+parquet = ["pyarrow>=14"]
+fetch = ["datasets>=2.19", "huggingface_hub>=0.23"]
+dev = ["pytest>=7"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["kg_pipeline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
