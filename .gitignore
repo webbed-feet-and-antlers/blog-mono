@@ -249,3 +249,5 @@ study-app/backend/evals/reports/*
 .env.local
 
 supabase/.temp
+
+.mimosa
