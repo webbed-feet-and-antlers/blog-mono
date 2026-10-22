@@ -31,9 +31,12 @@ to split, so it ships as one unsplit file.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
+import socket
 import sys
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -85,7 +88,20 @@ DATASET_FILES = {
 }
 
 
+def _assert_public_http_url(url: str) -> None:
+    """Only fetch http(s) URLs whose host resolves to public addresses."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(f"refusing non-http(s) URL: {url!r}")
+    for info in socket.getaddrinfo(parsed.hostname, None):
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            raise ValueError(f"refusing non-public host: {parsed.hostname!r}")
+
+
 def _http_get(url: str) -> bytes:
+    _assert_public_http_url(url)
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=60) as resp:
         return resp.read()

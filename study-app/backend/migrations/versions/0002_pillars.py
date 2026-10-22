@@ -29,23 +29,6 @@ down_revision: Union[str, None] = "baseline"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-_ALL_TABLES = (
-    "modules",
-    "lessons",
-    "documents",
-    "content_items",
-    "quiz_attempts",
-    "agent_memory",
-    "recommendation_events",
-    "agent_events",
-    "user_activities",
-    "study_plans",
-    "lecture_sessions",
-    "concepts",
-    "concept_edges",
-    "document_chunks",
-)
-
 
 def upgrade() -> None:
     is_pg = op.get_bind().dialect.name == "postgresql"
@@ -111,17 +94,42 @@ def upgrade() -> None:
         )
 
         # Deny-all at the Supabase API boundary; the app's direct
-        # connection (table owner) is unaffected.
-        for table in _ALL_TABLES:
-            op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+        # connection (table owner) is unaffected. Spelled out per table:
+        # RLS DDL has no bind-parameter form for the table name.
+        op.execute("ALTER TABLE modules ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE lessons ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE documents ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE content_items ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE quiz_attempts ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE agent_memory ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE recommendation_events ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE agent_events ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE user_activities ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE study_plans ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE lecture_sessions ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE concepts ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE concept_edges ENABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE document_chunks ENABLE ROW LEVEL SECURITY")
 
 
 def downgrade() -> None:
     is_pg = op.get_bind().dialect.name == "postgresql"
 
     if is_pg:
-        for table in _ALL_TABLES:
-            op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE modules DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE lessons DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE documents DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE content_items DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE quiz_attempts DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE agent_memory DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE recommendation_events DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE agent_events DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE user_activities DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE study_plans DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE lecture_sessions DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE concepts DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE concept_edges DISABLE ROW LEVEL SECURITY")
+        op.execute("ALTER TABLE document_chunks DISABLE ROW LEVEL SECURITY")
         op.drop_table("document_chunks")
     op.drop_table("concept_edges")
     op.drop_table("concepts")
