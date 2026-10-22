@@ -1,0 +1,12 @@
+name: icews
+tier: A
+license: "CC BY 4.0 (Harvard Dataverse, DOI 10.7910/DVN/28075 - verify at fetch)"
+url: https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/28075
+# Quarterly rolling releases: pin the exact version at first fetch.
+version: unpinned
+weight: 0.35
+description: >-
+  Machine-coded news events as (source actor, CAMEO action, target actor,
+  date) quads. High-volatility facts with exact event dates — the news-event
+  regime. Event text is reconstructed from coded fields, so dates usually do
+  not appear in the text (explicit_in_text=false).
