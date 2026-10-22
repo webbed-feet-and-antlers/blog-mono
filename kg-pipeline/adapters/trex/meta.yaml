@@ -1,0 +1,12 @@
+name: trex
+tier: A
+license: "CC BY-SA 4.0 (Wikipedia/Wikidata derived)"
+url: https://hadyelsahar.io/t-rex/
+# Pin the exact figshare/HF revision on the first full fetch; until then
+# manifests record content hashes so runs are still reproducible.
+version: unpinned
+weight: 0.35
+description: >-
+  Wikipedia abstracts aligned to Wikidata triples, enriched with P580/P582
+  qualifiers for temporal bounds. Times come from the database, not the text
+  (explicit_in_text=false) — the distant-supervision regime.
