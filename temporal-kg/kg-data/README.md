@@ -120,9 +120,10 @@ plus UnifiedDataset trainer files).
 
 ## Verified data sources
 
-- `relbert/t_rex` via `revision="refs/convert/parquet"` (the script version is
-  unsupported by datasets>=3)
-- `ntcuuong777/ubuntu_dialogue_corpus_train`, `corbt/enron-emails`,
+- `relbert/t_rex` pinned to parquet commit `5baa776c…` (`TREX_PARQUET_REVISION`
+  in `adapters/trex.py`; `refs/convert/parquet` is a moving branch and the
+  script loader is unsupported by datasets>=3 — bump the pin deliberately)
+- `ntcuong777/ubuntu_dialogue_corpus_train`, `corbt/enron-emails`,
   `HuggingFaceGECLM/StackExchange_Mar2023` (split `stackoverflow`)
 - Wikidata Query Service (SPARQL) + Wikipedia REST summaries
 

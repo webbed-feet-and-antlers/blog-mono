@@ -35,6 +35,13 @@ logger = logging.getLogger(__name__)
 PUBLIC_DIR = DATA_DIR / "public" / "trex"
 RAW_DIR = DATA_DIR / "raw"
 
+# Immutable pin of relbert/t_rex's auto-converted parquet. `refs/convert/parquet`
+# is a moving branch (HF re-converts on upstream changes), which would silently
+# change what the manifest hashes describe. This is that branch's targetCommit
+# as of 2026-10-23; bump deliberately and re-run `adapt` when you want new data.
+TREX_REPO = "relbert/t_rex"
+TREX_PARQUET_REVISION = "5baa776c0e65c1cc49d4fde8298d5b81478b549f"
+
 # functional Wikidata properties with P580/P582 qualifiers worth enriching
 TEMPORAL_PROPERTIES = ["P39", "P108", "P54", "P463", "P127"]
 
@@ -133,17 +140,17 @@ def _make_doc(doc_id: str, text: str, world: str, doc_type: str,
 
 
 def adapt_trex(cap: int = 3000) -> tuple[list[Doc], list[Quad]]:
-    """Stream relbert/t_rex (parquet revision — the script version is
-    unsupported by datasets>=3), group rows by Wikipedia article into docs,
-    and emit quads with verbatim span alignment.
+    """Stream relbert/t_rex at the pinned parquet commit (the script loader
+    is unsupported by datasets>=3), group rows by Wikipedia article into
+    docs, and emit quads with verbatim span alignment.
 
     Verified row shape: {relation: P-id, head: str, tail: str, title: str,
     text: str} — one triple per row, abstract repeated per triple.
     """
     from datasets import load_dataset
 
-    ds = load_dataset("relbert/t_rex", split="train", streaming=True,
-                      revision="refs/convert/parquet")
+    ds = load_dataset(TREX_REPO, split="train", streaming=True,
+                      revision=TREX_PARQUET_REVISION)
 
     by_title: dict[str, dict] = {}
     n_rows = 0
@@ -199,8 +206,8 @@ def adapt_trex(cap: int = 3000) -> tuple[list[Doc], list[Quad]]:
 
     for i, q in enumerate(quads):
         q.id = f"trex-q{i:05d}"
-    logger.info("trex: %d docs, %d quads (from %d rows)",
-                len(docs), len(quads), n_rows)
+    logger.info("trex@%s: %d docs, %d quads (from %d rows)",
+                TREX_PARQUET_REVISION[:8], len(docs), len(quads), n_rows)
     return docs, quads
 
 
