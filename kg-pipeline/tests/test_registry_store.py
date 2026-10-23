@@ -26,7 +26,7 @@ def make_doc():
 
 def test_discover_adapters():
     metas = discover_adapters(REPO_ROOT)
-    assert set(metas) == {"trex", "icews"}
+    assert set(metas) == {"icews", "kgdata"}
     assert all(isinstance(m, AdapterMeta) for m in metas.values())
     assert metas["icews"].url.startswith("https://dataverse.harvard.edu/")
 
@@ -34,7 +34,7 @@ def test_discover_adapters():
 def test_mixture_weights_normalized():
     metas = discover_adapters(REPO_ROOT)
     weights = mixture_weights(metas)
-    assert weights == pytest.approx({"trex": 0.5, "icews": 0.5})
+    assert weights == pytest.approx({"icews": 0.5, "kgdata": 0.5})
 
 
 def test_store_round_trip(tmp_path):
