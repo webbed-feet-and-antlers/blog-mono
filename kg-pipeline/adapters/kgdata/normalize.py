@@ -135,23 +135,33 @@ def _quad_time(q: dict) -> Optional[TimeBound]:
     return TimeBound(from_raw, to_raw, "day", explicit)
 
 
-def _canonical_quad(q: dict) -> Optional[Quad]:
+def _canonical_quad(q: dict, synthetic: bool) -> Tuple[Optional[Quad], Optional[str]]:
+    """Returns (quad, None) or (None, issue_key) for drop accounting."""
     head, tail = q.get("head", {}), q.get("tail", {})
     if head.get("start") is None or tail.get("start") is None:
-        return None
+        return None, "unusable-quad"
     rel = str(q.get("relation", "")).strip()
     if not rel:
-        return None
-    family = None if _P_RE.match(rel) else "company"
+        return None, "unusable-quad"
+    if _P_RE.match(rel):
+        namespaced = rel  # Wikidata P-id: passes through bare
+    elif synthetic:
+        namespaced = namespace_rel(rel, family="company")
+    elif re.search(r"\s", rel):
+        # relbert/t_rex mixes in relation templates like "[City] is in
+        # [Country]" — not P-ids, not trainable labels; skip + count.
+        return None, "template-relation"
+    else:
+        namespaced = rel
     return Quad(
         [int(head["start"]), int(head["end"])],
-        namespace_rel(rel, family=family),
+        namespaced,
         [int(tail["start"]), int(tail["end"])],
         head.get("entity_id"),
         tail.get("entity_id"),
         _quad_time(q),
         q.get("claim_status"),
-    )
+    ), None
 
 
 def normalize(records):
@@ -182,9 +192,9 @@ def normalize(records):
             seen_spans = set()
             rev_quads = []
             for q in by_rev.get(rev.get("rev_id"), []):
-                cq = _canonical_quad(q)
+                cq, why = _canonical_quad(q, synthetic=(kind == "synthetic"))
                 if cq is None:
-                    issues["unusable-quad"] += 1
+                    issues[why] += 1
                     continue
                 rev_quads.append(cq)
                 for m in (q.get("head", {}), q.get("tail", {})):

@@ -46,6 +46,20 @@ def test_normalize_public_trex_passes_pids_through():
     d.validate()
 
 
+def test_public_template_relations_skipped_and_counted():
+    # relbert/t_rex rows sometimes carry relation templates instead of P-ids
+    rec = public_trex_record()
+    rec["quads"][0]["relation"] = "[City] is in [Country]"
+    docs, issues = normalize([rec])
+    assert issues.get("template-relation") == 1
+    assert docs[0].quads == []
+    docs[0].validate()
+
+    # synthetic kinds keep namespacing even with spaces-free snake_case ids
+    synth = synth_record()
+    assert normalize([synth])[0][0].quads[0].rel == "COMPANY:depends_on"
+
+
 def test_normalize_wikidata_kb_qualifier_time():
     rec = public_trex_record(time_source="kb_qualifier")
     rec["kind"] = "wikidata"

@@ -47,6 +47,9 @@ def main(argv=None) -> int:
     parser.add_argument("--out", default="data", help="output root (default: ./data)")
     parser.add_argument("--split", choices=["train", "val", "test"], default=None,
                         help="for export-dir inputs: filter by split; outputs go under <source>_<split>")
+    parser.add_argument("--name", default=None,
+                        help="override the output source name (e.g. --name kgdata_synth vs kgdata_public) "
+                             "so multiple exports from one adapter never clobber each other")
     args = parser.parse_args(argv)
 
     adapter = load_adapter(args.source)
@@ -61,7 +64,8 @@ def main(argv=None) -> int:
     docs, report = sanitize_docs(docs)
     docs, dupes = dedup_quads(docs)
 
-    source_out = safe_name(args.source + (f"_{args.split}" if args.split else ""))
+    source_out = safe_name(args.name) if args.name else safe_name(
+        args.source + (f"_{args.split}" if args.split else ""))
     out_root = safe_out_dir(args.out, Path.cwd())
     store_paths = write_docs(docs, out_root, source_out, out_root)
     unified_paths = write_unified(docs, out_root / "unified" / source_out, out_root)

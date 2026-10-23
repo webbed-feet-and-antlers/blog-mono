@@ -66,6 +66,16 @@ def test_cli_kgdata_synthetic_export_with_split(tmp_path, monkeypatch, capsys):
     assert "docs=2" in capsys.readouterr().out
 
 
+def test_cli_kgdata_name_overrides_output_source(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    export = build_synth_export(tmp_path / "synthetic")
+
+    rc = main(["--source", "kgdata", "--input", str(export),
+               "--split", "train", "--name", "kgdata_synth", "--out", "out"])
+    assert rc == 0
+    assert (tmp_path / "out" / "normalized" / "kgdata_synth" / "docs.jsonl").exists()
+
+
 def test_cli_split_unsupported_for_jsonl_adapters(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     inp = _write_jsonl(tmp_path / "rows.jsonl", icews_rows())
