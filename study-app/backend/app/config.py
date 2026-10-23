@@ -17,19 +17,31 @@ class Settings(BaseSettings):
     # so we use the openai SDK pointed at that base URL. Swap models just by
     # changing OPENROUTER_MODEL (e.g. "anthropic/claude-sonnet-4",
     # "openai/gpt-4o", "google/gemini-flash-1.5").
+    # Model policy (checked 2026-10-23): keep the newest cheap flash tier,
+    # weighted by OUR workload shape — the agent is output-heavy (quiz/
+    # explanation generation), and deepseek-v4-flash-0731 (2026-07-31) is
+    # still the cheapest on OUTPUT ($0.133/M) of the current flash options,
+    # so it stays despite newer arrivals. .env pins OPENROUTER_MODEL anyway;
+    # this default is the fallback. Re-check via the live catalog
+    # (temporal-kg/kg-data has a `models` command) before bumping.
     openrouter_api_key: str | None = None
     openrouter_model: str = "deepseek/deepseek-v4-flash-0731"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
-    # Transcription — uses OpenRouter's /audio/transcriptions endpoint (same key,
-    # same base URL as the LLM). qwen3-asr-1.7b is ~$0.000008/sec (~$0.03/hour).
+    # Transcription — OpenRouter's catalog no longer lists ANY ASR models
+    # (checked 2026-10-23; qwen/qwen3-asr-1.7b is gone), so this endpoint
+    # likely fails at call time. Migrating to a dedicated audio provider
+    # (OpenAI audio API, Groq whisper) is an open product decision.
     transcription_model: str = "qwen/qwen3-asr-1.7b"
     audio_max_bytes: int = 500 * 1024 * 1024  # 500 MB
 
     # Evals (backend/evals/) — the judge is a *stronger* model than the
     # generator so a model never grades its own failure modes. Runs at
     # temperature 0 via the same OpenRouter client as everything else.
-    evals_judge_model: str = "deepseek/deepseek-v4-flash-0731"
+    # claude-haiku-5.5 (2026-10-07): judge volume is low, so the price step
+    # over a flash tier is cents per eval run, and it finally makes the
+    # judge genuinely stronger than the generator.
+    evals_judge_model: str = "anthropic/claude-haiku-5.5"
     evals_n: int = 10  # cases per suite (EVALS_N; a 25-case deep run takes hours)
 
     # Paths
