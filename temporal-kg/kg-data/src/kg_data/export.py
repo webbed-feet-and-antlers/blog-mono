@@ -98,6 +98,26 @@ def export_corpus(
     return manifest
 
 
+def refresh_manifest() -> dict:
+    """Re-hash the existing synthetic files into the manifest (after the
+    audit stage rewrites gold quads / questions in place)."""
+    files = sorted(
+        p.relative_to(DATA_DIR).as_posix()
+        for p in SYNTH_DIR.rglob("*.jsonl")
+    )
+    manifest_path = DATA_DIR / "manifest.json"
+    manifest = json.loads(manifest_path.read_text()) if \
+        manifest_path.exists() else {"config": {}, "splits": {}}
+    manifest["files"] = {f: _sha256(DATA_DIR / f) for f in files}
+    quads = sum(1 for f in files if f.startswith("synthetic/gold/")
+                for _ in (DATA_DIR / f).open())
+    manifest["config"]["quads"] = quads
+    manifest["config"]["audited"] = True
+    manifest_path.write_text(
+        json.dumps(manifest, indent=1, sort_keys=True) + "\n")
+    return manifest
+
+
 # --- loaders (for extract/score CLI paths) -----------------------------------
 
 

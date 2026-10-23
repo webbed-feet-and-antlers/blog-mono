@@ -168,6 +168,10 @@ class Quad(BaseModel):
     claim_status: ClaimStatus = "accurate"
     doc_id: str
     rev_id: str
+    # audit-stage flags: asserted by the render but not planned by the
+    # coverage matrix (discovered), or asserted with uncertainty (hedged)
+    discovered: bool = False
+    hedged: bool = False
 
 
 # --- Eval questions ----------------------------------------------------------

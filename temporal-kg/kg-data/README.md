@@ -27,6 +27,7 @@ measured noise statistics.
 | 1 | `worldgen.py` | Seeded scaffold (entities, predicates with volatility classes, scheduled change events) + one LLM call to name things. All gold labels derive from this DB, never from the LLM again |
 | 2 | `docgen.py` + `messify.py` | Coverage matrix assigns facts per doc **as of its date** → implicit obsolescence is structural. ~10% conflict injections, ~20% doc revisions (fact-changing or cosmetic), ~5% deletions, ~15% never-stated facts. Offset-safe noise pass after rendering |
 | 3 | `annotate.py` | Verbatim mention → char-offset alignment (span verification, one strict regeneration on failure) |
+| 3½ | `audit.py` | Gold = what the text **asserts**, not what was planned: an LLM classifies each timeline-active fact as asserted / not_asserted / unsure (coreference-aware, hedged flag). Selections are validated against the timeline, so truth stays deterministic. Planned quads drop only on auditor denial **plus** mechanical no-same-sentence corroboration (auditor drop precision measured ~50%); omissions fail safe (kept); discovered assertions become new gold (`discovered: true`). Scorer reports F1 against planned-gold and full gold separately |
 | 4 | `evalgen.py` | Pure-code eval questions: point-in-time, current-state, history, staleness (superseded **and** old-but-still-true), conflict |
 | 5 | `adapters/trex.py` | `relbert/t_rex` (parquet revision) real-text triples + Wikidata SPARQL temporal enrichment (P580/P582) distant-supervised onto Wikipedia summaries |
 | 6 | `extract.py` | Few-shot LLM baseline extractor + QA answering (validates the harness, sets a floor) |
@@ -46,6 +47,14 @@ uv run python -m kg_data adapt --cap 3000 --enrich 300  # public data
 uv run python -m kg_data extract --split val            # baseline extraction
 uv run python -m kg_data answer --split val             # baseline QA
 uv run python -m kg_data score --split val              # F1 + accuracy
+uv run python -m kg_data audit --split train            # re-audit an export in place
+```
+
+The audit stage wants a sturdier model than the free flash tier (empty
+responses under load, and assertion judgment benefits from it):
+
+```bash
+OPENROUTER_MODEL=openai/gpt-4o-mini CONCURRENCY=4 uv run python -m kg_data audit --split train
 ```
 
 Scale-up is `generate --worlds 20 --docs-per-world 80` after eyeballing the

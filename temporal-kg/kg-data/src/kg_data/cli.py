@@ -19,7 +19,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import adapters, docgen, evalgen, export, extract as extract_mod
+from . import adapters, audit, docgen, evalgen, export, extract as extract_mod
 from . import grounding, score as score_mod, worldgen
 from .config import DATA_DIR, settings
 
@@ -59,6 +59,10 @@ async def cmd_generate(args: argparse.Namespace) -> None:
         corpus = await docgen.generate_world_corpus(
             world, args.docs_per_world, seed=_seed_for(i),
             exemplars=exemplars, use_llm=True)
+        audited = await audit.audit_world_corpus(
+            world, corpus.docs, corpus.quads, use_llm=True,
+            stats=corpus.stats)
+        corpus.quads = audited
         questions = evalgen.generate_eval_questions(
             corpus.world, corpus.quads, corpus.docs,
             seed=_seed_for(i), max_total=args.max_questions)
@@ -140,8 +144,10 @@ async def cmd_score(args: argparse.Namespace) -> None:
     preds = [Quad.model_validate(json.loads(line))
              for line in pred_path.read_text().splitlines() if line] \
         if pred_path.exists() else []
+    planned_gold = [q for q in gold if not q.discovered]
     result = {
-        "quads": score_mod.score_quads(gold, preds, worlds),
+        "quads_full": score_mod.score_quads(gold, preds, worlds),
+        "quads_planned": score_mod.score_quads(planned_gold, preds, worlds),
         "stream": score_mod.score_stream(gold, preds, docs, worlds),
     }
     answers_path = DATA_DIR / f"answers_{split or 'all'}.jsonl"
@@ -152,6 +158,15 @@ async def cmd_score(args: argparse.Namespace) -> None:
         questions = export.load_questions(split)
         result["questions"] = score_mod.score_questions(questions, answers, worlds)
     print(json.dumps(result, indent=1))
+
+
+async def cmd_audit(args: argparse.Namespace) -> None:
+    stats = await audit.apply_to_export(args.split, use_llm=True)
+    print(json.dumps(stats, indent=1))
+    from . import review
+
+    out = review.build_review(args.split or "train")
+    print(f"review page refreshed → {out}")
 
 
 async def cmd_review(args: argparse.Namespace) -> None:
@@ -194,6 +209,10 @@ def main() -> None:
     p_rv.add_argument("--split", choices=["train", "val", "test"],
                       default="train")
 
+    p_au = sub.add_parser("audit")
+    p_au.add_argument("--split", choices=["train", "val", "test"],
+                      help="audit one split's exported corpus in place")
+
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -203,6 +222,7 @@ def main() -> None:
         "grounding": cmd_grounding, "generate": cmd_generate,
         "adapt": cmd_adapt, "extract": cmd_extract,
         "answer": cmd_answer, "score": cmd_score, "review": cmd_review,
+        "audit": cmd_audit,
     }
     asyncio.run(handlers[args.command](args))
 

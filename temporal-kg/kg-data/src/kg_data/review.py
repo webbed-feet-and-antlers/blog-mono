@@ -99,6 +99,8 @@ def _quad_payloads(quads: list[Quad]) -> list[dict]:
         "valid_to": q.valid_to.isoformat() if q.valid_to else None,
         "time_source": q.time_source,
         "claim_status": q.claim_status,
+        "discovered": q.discovered,
+        "hedged": q.hedged,
     } for q in quads]
 
 
@@ -201,6 +203,11 @@ def build_payload(worlds: list[World], docs: list[Doc], quads: list[Quad],
     for q in quads:
         pred_counts[q.relation] = pred_counts.get(q.relation, 0) + 1
 
+    audit_stats = {
+        "discovered": sum(1 for q in quads if q.discovered),
+        "hedged": sum(1 for q in quads if q.hedged),
+    }
+
     worlds_payload = []
     for w in worlds:
         company = next((e.name for e in w.entities if e.type == "company"), "?")
@@ -228,6 +235,8 @@ def build_payload(worlds: list[World], docs: list[Doc], quads: list[Quad],
         "n_quads": len(quads),
         "n_conflicts": sum(1 for q in quads
                            if q.claim_status == "conflict_injected"),
+        "n_discovered": audit_stats["discovered"],
+        "n_hedged": audit_stats["hedged"],
         "questions": [q.model_dump(mode="json") for q in questions],
         "worlds": worlds_payload,
         "grounding": grounding_stats or {},
@@ -292,6 +301,7 @@ section.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1f
 mark.h{background:#2b3f75;color:#a8c4ff;border-radius:3px;padding:0 2px}
 mark.t{background:#1e4436;color:#8fe9c4;border-radius:3px;padding:0 2px}
 mark.c{background:#522233;color:#ff9db1;border-radius:3px;padding:0 2px;text-decoration:underline wavy #ff6b81}
+mark.d{background:transparent;color:#c9a8ff;border:1px dashed #7a5fc9;border-radius:3px;padding:0 2px}
 table.q{border-collapse:collapse;width:100%;font-size:12.5px;margin-top:8px}
 table.q td{border-top:1px solid var(--line);padding:4px 6px;vertical-align:top}
 .ok{color:#4fd6a4}.bad-x{color:var(--conflict)}.flagbox{color:var(--flag);font-size:12px;margin-top:6px}
@@ -319,15 +329,16 @@ details.wtl{background:var(--card);border:1px solid var(--line);border-radius:10
 <main><section class="stats" id="stats"></section><div id="content"></div></main>
 <script>
 const DATA = __DATA__;
-const state = {channel:"all", flaggedOnly:false, conflictsOnly:false, sample:null, verdicts:JSON.parse(localStorage.getItem("kg_verdicts")||"{}")};
+const state = {channel:"all", flaggedOnly:false, conflictsOnly:false, discoveredOnly:false, sample:null, verdicts:JSON.parse(localStorage.getItem("kg_verdicts")||"{}")};
 
 function esc(s){const d=document.createElement("div");d.textContent=s;return d.innerHTML}
-function spanClass(q){return q.claim_status==="conflict_injected"?"c":q.h?"h":"t"}
+function spanClass(q,role){if(q.claim_status==="conflict_injected")return "c";if(q.discovered)return "d";return role==="head"?"h":"t"}
 
 function highlight(rev){
   const spans=[]; rev.quads.forEach((q,i)=>{
-    spans.push({s:q.head.start,e:q.head.end,cls:q.claim_status==="conflict_injected"?"c":"h",title:q.relation+" · head"});
-    spans.push({s:q.tail.start,e:q.tail.end,cls:q.claim_status==="conflict_injected"?"c":"t",title:q.relation+" · tail"});
+    const cls=spanClass(q,"head");
+    spans.push({s:q.head.start,e:q.head.end,cls,title:q.relation+" · head"+(q.discovered?" · discovered":"")+(q.hedged?" · hedged":"")});
+    spans.push({s:q.tail.start,e:q.tail.end,cls:spanClass(q,"tail"),title:q.relation+" · tail"+(q.discovered?" · discovered":"")+(q.hedged?" · hedged":"")});
   });
   const uniq=new Map(); spans.forEach(sp=>{const k=sp.s+"-"+sp.e;if(!uniq.has(k)||uniq.get(k).cls!=="c")uniq.set(k,sp)});
   const sorted=[...uniq.values()].sort((a,b)=>a.s-b.s||b.e-a.e);
@@ -362,7 +373,8 @@ function revBlock(doc,rev){
   const rows=rev.quads.map((q,i)=>{
     const cur=rev.quad_current[i];
     const ok=cur===null?' <span style="color:var(--dim)">· injected conflict (expected ✗)</span>':(cur?' <span class="ok">✓ true@docdate</span>':' <span class="bad-x">✗ not current</span>');
-    return "<tr><td>"+esc(q.head.text)+"</td><td>"+esc(q.relation)+
+    const tags=(q.discovered?' <span style="color:#c9a8ff">· discovered</span>':"")+(q.hedged?' <span style="color:var(--flag)">· hedged</span>':"");
+    return "<tr><td>"+esc(q.head.text)+"</td><td>"+esc(q.relation)+tags+
       "</td><td>"+esc(q.tail.text)+"</td><td>"+(q.valid_from||"—")+"</td><td>"+q.time_source+ok+"</td></tr>";
   }).join("");
   const noise='<span class="dim" style="font-size:11px">noise: lc-start '+rev.noise.lc_start_rate+" · abbrev "+rev.noise.abbrev+" · emoji "+rev.noise.emoji+" · "+rev.noise.sentences+" sents</span>";
@@ -399,6 +411,7 @@ function docFilter(d){
   if(state.sample&&!state.sample.has(d.id))return false;
   if(state.flaggedOnly&&!d.revisions.some(r=>r.unlisted.length))return false;
   if(state.conflictsOnly&&!d.revisions.some(r=>r.quads.some(q=>q.claim_status==="conflict_injected")))return false;
+  if(state.discoveredOnly&&!d.revisions.some(r=>r.quads.some(q=>q.discovered)))return false;
   return true;
 }
 
@@ -410,7 +423,7 @@ function renderStats(){
       (v.top_openers.length&&v.top_openers[0][1]>1?" · opener×"+v.top_openers[0][1]:"")}).join("<br>");
   const pc=Object.entries(DATA.predicate_counts).slice(0,14).map(([k,v])=>k+" "+v).join(" · ");
   document.getElementById("stats").innerHTML=
-    "<div class='box'><b>"+DATA.docs.length+"</b> docs · <b>"+DATA.n_quads+"</b> gold quads · <b>"+DATA.n_conflicts+"</b> conflicts · "+DATA.questions.length+" questions<br><span class='dim'>"+pc+"</span></div>"+
+    "<div class='box'><b>"+DATA.docs.length+"</b> docs · <b>"+DATA.n_quads+"</b> gold quads · <b>"+DATA.n_conflicts+"</b> conflicts · <b>"+DATA.n_discovered+"</b> discovered · "+DATA.n_hedged+" hedged · "+DATA.questions.length+" questions<br><span class='dim'>"+pc+"</span></div>"+
     "<div class='box'>"+ch+"</div>";
 }
 
@@ -420,7 +433,8 @@ function render(){
   const chans=["all",...Object.keys(DATA.channel_stats)];
   f.innerHTML=chans.map(c=>'<button class="chip '+(state.channel===c?"on":"")+'" onclick="state.channel=\''+c+'\';render()">'+c+"</button>").join("")+
     '<button class="chip '+(state.flaggedOnly?"on":"")+'" onclick="state.flaggedOnly=!state.flaggedOnly;render()">⚠ flagged</button>'+
-    '<button class="chip '+(state.conflictsOnly?"on":"")+'" onclick="state.conflictsOnly=!state.conflictsOnly;render()">conflicts</button>';
+    '<button class="chip '+(state.conflictsOnly?"on":"")+'" onclick="state.conflictsOnly=!state.conflictsOnly;render()">conflicts</button>'+
+    '<button class="chip '+(state.discoveredOnly?"on":"")+'" onclick="state.discoveredOnly=!state.discoveredOnly;render()">discovered</button>';
   const kind=document.getElementById("kind").value;
   const c=document.getElementById("content");
   const done=Object.values(state.verdicts).filter(v=>v.v).length;
