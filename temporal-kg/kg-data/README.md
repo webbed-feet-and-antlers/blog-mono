@@ -52,6 +52,31 @@ Scale-up is `generate --worlds 20 --docs-per-world 80` after eyeballing the
 pilot. Everything lands in `data/` (gitignored); `data/manifest.json` records
 sha256s, seeds, model, and split assignment.
 
+## Reviewing quality before scale-up
+
+```bash
+uv run python -m kg_data review --split train
+open data/review/review_train.html
+```
+
+A self-contained page (no server): each doc rendered the way its channel
+reads — Slack as a chat thread, Confluence/Drive/meeting notes as pages,
+email with a subject header — with gold head/tail spans highlighted inline
+from their char offsets (red wavy = injected conflict), the doc's quads
+listed with an automatic ✓/✗ "true at doc date" check against the timeline,
+per-doc noise signals, a heuristic unlisted-proper-noun trap-line, and
+corpus stats (per-channel messiness vs the real grounding corpora, opener
+repetition, predicate coverage). Tabs switch to eval questions (answers +
+gold-doc links) and world timelines. Mark docs ✓/✗ with notes; **export
+verdicts** downloads them as JSON for acting on.
+
+Suggested pass bar for a ~20-doc stratified sample ("sample 20" button):
+realism ≥80% "could pass as real" per channel; ≥95% of quads assert their
+relation in the text (not just co-mention — the highlights make this a
+5-second check); ✗ "not current" appearing ONLY on red conflict quads;
+no unlisted real-world products; no opener template reused across >20% of
+a channel.
+
 ## Pilot results (2026-10-22, 2 worlds, deepseek flash)
 
 | Metric | Value |

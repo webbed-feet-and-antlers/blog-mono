@@ -154,6 +154,13 @@ async def cmd_score(args: argparse.Namespace) -> None:
     print(json.dumps(result, indent=1))
 
 
+async def cmd_review(args: argparse.Namespace) -> None:
+    from . import review
+
+    out = review.build_review(args.split)
+    print(f"wrote {out} — open it in a browser; verdicts export to JSON")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="kg_data")
     parser.add_argument("--verbose", action="store_true")
@@ -183,6 +190,10 @@ def main() -> None:
     p_sc.add_argument("--split", choices=["train", "val", "test"])
     p_sc.add_argument("--pred", default=None)
 
+    p_rv = sub.add_parser("review")
+    p_rv.add_argument("--split", choices=["train", "val", "test"],
+                      default="train")
+
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -191,7 +202,7 @@ def main() -> None:
     handlers = {
         "grounding": cmd_grounding, "generate": cmd_generate,
         "adapt": cmd_adapt, "extract": cmd_extract,
-        "answer": cmd_answer, "score": cmd_score,
+        "answer": cmd_answer, "score": cmd_score, "review": cmd_review,
     }
     asyncio.run(handlers[args.command](args))
 
