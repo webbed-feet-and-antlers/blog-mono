@@ -135,13 +135,17 @@ def build_payload(worlds: list[World], docs: list[Doc], quads: list[Quad],
             rev_quads = quads_by_rev.get(rev.rev_id, [])
             current_flags = []
             for q in rev_quads:
-                if world is None:
-                    current_flags.append(None)
+                if world is None or q.claim_status == "conflict_injected":
+                    current_flags.append(None)  # rendered as "expected ✗"
                     continue
-                seg = world.segment_at(q.relation, q.head.entity_id,
-                                       rev.sim_time)
-                ok = (q.claim_status == "conflict_injected") or \
-                     (seg is not None and seg.tail_id == q.tail.entity_id)
+                # non-functional predicates hold several tails at once —
+                # the stated tail must match ANY segment active at rev time
+                ok = any(
+                    s.tail_id == q.tail.entity_id
+                    and s.valid_from <= rev.sim_time
+                    and (s.valid_to is None or rev.sim_time < s.valid_to)
+                    for s in world.segments_for(q.relation, q.head.entity_id)
+                )
                 current_flags.append(ok)
             revs.append({
                 "rev_id": rev.rev_id,
@@ -357,8 +361,8 @@ function renderBody(doc,rev){
 function revBlock(doc,rev){
   const rows=rev.quads.map((q,i)=>{
     const cur=rev.quad_current[i];
-    const ok=cur===null?"":(cur?' <span class="ok">✓ true@docdate</span>':' <span class="bad-x">✗ not current</span>');
-    return "<tr><td>"+esc(q.head.text)+"</td><td>"+esc(q.relation)+(q.claim_status==="conflict_injected"?' <span class="bad-x">(injected conflict)</span>':"")+
+    const ok=cur===null?' <span style="color:var(--dim)">· injected conflict (expected ✗)</span>':(cur?' <span class="ok">✓ true@docdate</span>':' <span class="bad-x">✗ not current</span>');
+    return "<tr><td>"+esc(q.head.text)+"</td><td>"+esc(q.relation)+
       "</td><td>"+esc(q.tail.text)+"</td><td>"+(q.valid_from||"—")+"</td><td>"+q.time_source+ok+"</td></tr>";
   }).join("");
   const noise='<span class="dim" style="font-size:11px">noise: lc-start '+rev.noise.lc_start_rate+" · abbrev "+rev.noise.abbrev+" · emoji "+rev.noise.emoji+" · "+rev.noise.sentences+" sents</span>";
