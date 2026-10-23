@@ -112,9 +112,11 @@ Bi-temporality by construction: **valid time** comes from the world timeline;
 - **One asyncio.run per process** — the shared AsyncOpenAI client dies under
   a second event loop.
 
-`references/` holds the training notebooks this corpus is destined for;
+`../references/` holds the training notebooks this corpus is destined for;
 adapting the trainer to consume the neutral format (incl. a temporal head) is
-explicitly out of scope here.
+out of scope here — that is `../kg-pipeline`'s job (its `kgdata` bridge
+adapter reads this project's `data/` exports and emits canonical Documents
+plus UnifiedDataset trainer files).
 
 ## Verified data sources
 
