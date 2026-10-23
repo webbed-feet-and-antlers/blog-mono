@@ -57,6 +57,25 @@ responses under load, and assertion judgment benefits from it):
 OPENROUTER_MODEL=openai/gpt-4o-mini CONCURRENCY=4 uv run python -m kg_data audit --split train
 ```
 
+## Model policy: newest cheap tier, checked live
+
+Newer small models beat older "mini" models on cost AND quality, so the
+default is the newest cheap flash on OpenRouter — **`z-ai/glm-5.3-flash`**
+($0.005/M in, $0.199/M out, 1M ctx; set 2026-10-23, structured-JSON
+verified). Re-check anytime and bump the default when something wins:
+
+```bash
+uv run python -m kg_data models   # live catalog, cheap+recent, sorted by price
+```
+
+Rate-limit note (2026-10-23): after a few thousand calls in a day the key
+hits OpenRouter per-key throttling — every provider returns HTTP 200 with
+empty content at ~50%, model-independently. `chat()` escalates its backoff
+under a streak and every stage fails open, so runs survive; for big batches
+(audit/extract over a scaled corpus) prefer a fresh daily window. A full
+20-world generation + audit + extraction on the default model costs well
+under $1 in tokens.
+
 Scale-up is `generate --worlds 20 --docs-per-world 80` after eyeballing the
 pilot. Everything lands in `data/` (gitignored); `data/manifest.json` records
 sha256s, seeds, model, and split assignment.

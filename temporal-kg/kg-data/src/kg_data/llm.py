@@ -61,8 +61,12 @@ async def chat(
 ) -> str:
     """Run a chat completion and return the assistant's text content.
 
-    Retries on empty responses (common on cheap OpenRouter models under
-    rate limits) with exponential backoff spanning ~15s.
+    Retries on empty responses (OpenRouter returns HTTP 200 with empty
+    content under per-key rate limiting) with exponential backoff. Under a
+    sustained throttle the backoff ESCALATES: once consecutive empty rounds
+    pile up (a key-level limit, seen hitting every provider equally after a
+    few thousand calls in a day), short retries just hammer the key, so the
+    ceiling grows to ~1min per attempt. Success resets the escalation.
     """
     client = _get_client()
     kwargs: dict[str, Any] = {
@@ -75,6 +79,7 @@ async def chat(
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
+    empty_streak = 0  # consecutive rounds returning empty (shared throttle)
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
@@ -82,9 +87,10 @@ async def chat(
             content = response.choices[0].message.content or ""
             if content.strip():
                 return content
+            empty_streak += 1
             logger.warning(
-                "LLM returned empty response (attempt %d/%d), retrying…",
-                attempt + 1, retries + 1,
+                "LLM returned empty response (attempt %d/%d, streak %d), "
+                "retrying…", attempt + 1, retries + 1, empty_streak,
             )
         except Exception as exc:
             last_exc = exc
@@ -93,7 +99,8 @@ async def chat(
                 attempt + 1, retries + 1, exc,
             )
         if attempt < retries:
-            await asyncio.sleep(min(8.0, 2.0 ** attempt))
+            ceiling = 8.0 if empty_streak < 2 else 60.0
+            await asyncio.sleep(min(ceiling, 2.0 ** attempt))
 
     if last_exc:
         raise last_exc
@@ -220,13 +227,15 @@ async def structured(
     *,
     temperature: float = 0.4,
     max_tokens: int | None = None,
+    model: str | None = None,
 ) -> T:
     """Generate a pydantic-validated object.
 
     Defends against key drift three ways: the prompt embeds the exact field
     skeleton, keys are camelCase-normalized before validation, and on
     ValidationError we retry ONCE with the errors appended. Never silently
-    discards generations.
+    discards generations. `model` overrides settings for this call (per
+    stage: see config).
     """
     skeleton = render_prompt_skeleton(model_cls)
     messages = [
@@ -240,7 +249,8 @@ async def structured(
     for attempt in range(2):
         try:
             raw = await chat_json(
-                messages, temperature=temperature, max_tokens=max_tokens
+                messages, temperature=temperature, max_tokens=max_tokens,
+                model=model,
             )
             return model_cls.model_validate(_normalize_aliases(raw))
         except (ValidationError, ValueError, json.JSONDecodeError) as exc:

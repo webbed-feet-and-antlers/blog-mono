@@ -169,6 +169,15 @@ async def cmd_audit(args: argparse.Namespace) -> None:
     print(f"review page refreshed → {out}")
 
 
+async def cmd_models(args: argparse.Namespace) -> None:
+    from . import models as models_mod
+
+    rows = await asyncio.to_thread(models_mod.fetch_candidates)
+    print(models_mod.render_table(rows))
+    print("\ncurrent default:", settings.openrouter_model,
+          "— bump config.py/OPENROUTER_MODEL if a newer/cheaper one wins")
+
+
 async def cmd_review(args: argparse.Namespace) -> None:
     from . import review
 
@@ -213,6 +222,8 @@ def main() -> None:
     p_au.add_argument("--split", choices=["train", "val", "test"],
                       help="audit one split's exported corpus in place")
 
+    sub.add_parser("models")
+
     args = parser.parse_args()
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -222,7 +233,7 @@ def main() -> None:
         "grounding": cmd_grounding, "generate": cmd_generate,
         "adapt": cmd_adapt, "extract": cmd_extract,
         "answer": cmd_answer, "score": cmd_score, "review": cmd_review,
-        "audit": cmd_audit,
+        "audit": cmd_audit, "models": cmd_models,
     }
     asyncio.run(handlers[args.command](args))
 
