@@ -28,10 +28,12 @@ class Settings(BaseSettings):
     openrouter_model: str = "deepseek/deepseek-v4-flash-0731"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
-    # Transcription — OpenRouter's catalog no longer lists ANY ASR models
-    # (checked 2026-10-23; qwen/qwen3-asr-1.7b is gone), so this endpoint
-    # likely fails at call time. Migrating to a dedicated audio provider
-    # (OpenAI audio API, Groq whisper) is an open product decision.
+    # Transcription — uses OpenRouter's /audio/transcriptions endpoint (same key,
+    # same base URL as the LLM). qwen3-asr-1.7b is ~$0.000008/sec (~$0.03/hour).
+    # NOTE: audio models do NOT appear in the unfiltered /api/v1/models list —
+    # query it with ?input_modalities=audio&output_modalities=transcription
+    # (verified 2026-10-23; 28 ASR models listed). Cheaper options if volume
+    # ever grows: whisper-large-v3-turbo / qwen3-asr-0.6b (~$0.0000033/sec).
     transcription_model: str = "qwen/qwen3-asr-1.7b"
     audio_max_bytes: int = 500 * 1024 * 1024  # 500 MB
 
