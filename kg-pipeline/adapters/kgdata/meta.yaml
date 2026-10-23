@@ -1,0 +1,16 @@
+name: kgdata
+tier: B+C
+# Synthetic worlds are generated in-repo (kg-data); public parts inherit the
+# licensing of their upstream sources (T-REx / Wikipedia / Wikidata, CC BY-SA).
+license: "synthetic (kg-data generated); public parts CC BY-SA 4.0 (upstream)"
+url: https://github.com/  # blog-mono kg-data/ stage-7 export (see ../kg-data/README.md)
+version: follows-kg-data-manifest
+weight: 0.35
+description: >-
+  Bridge over kg-data's stage-7 export: the synthetic enterprise lifecycle
+  corpus (worlds with volatility predicates, revisions, conflicts, implicit
+  obsolescence) plus its public adapters' output (relbert/t_rex real-text
+  triples, Wikidata P580/P582 enrichment distant-supervised onto Wikipedia
+  summaries). Synthetic predicates namespace as COMPANY:...; P-ids pass
+  through bare; time_source maps to explicit_in_text; claim_status survives
+  for conflict eval.

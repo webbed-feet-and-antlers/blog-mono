@@ -1,11 +1,14 @@
-"""CLI: normalize a raw-record JSONL file through an adapter into the store.
+"""CLI: normalize raw records or a kg-data export through an adapter.
 
-Example (ICEWS sample):
+Examples:
     python -m kg_pipeline --source icews --input rows.jsonl --out data
+    python -m kg_pipeline --source kgdata --input ../kg-data/data/synthetic \
+        --split train --out data
 
-T-REx with a qualifier cache:
-    python -m kg_pipeline --source trex --input records.jsonl \
-        --qualifiers qualifiers.json --out data
+Adapters may expose load_input(path, split) to merge their own on-disk
+exports (the kgdata bridge does); otherwise --input is a JSONL of raw
+records. With --split, outputs land under <source>_<split> so train/val/test
+never overwrite each other.
 """
 from __future__ import annotations
 
@@ -40,35 +43,38 @@ def main(argv=None) -> int:
         required=True,
         choices=sorted(d.name for d in ADAPTERS_DIR.iterdir() if d.is_dir()),
     )
-    parser.add_argument("--input", required=True, help="JSONL of raw records for the adapter")
+    parser.add_argument("--input", required=True, help="JSONL of raw records, or an export dir for adapters with load_input")
     parser.add_argument("--out", default="data", help="output root (default: ./data)")
-    parser.add_argument("--qualifiers", help="adapter-specific, trex: JSON qualifier cache path")
+    parser.add_argument("--split", choices=["train", "val", "test"], default=None,
+                        help="for export-dir inputs: filter by split; outputs go under <source>_<split>")
     args = parser.parse_args(argv)
 
-    records = [json.loads(line) for line in Path(args.input).read_text(encoding="utf-8").splitlines() if line.strip()]
     adapter = load_adapter(args.source)
+    if hasattr(adapter, "load_input"):
+        records = adapter.load_input(args.input, split=args.split)
+    else:
+        if args.split is not None:
+            raise SystemExit(f"--split is not supported by adapter {args.source!r} (no load_input)")
+        records = [json.loads(line) for line in Path(args.input).read_text(encoding="utf-8").splitlines() if line.strip()]
 
-    kwargs = {}
-    if args.qualifiers and hasattr(adapter, "make_lookup"):
-        kwargs["qualifier_lookup"] = adapter.make_lookup(args.qualifiers)
-
-    docs, issues = adapter.normalize(records, **kwargs)
+    docs, issues = adapter.normalize(records)
     docs, report = sanitize_docs(docs)
     docs, dupes = dedup_quads(docs)
 
+    source_out = safe_name(args.source + (f"_{args.split}" if args.split else ""))
     out_root = safe_out_dir(args.out, Path.cwd())
-    store_paths = write_docs(docs, out_root, args.source, out_root)
-    unified_paths = write_unified(docs, out_root / "unified" / safe_name(args.source), out_root)
+    store_paths = write_docs(docs, out_root, source_out, out_root)
+    unified_paths = write_unified(docs, out_root / "unified" / source_out, out_root)
 
     n_quads = sum(len(d.quads) for d in docs)
-    print(f"[{args.source}] records={len(records)} docs={len(docs)} quads={n_quads}")
-    print(f"[{args.source}] sanitize: {report.summary()}")
-    print(f"[{args.source}] dedup removed {dupes} quads")
+    print(f"[{source_out}] records={len(records)} docs={len(docs)} quads={n_quads}")
+    print(f"[{source_out}] sanitize: {report.summary()}")
+    print(f"[{source_out}] dedup removed {dupes} quads")
     if issues:
         detail = ", ".join(f"{k}={v}" for k, v in sorted(issues.items()))
-        print(f"[{args.source}] adapter issues: {detail}")
+        print(f"[{source_out}] adapter issues: {detail}")
     for label, path in {**store_paths, **unified_paths}.items():
-        print(f"[{args.source}] wrote {label}: {path}")
+        print(f"[{source_out}] wrote {label}: {path}")
     return 0
 
 
