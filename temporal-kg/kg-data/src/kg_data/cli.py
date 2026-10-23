@@ -4,6 +4,7 @@ AsyncOpenAI client), semaphore-bounded concurrency everywhere.
     uv run python -m kg_data grounding
     uv run python -m kg_data generate --worlds 2 --docs-per-world 40
     uv run python -m kg_data adapt --cap 3000 --enrich 300
+    uv run python -m kg_data silver --source enron --docs 200
     uv run python -m kg_data extract --split val
     uv run python -m kg_data answer --split val
     uv run python -m kg_data score --split val
@@ -20,7 +21,7 @@ import sys
 from pathlib import Path
 
 from . import adapters, audit, docgen, evalgen, export, extract as extract_mod
-from . import grounding, score as score_mod, worldgen
+from . import grounding, score as score_mod, silver, worldgen
 from .config import DATA_DIR, settings
 
 log = logging.getLogger("kg_data")
@@ -169,6 +170,13 @@ async def cmd_audit(args: argparse.Namespace) -> None:
     print(f"review page refreshed → {out}")
 
 
+async def cmd_silver(args: argparse.Namespace) -> None:
+    stats = await silver.run_silver(
+        args.source, docs_cap=args.docs, votes=args.votes,
+        use_llm=not args.no_llm, holdout=args.holdout)
+    print(json.dumps(stats, indent=1, default=str))
+
+
 async def cmd_models(args: argparse.Namespace) -> None:
     from . import models as models_mod
 
@@ -181,6 +189,11 @@ async def cmd_models(args: argparse.Namespace) -> None:
 async def cmd_review(args: argparse.Namespace) -> None:
     from . import review
 
+    if args.silver:
+        out = review.build_silver_review(args.silver)
+        print(f"wrote {out} — silver labels incl. holdout; "
+              f"verdicts export to JSON")
+        return
     out = review.build_review(args.split)
     print(f"wrote {out} — open it in a browser; verdicts export to JSON")
 
@@ -203,6 +216,18 @@ def main() -> None:
     p_ad.add_argument("--enrich", type=int, default=300,
                       help="wikidata temporal quads to enrich (0 to skip)")
 
+    p_si = sub.add_parser("silver")
+    p_si.add_argument("--source", choices=list(silver.SILVER_SOURCES),
+                      default="enron")
+    p_si.add_argument("--docs", type=int, default=200,
+                      help="trainable docs to label (holdout is extra)")
+    p_si.add_argument("--votes", type=int, default=3,
+                      help="self-consistency samples per doc")
+    p_si.add_argument("--holdout", type=int, default=25,
+                      help="held-out human-audit docs (0 to skip)")
+    p_si.add_argument("--no-llm", action="store_true",
+                      help="offline: label nothing, exercise wiring only")
+
     p_ex = sub.add_parser("extract")
     p_ex.add_argument("--split", choices=["train", "val", "test"], default="val")
     p_ex.add_argument("--cap", type=int, default=0, help="limit docs (0 = all)")
@@ -217,6 +242,9 @@ def main() -> None:
     p_rv = sub.add_parser("review")
     p_rv.add_argument("--split", choices=["train", "val", "test"],
                       default="train")
+    p_rv.add_argument("--silver", default=None,
+                      help="review a silver_{source} export instead "
+                           "(e.g. enron)")
 
     p_au = sub.add_parser("audit")
     p_au.add_argument("--split", choices=["train", "val", "test"],
@@ -233,7 +261,7 @@ def main() -> None:
         "grounding": cmd_grounding, "generate": cmd_generate,
         "adapt": cmd_adapt, "extract": cmd_extract,
         "answer": cmd_answer, "score": cmd_score, "review": cmd_review,
-        "audit": cmd_audit, "models": cmd_models,
+        "audit": cmd_audit, "models": cmd_models, "silver": cmd_silver,
     }
     asyncio.run(handlers[args.command](args))
 

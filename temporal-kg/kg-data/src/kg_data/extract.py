@@ -73,8 +73,12 @@ def _parse_iso(value: str | None) -> date | None:
 
 
 async def extract_doc(world: World | None, doc: Doc, *, use_llm: bool = True,
-                      semaphore: asyncio.Semaphore | None = None) -> list[Quad]:
-    """Extract quads from the doc's latest revision via the baseline LLM."""
+                      semaphore: asyncio.Semaphore | None = None,
+                      temperature: float = 0.0) -> list[Quad]:
+    """Extract quads from the doc's latest revision via the baseline LLM.
+
+    temperature > 0 is used by the silver stage's self-consistency voting;
+    the eval baseline stays at 0."""
     rev = doc.latest_revision
     user = (
         f"Channel: {doc.channel} ({doc.doc_type}). Document date: "
@@ -88,12 +92,12 @@ async def extract_doc(world: World | None, doc: Doc, *, use_llm: bool = True,
             async with semaphore:
                 result = await llm.structured(
                     ExtractionResult, system=SYSTEM, user=user,
-                    temperature=0.0, max_tokens=900,
+                    temperature=temperature, max_tokens=900,
                 )
         else:
             result = await llm.structured(
                 ExtractionResult, system=SYSTEM, user=user,
-                temperature=0.0, max_tokens=900,
+                temperature=temperature, max_tokens=900,
             )
         return result
 

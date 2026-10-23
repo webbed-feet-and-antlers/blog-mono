@@ -105,7 +105,9 @@ def _quad_payloads(quads: list[Quad]) -> list[dict]:
 
 
 def build_payload(worlds: list[World], docs: list[Doc], quads: list[Quad],
-                  questions: list, grounding_stats: dict | None = None) -> dict:
+                  questions: list, grounding_stats: dict | None = None,
+                  *, flag_unlisted: bool = True,
+                  silver: bool = False) -> dict:
     worlds_by_id = {w.id: w for w in worlds}
     quads_by_rev: dict[str, list[Quad]] = {}
     for q in quads:
@@ -156,7 +158,8 @@ def build_payload(worlds: list[World], docs: list[Doc], quads: list[Quad],
                 "text": rev.text,
                 "noise": _noise_signals(rev.text),
                 "unlisted": _unlisted_proper_nouns(rev.text, known_lower,
-                                                   corpus_lower),
+                                                   corpus_lower)
+                if flag_unlisted else [],
                 "quads": _quad_payloads(rev_quads),
                 "quad_current": current_flags,
             })
@@ -229,6 +232,7 @@ def build_payload(worlds: list[World], docs: list[Doc], quads: list[Quad],
 
     return {
         "docs": doc_payloads,
+        "silver": silver,
         "channel_stats": channel_stats,
         "predicate_counts": dict(sorted(pred_counts.items(),
                                         key=lambda kv: -kv[1])),
@@ -271,6 +275,41 @@ def build_review(split: str | None = None, *,
     return out
 
 
+def build_silver_review(source: str, *, out: Path | None = None) -> Path:
+    """Review page over a silver_{source} export (train/val/test + holdout).
+    Silver labels have no gold timeline behind them, so the "current at doc
+    date?" check is off and every quad shows as a silver label to eyeball."""
+    from .schema import Quad as QuadModel
+
+    base = DATA_DIR / "public" / f"silver_{source}"
+    if not base.is_dir():
+        raise SystemExit(f"no silver export at {base} — run "
+                         f"`python -m kg_data silver --source {source}` first")
+    docs, quads = [], []
+    for sub in ("train", "val", "test", "holdout"):
+        d_path = base / sub / "docs.jsonl"
+        q_path = base / sub / "quads.jsonl"
+        if not d_path.exists():
+            continue
+        docs.extend(Doc.model_validate(json.loads(line)) for line in
+                    d_path.read_text(encoding="utf-8").splitlines() if line)
+        if q_path.exists():
+            quads.extend(QuadModel.model_validate(json.loads(line)) for line in
+                         q_path.read_text(encoding="utf-8").splitlines()
+                         if line)
+
+    grounding_stats = {}
+    stats_path = DATA_DIR / "grounding" / "noise_stats.json"
+    if stats_path.exists():
+        grounding_stats = json.loads(stats_path.read_text())
+    payload = build_payload([], docs, quads, [], grounding_stats,
+                            flag_unlisted=False, silver=True)
+    out = out or (DATA_DIR / "review" / f"review_silver_{source}.html")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_html(payload), encoding="utf-8")
+    return out
+
+
 HTML_TEMPLATE = r"""<!doctype html>
 <html><head><meta charset="utf-8"><title>kg-data review</title>
 <style>
@@ -297,6 +336,7 @@ section.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1f
 .revhead{font-size:12px;color:var(--dim);margin:8px 0 4px}
 .body{white-space:pre-wrap;font-size:13.5px}
 .slackline{margin:3px 0}.slackline .who{color:#9db4ff;font-weight:600}.slackline .t{color:var(--dim);font-size:11px}
+.emailsubj{font-weight:600;color:#ffd98a;margin:2px 0 6px}
 .body h3,.body h4{margin:8px 0 4px}.body li{margin-left:18px;list-style:disc}
 mark.h{background:#2b3f75;color:#a8c4ff;border-radius:3px;padding:0 2px}
 mark.t{background:#1e4436;color:#8fe9c4;border-radius:3px;padding:0 2px}
@@ -358,6 +398,13 @@ function renderBody(doc,rev){
       return '<div class="slackline">'+line+'</div>';
     }).join("");
   }
+  if(doc.channel==="email"){
+    return hl.split("\n").map(line=>{
+      const m=line.match(/^Subject:\s?(.*)/);
+      if(m) return '<div class="emailsubj">'+(m[1]||"(no subject)")+'</div>';
+      return line? line : "";
+    }).join("\n");
+  }
   return hl.split("\n").map(line=>{
     if(line.startsWith("<")) return line; // keeps inline marks on markdown lines
     let m;
@@ -372,7 +419,8 @@ function renderBody(doc,rev){
 function revBlock(doc,rev){
   const rows=rev.quads.map((q,i)=>{
     const cur=rev.quad_current[i];
-    const ok=cur===null?' <span style="color:var(--dim)">· injected conflict (expected ✗)</span>':(cur?' <span class="ok">✓ true@docdate</span>':' <span class="bad-x">✗ not current</span>');
+    const nullMsg=DATA.silver?'· silver label (no gold timeline)':'· injected conflict (expected ✗)';
+    const ok=cur===null?' <span style="color:var(--dim)">'+nullMsg+'</span>':(cur?' <span class="ok">✓ true@docdate</span>':' <span class="bad-x">✗ not current</span>');
     const tags=(q.discovered?' <span style="color:#c9a8ff">· discovered</span>':"")+(q.hedged?' <span style="color:var(--flag)">· hedged</span>':"");
     return "<tr><td>"+esc(q.head.text)+"</td><td>"+esc(q.relation)+tags+
       "</td><td>"+esc(q.tail.text)+"</td><td>"+(q.valid_from||"—")+"</td><td>"+q.time_source+ok+"</td></tr>";

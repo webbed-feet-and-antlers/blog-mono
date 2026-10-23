@@ -30,6 +30,7 @@ measured noise statistics.
 | 3½ | `audit.py` | Gold = what the text **asserts**, not what was planned: an LLM classifies each timeline-active fact as asserted / not_asserted / unsure (coreference-aware, hedged flag). Selections are validated against the timeline, so truth stays deterministic. Planned quads drop only on auditor denial **plus** mechanical no-same-sentence corroboration (auditor drop precision measured ~50%); omissions fail safe (kept); discovered assertions become new gold (`discovered: true`). Scorer reports F1 against planned-gold and full gold separately |
 | 4 | `evalgen.py` | Pure-code eval questions: point-in-time, current-state, history, staleness (superseded **and** old-but-still-true), conflict |
 | 5 | `adapters/trex.py` | `relbert/t_rex` (parquet revision) real-text triples + Wikidata SPARQL temporal enrichment (P580/P582) distant-supervised onto Wikipedia summaries |
+| 5b | `silver.py` | **Silver labels over real text**: raw grounding corpora (Enron first — real send dates, multi-year org change) wrapped as docs, quad-labeled by k-vote self-consistency extraction, adjudicated with the audit stage's assertion rules. Real register for the generic training phase; **never eval material** (the `holdout/` dir exports the human-audit slice the bridge refuses to read). Relations slugified (`runs_on_database`); time discipline: `doc_date` only where the corpus has real timestamps |
 | 6 | `extract.py` | Few-shot LLM baseline extractor + QA answering (validates the harness, sets a floor) |
 | 7 | `export.py` | Splits **by world** (no timeline leakage), ingestion log (CDC stream), sha256 manifest |
 | 8 | `score.py` | Triple F1 (relation matches predicate id OR label), temporal exact/overlap match, question accuracy, stream final-graph F1 with deletion semantics |
@@ -44,10 +45,12 @@ uv run pytest tests/ -q       # offline, no network
 uv run python -m kg_data grounding                      # stage 0, once
 uv run python -m kg_data generate --worlds 2 --docs-per-world 40   # pilot
 uv run python -m kg_data adapt --cap 3000 --enrich 300  # public data
+uv run python -m kg_data silver --source enron --docs 200  # real-text silver labels
 uv run python -m kg_data extract --split val            # baseline extraction
 uv run python -m kg_data answer --split val             # baseline QA
 uv run python -m kg_data score --split val              # F1 + accuracy
 uv run python -m kg_data audit --split train            # re-audit an export in place
+uv run python -m kg_data review --silver enron          # eyeball silver incl. holdout
 ```
 
 The audit stage wants a sturdier model than the free flash tier (empty
@@ -136,6 +139,10 @@ literature's calibration for this task.
   CDC stream an incremental graph-updater consumes)
 - `public/trex/{split}/` — real-text quads (time_source `none`) and Wikidata
   temporal quads (`kb_qualifier`)
+- `public/silver_{enron|stackexchange|ubuntu}/{split}/` — real-text docs with
+  LLM-silver quads (slug relations, `doc_date` only where the corpus has real
+  timestamps) + `holdout/` — the human-audit benchmark slice, excluded from
+  every consumer by convention
 
 Bi-temporality by construction: **valid time** comes from the world timeline;
 **transaction time** is the sim time of the revision stating the quad.
