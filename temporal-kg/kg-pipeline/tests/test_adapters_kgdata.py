@@ -71,6 +71,32 @@ def test_normalize_wikidata_kb_qualifier_time():
     assert t.explicit_in_text is False  # database time, not stated in text
 
 
+def test_normalize_silver_record():
+    from tests.helpers import silver_record
+
+    docs, issues = normalize([silver_record()])
+    assert not issues
+    d = docs[0]
+    assert d.channel == "email" and d.doc_time == "2001-05-14"  # real send date
+    assert d.quads[0].rel == "reports_to"  # slug: passes through bare
+    assert d.quads[0].time is None  # null bounds, doc_date carries no TimeBound
+    assert d.provenance.extraction == "silver"
+    assert "Enron" in d.provenance.license
+    d.validate()
+
+
+def test_load_input_silver_dir_and_holdout_excluded(tmp_path):
+    from tests.helpers import build_silver_export
+
+    root = build_silver_export(tmp_path)
+    records = load_input(root)
+    assert {r["kind"] for r in records} == {"silver"}
+    ids = {r["doc"]["id"] for r in records}
+    assert "sil-enron-9999" in ids  # val split is read…
+    with pytest.raises(SystemExit):
+        load_input(root / "holdout")  # …but the human-audit holdout never trains
+
+
 def test_load_input_synthetic_split_filter(tmp_path):
     root = build_synth_export(tmp_path / "synthetic")
     all_records = load_input(root)

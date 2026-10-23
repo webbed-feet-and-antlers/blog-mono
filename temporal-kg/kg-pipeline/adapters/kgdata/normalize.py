@@ -38,8 +38,11 @@ KIND_LICENSE = {
     "synthetic": "generated corpus (kg-data worldgen, in-repo)",
     "trex": "T-REx / Wikipedia derived (CC BY-SA 4.0)",
     "wikidata": "Wikidata / Wikipedia derived (CC BY-SA 4.0)",
+    "silver": "real public text (Ubuntu IRC / Enron / Stack Exchange "
+              "mirrors), LLM-extracted silver labels",
 }
-KIND_EXTRACTION = {"synthetic": "synthetic", "trex": "distant", "wikidata": "distant"}
+KIND_EXTRACTION = {"synthetic": "synthetic", "trex": "distant",
+                   "wikidata": "distant", "silver": "silver"}
 _P_RE = re.compile(r"^P\d+$")
 
 
@@ -100,7 +103,11 @@ def load_input(path, split: Optional[str] = None) -> List[dict]:
         return records
 
     if (p / "train").is_dir() or (p / "val").is_dir():  # public export root
-        kind = p.name if p.name in KIND_LICENSE else "trex"
+        # silver_* dirs are one family regardless of corpus (silver_enron, …)
+        if p.name.startswith("silver_"):
+            kind = "silver"
+        else:
+            kind = p.name if p.name in KIND_LICENSE else "trex"
         records = []
         for sp in ([split] if split else ["train", "val", "test"]):
             docs_path = p / sp / "docs.jsonl"

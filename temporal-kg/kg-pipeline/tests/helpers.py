@@ -186,3 +186,50 @@ def build_public_export(root: Path, name: str = "trex") -> Path:
     _write_jsonl(root / "val" / "docs.jsonl", [val["doc"]])
     _write_jsonl(root / "val" / "quads.jsonl", val["quads"])
     return root
+
+
+SILVER_TEXT = "Subject: gas schedule\n\nThe gas desk reports to John Arnold."
+
+
+def silver_record(doc_id="sil-enron-0000", text=SILVER_TEXT):
+    """One kg-data silver record: real Enron email, LLM-extracted quad with
+    slug relation, null bounds, doc_date time source, real send date."""
+    b, e = _span(text, "gas desk")
+    g, h = _span(text, "John Arnold")
+    return {
+        "kind": "silver",
+        "doc": {
+            "id": doc_id, "world_id": "silver_enron", "channel": "email",
+            "doc_type": "email", "title": "gas schedule",
+            "author": {"name": "user0@enron.com", "role": "real corpus",
+                       "offboarded_on": None},
+            "created_at": "2001-05-14", "deleted_at": None,
+            "revisions": [{"rev_id": f"{doc_id}#r0", "sim_time": "2001-05-14",
+                           "text": text, "content_sha256": "s",
+                           "revision_kind": "initial"}],
+        },
+        "quads": [{
+            "id": "silq-enron-00000", "world_id": "silver_enron",
+            "head": {"entity_id": "gas desk", "text": "gas desk", "start": b, "end": e},
+            "relation": "reports_to",
+            "tail": {"entity_id": "John Arnold", "text": "John Arnold", "start": g, "end": h},
+            "valid_from": None, "valid_to": None,
+            "time_source": "doc_date", "claim_status": "accurate",
+            "doc_id": doc_id, "rev_id": f"{doc_id}#r0",
+            "discovered": False, "hedged": False,
+        }],
+    }
+
+
+def build_silver_export(root: Path, name: str = "silver_enron") -> Path:
+    """Miniature kg-data silver export (train + val + a holdout/ dir that
+    the bridge must never read)."""
+    train = silver_record()
+    holdout = silver_record("sil-enron-9999")
+    _write_jsonl(root / name / "train" / "docs.jsonl", [train["doc"]])
+    _write_jsonl(root / name / "train" / "quads.jsonl", train["quads"])
+    _write_jsonl(root / name / "val" / "docs.jsonl", [holdout["doc"]])
+    _write_jsonl(root / name / "val" / "quads.jsonl", holdout["quads"])
+    _write_jsonl(root / name / "holdout" / "docs.jsonl", [holdout["doc"]])
+    _write_jsonl(root / name / "holdout" / "quads.jsonl", holdout["quads"])
+    return root / name

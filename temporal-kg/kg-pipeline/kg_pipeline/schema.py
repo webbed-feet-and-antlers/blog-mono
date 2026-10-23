@@ -18,7 +18,7 @@ SCHEMA_VERSION = "1"
 CHANNELS = {"wiki", "news", "doc", "chat", "email", "issue",
             "slack", "confluence", "drive", "meeting_notes"}
 GRANULARITIES = {"year", "month", "day"}
-EXTRACTION_KINDS = {"gold", "distant", "synthetic"}
+EXTRACTION_KINDS = {"gold", "distant", "synthetic", "silver"}
 CLAIM_STATUSES = {"accurate", "conflict_injected"}
 
 _REL_RE = re.compile(r"^\S+$")
