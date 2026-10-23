@@ -60,6 +60,12 @@ def test_namespace_rel():
         namespace_rel("   ")
 
 
+def test_namespace_rel_company_family():
+    assert namespace_rel("runs_on_database", family="company") == "COMPANY:runs_on_database"
+    assert namespace_rel("COMPANY:runs_on_database", family="company") == "COMPANY:runs_on_database"
+    assert namespace_rel("P17", family="company") == "P17"  # P-ids never re-namespaced
+
+
 def test_prefixed():
     assert prefixed("NER", "person") == "[NER] person"
     assert prefixed("REL", "CAMEO:190") == "[REL] CAMEO:190"

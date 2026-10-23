@@ -15,9 +15,11 @@ from .timeutil import granularity_of, valid_iso
 
 SCHEMA_VERSION = "1"
 
-CHANNELS = {"wiki", "news", "doc", "chat", "email", "issue"}
+CHANNELS = {"wiki", "news", "doc", "chat", "email", "issue",
+            "slack", "confluence", "drive", "meeting_notes"}
 GRANULARITIES = {"year", "month", "day"}
 EXTRACTION_KINDS = {"gold", "distant", "synthetic"}
+CLAIM_STATUSES = {"accurate", "conflict_injected"}
 
 _REL_RE = re.compile(r"^\S+$")
 
@@ -128,6 +130,8 @@ class Quad:
     head_id: Optional[str] = None
     tail_id: Optional[str] = None
     time: Optional[TimeBound] = None
+    # synthetic-corpus provenance: "accurate" | "conflict_injected" (None = real data)
+    claim_status: Optional[str] = None
 
     def validate(self, text: str) -> None:
         for name, span in (("head_span", self.head_span), ("tail_span", self.tail_span)):
@@ -141,6 +145,8 @@ class Quad:
             raise SchemaError(f"quad rel {self.rel!r} must not carry the trainer prefix")
         if self.time is not None:
             self.time.validate()
+        if self.claim_status is not None and self.claim_status not in CLAIM_STATUSES:
+            raise SchemaError(f"claim_status {self.claim_status!r} not in {sorted(CLAIM_STATUSES)}")
 
     def to_dict(self) -> dict:
         return {
@@ -150,6 +156,7 @@ class Quad:
             "head_id": self.head_id,
             "tail_id": self.tail_id,
             "time": self.time.to_dict() if self.time is not None else None,
+            "claim_status": self.claim_status,
         }
 
     @classmethod
@@ -166,6 +173,7 @@ class Quad:
             head_id=_first(d, "head_id", "subject", "s"),
             tail_id=_first(d, "tail_id", "object", "o"),
             time=TimeBound.from_dict(time) if time else None,
+            claim_status=_first(d, "claim_status", "status"),
         )
 
 

@@ -109,3 +109,29 @@ def test_alias_parsing():
 
     q = Quad.from_dict({"h": [0, 5], "t": [10, 23], "predicate": "P39", "subject": "Q76", "object": "Q30"})
     assert q.rel == "P39" and q.head_id == "Q76"
+
+
+def test_claim_status_validation():
+    doc = make_doc()
+    doc.quads[0].claim_status = "accurate"
+    doc.validate()
+    doc.quads[0].claim_status = "wishful"
+    with pytest.raises(SchemaError):
+        doc.validate()
+
+
+def test_claim_status_round_trip_and_alias():
+    doc = make_doc()
+    doc.quads[0].claim_status = "conflict_injected"
+    restored = Document.from_dict(doc.to_dict())
+    assert restored.quads[0].claim_status == "conflict_injected"
+
+    q = Quad.from_dict({"h": [0, 5], "t": [10, 23], "predicate": "P39", "status": "accurate"})
+    assert q.claim_status == "accurate"
+
+
+def test_enterprise_channels_accepted():
+    for channel in ("slack", "confluence", "drive", "meeting_notes", "chat"):
+        doc = make_doc()
+        doc.channel = channel
+        doc.validate()

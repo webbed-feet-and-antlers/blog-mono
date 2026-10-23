@@ -29,14 +29,18 @@ _KNOWN_FAMILY = ("CAMEO:", "ENT:", "COMPANY:")
 def namespace_rel(rel: str, family: str | None = None) -> str:
     """Return the namespaced relation label, idempotently.
 
-    family="cameo" forces the CAMEO namespace (ICEWS event codes); otherwise
-    bare 2-4 digit codes are also treated as CAMEO.
+    family="cameo" forces the CAMEO namespace (ICEWS event codes; bare
+    2-4 digit codes are treated as CAMEO even without it).
+    family="company" forces the COMPANY namespace (synthetic enterprise
+    predicates from kg-data's worldgen: runs_on_database, has_ceo, ...).
     """
     rel = str(rel).strip()
     if not rel:
         raise ValueError("empty relation label")
     if rel.startswith(_KNOWN_FAMILY) or _P_RE.match(rel):
         return rel
+    if family == "company":
+        return f"COMPANY:{rel}"
     if family == "cameo" or (family is None and _CAMEO_RE.match(rel)):
         return f"CAMEO:{rel}"
     return rel
